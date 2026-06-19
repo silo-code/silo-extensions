@@ -4,9 +4,9 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 
 ## Extensions
 
-| Extension | ID | Latest | Description |
-|---|---|---|---|
-| [docs-panel](./docs-panel/) | `silo.docs-panel` | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=docs-panel*&label=)](https://github.com/silo-code/silo-extensions/releases?q=docs-panel) | Markdown documentation browser with configurable folder roots |
+| Extension | Latest | Description |
+|---|---|---|
+| [Documents Side Panel](./docs-panel/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=docs-panel*&label=)](https://github.com/silo-code/silo-extensions/releases?q=docs-panel) | Markdown documentation browser with configurable folder roots |
 
 ## Installing an extension
 
