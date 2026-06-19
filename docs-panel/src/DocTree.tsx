@@ -22,6 +22,7 @@ export function DocTree({
   initialExpanded,
   persistExpanded,
   onRemove,
+  onAdd,
 }: {
   ctx: ExtensionContext;
   workspaceId: string | undefined;
@@ -30,6 +31,7 @@ export function DocTree({
   initialExpanded?: ExpandedMap;
   persistExpanded: (expanded: ExpandedMap) => void;
   onRemove: () => void;
+  onAdd: () => void;
 }) {
   const files = ctx.files;
   const editors = ctx.editors;
@@ -214,7 +216,7 @@ export function DocTree({
         listings={listings}
         onToggle={toggle}
         selected={selected}
-        rootActions={{ onRemove, onRefresh: refresh }}
+        rootActions={{ onAdd, onRemove, onRefresh: refresh }}
       />
     </div>
   );

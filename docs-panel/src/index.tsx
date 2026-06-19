@@ -24,10 +24,8 @@ const STYLES = `
   flex-direction: column;
 }
 
-/* "Add folder" button — two states:
-   default (below trees): looks like a muted tree row, left-aligned at depth-0
-   --empty (no roots yet): centred prompt in the empty panel */
-.docs-add-root-btn {
+/* Empty-state prompt */
+.docs-add-root-btn--empty {
   display: flex;
   align-items: center;
   gap: 0.4em;
@@ -35,27 +33,14 @@ const STYLES = `
   border: none;
   cursor: pointer;
   font-family: var(--silo-font-ui);
-  font-size: calc(1em - 2px);
-  color: var(--silo-color-text-lo);
-  /* align with depth-0 tree rows: 4px tree-padding + 6px row-base-indent */
-  padding: 3px 8px 4px 10px;
-  border-radius: 3px;
-  text-align: left;
-  white-space: nowrap;
-  margin: 2px 4px 4px;
-}
-.docs-add-root-btn:hover {
-  color: var(--silo-color-text-hi);
-  background: var(--silo-color-bg-hover);
-}
-.docs-add-root-btn--empty {
+  font-size: calc(1em - 1px);
   color: var(--silo-color-text-lo);
   padding: 16px 12px;
-  font-size: calc(1em - 1px);
-  margin: 0;
-  border-radius: 0;
-  white-space: normal;
+  text-align: left;
   line-height: 1.6;
+}
+.docs-add-root-btn--empty:hover {
+  color: var(--silo-color-text-hi);
 }
 
 /* ── Tree ─────────────────────────────────────────────────────────────────── */

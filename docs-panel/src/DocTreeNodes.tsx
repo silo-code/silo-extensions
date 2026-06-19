@@ -7,6 +7,7 @@ import {
   File as FileIcon,
   ArrowClockwise,
   X,
+  Plus,
 } from "@phosphor-icons/react";
 import {
   rowIndent,
@@ -41,7 +42,7 @@ export function DirNode({
   expanded: Record<string, boolean>;
   listings: Record<string, Listing>;
   onToggle: (path: string, isDir: boolean) => void;
-  rootActions?: { onRemove: () => void; onRefresh: () => void };
+  rootActions?: { onAdd: () => void; onRemove: () => void; onRefresh: () => void };
 } & RowSharedProps) {
   const isExpanded = !!expanded[path];
   const listing = listings[path];
@@ -84,6 +85,13 @@ export function DirNode({
             className="docs-root-actions"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              tabIndex={-1}
+              title="Add folder"
+              onClick={rootActions.onAdd}
+            >
+              <Plus size="1.1em" weight="bold" />
+            </button>
             <button
               tabIndex={-1}
               title="Refresh"

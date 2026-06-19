@@ -35,7 +35,7 @@ export function DocsPanel({
     if (!folder) return;
     const label = folder.split("/").filter(Boolean).pop() ?? folder;
     storage.set("roots", [
-      ...roots,
+      ...storage.get<DocsRoot[]>("roots", []),
       { id: crypto.randomUUID(), label, path: folder },
     ]);
   }
@@ -61,24 +61,19 @@ export function DocsPanel({
             Add documentation folder…
           </button>
         ) : (
-          <>
-            {roots.map((root) => (
-              <DocTree
-                key={root.id}
-                ctx={ctx}
-                workspaceId={ws?.id}
-                rootPath={root.path}
-                rootLabel={root.label}
-                initialExpanded={getExpanded(root.id)}
-                persistExpanded={(exp) => persistExpanded(root.id, exp)}
-                onRemove={() => removeRoot(root.id)}
-              />
-            ))}
-            <button className="docs-add-root-btn" onClick={addRoot}>
-              <Plus size="0.9em" weight="regular" aria-hidden="true" />
-              Add folder…
-            </button>
-          </>
+          roots.map((root) => (
+            <DocTree
+              key={root.id}
+              ctx={ctx}
+              workspaceId={ws?.id}
+              rootPath={root.path}
+              rootLabel={root.label}
+              initialExpanded={getExpanded(root.id)}
+              persistExpanded={(exp) => persistExpanded(root.id, exp)}
+              onRemove={() => removeRoot(root.id)}
+              onAdd={addRoot}
+            />
+          ))
         )}
       </div>
     </div>
