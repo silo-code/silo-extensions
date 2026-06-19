@@ -14,21 +14,22 @@ type ExpandedMap = Record<string, boolean>;
 export function DocsPanel({
   ctx,
   storage,
-  hydrated,
 }: SidePanelProps & { ctx: ExtensionContext }) {
+  // Re-renders on workspace switch — the hook that makes storage.get() below
+  // return the right workspace's data each time. Mirrors FileExplorerPanel.
   const wsState = useServiceState(ctx.workspaces);
   const ws = wsState.all.find((w) => w.id === wsState.activeId) ?? null;
 
-  const [roots, setRoots] = useState<DocsRoot[]>(() =>
-    storage.get<DocsRoot[]>("roots", []),
-  );
+  // Force a re-render when storage.set() is called within this panel so that
+  // the storage.get() calls below pick up the change immediately.
+  const [, tick] = useState(0);
+  useEffect(() => storage.subscribe(() => tick((n) => n + 1)), [storage]);
 
-  useEffect(() => {
-    setRoots(storage.get<DocsRoot[]>("roots", []));
-    return storage.subscribe(() =>
-      setRoots(storage.get<DocsRoot[]>("roots", [])),
-    );
-  }, [storage, hydrated]);
+  // Read directly from storage each render — same pattern as FileExplorerPanel
+  // reading treeExpanded. No useState wrapper needed; workspace switches cause
+  // a re-render via wsState above, at which point storage already holds the
+  // new workspace's data.
+  const roots = storage.get<DocsRoot[]>("roots", []);
 
   async function addRoot() {
     const folder = await ctx.ui.pickFolder();
@@ -41,7 +42,7 @@ export function DocsPanel({
   }
 
   function removeRoot(id: string) {
-    storage.set("roots", roots.filter((r) => r.id !== id));
+    storage.set("roots", storage.get<DocsRoot[]>("roots", []).filter((r) => r.id !== id));
   }
 
   function persistExpanded(rootId: string, expanded: ExpandedMap) {

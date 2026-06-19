@@ -7,7 +7,7 @@
   "files": ["dist/", "build.mjs"],
   "silo": {
     "id": "silo.docs-panel",
-    "engine": "^0.7",
+    "engine": "^0.8.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": ["fs:read"]
