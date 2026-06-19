@@ -91,14 +91,18 @@ jobs:
           # Create a scoped tag so multi-extension releases don't collide
           git tag "docs-panel@v$NEW_VERSION"
 
-          # Build then pack (files: ["dist/"] ensures dist is included)
+          # Build then pack into the repo root (files: ["dist/"] ensures dist is included).
+          # Output just the filename — the Create Release step runs from the repo root
+          # where the tarball lands, so no path prefix needed.
           npm run build
           TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=../$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
       - name: Push commit and tag
         if: steps.changed.outputs.any == 'true'
-        run: git push origin HEAD:main --follow-tags
+        run: |
+          git push origin HEAD:main
+          git push origin "refs/tags/docs-panel@v${{ steps.pack.outputs.version }}"
 
       - name: Create GitHub Release
         if: steps.changed.outputs.any == 'true'
