@@ -17,34 +17,6 @@ const STYLES = `
   overflow: hidden;
 }
 
-.docs-panel-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 2px 6px;
-  flex-shrink: 0;
-}
-
-.docs-panel-toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--silo-color-text-hi);
-  padding: 3px 4px;
-  border-radius: var(--silo-radius-sm);
-  line-height: 1;
-  font-size: 1.2em;
-  opacity: 0.7;
-  transition: opacity 0.1s, background 0.1s;
-}
-.docs-panel-toolbar-btn:hover {
-  opacity: 1;
-  background: var(--silo-color-bg-hover);
-}
-
 .docs-scroll {
   flex: 1;
   overflow-y: auto;
@@ -52,11 +24,37 @@ const STYLES = `
   flex-direction: column;
 }
 
-.docs-empty {
-  padding: 16px 12px;
-  color: var(--silo-color-text-lo);
+/* "Add folder" button — two states:
+   default (below trees): looks like a muted tree row, left-aligned at depth-0
+   --empty (no roots yet): centred prompt in the empty panel */
+.docs-add-root-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  background: none;
+  border: none;
+  cursor: pointer;
   font-family: var(--silo-font-ui);
+  font-size: calc(1em - 2px);
+  color: var(--silo-color-text-lo);
+  /* align with depth-0 tree rows: 4px tree-padding + 6px row-base-indent */
+  padding: 3px 8px 4px 10px;
+  border-radius: 3px;
+  text-align: left;
+  white-space: nowrap;
+  margin: 2px 4px 4px;
+}
+.docs-add-root-btn:hover {
+  color: var(--silo-color-text-hi);
+  background: var(--silo-color-bg-hover);
+}
+.docs-add-root-btn--empty {
+  color: var(--silo-color-text-lo);
+  padding: 16px 12px;
   font-size: calc(1em - 1px);
+  margin: 0;
+  border-radius: 0;
+  white-space: normal;
   line-height: 1.6;
 }
 

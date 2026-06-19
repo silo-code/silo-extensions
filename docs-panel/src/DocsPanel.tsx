@@ -23,7 +23,6 @@ export function DocsPanel({
     storage.get<DocsRoot[]>("roots", []),
   );
 
-  // Re-read roots when hydrated flips (workspace swap) or storage changes.
   useEffect(() => {
     setRoots(storage.get<DocsRoot[]>("roots", []));
     return storage.subscribe(() =>
@@ -35,11 +34,10 @@ export function DocsPanel({
     const folder = await ctx.ui.pickFolder();
     if (!folder) return;
     const label = folder.split("/").filter(Boolean).pop() ?? folder;
-    const next: DocsRoot[] = [
+    storage.set("roots", [
       ...roots,
       { id: crypto.randomUUID(), label, path: folder },
-    ];
-    storage.set("roots", next);
+    ]);
   }
 
   function removeRoot(id: string) {
@@ -56,35 +54,32 @@ export function DocsPanel({
 
   return (
     <div className="docs-panel">
-      <div className="docs-panel-toolbar">
-        <button
-          className="docs-panel-toolbar-btn"
-          title="Add documentation folder"
-          onClick={addRoot}
-        >
-          <Plus size="1.1em" weight="bold" aria-hidden="true" />
-        </button>
-      </div>
       <div className="docs-scroll">
-        {roots.length === 0 && (
-          <div className="docs-empty">
-            No documentation folders added.
-            <br />
-            Click <Plus size="0.9em" weight="bold" /> to add a folder.
-          </div>
+        {roots.length === 0 ? (
+          <button className="docs-add-root-btn docs-add-root-btn--empty" onClick={addRoot}>
+            <Plus size="0.9em" weight="bold" aria-hidden="true" />
+            Add documentation folder…
+          </button>
+        ) : (
+          <>
+            {roots.map((root) => (
+              <DocTree
+                key={root.id}
+                ctx={ctx}
+                workspaceId={ws?.id}
+                rootPath={root.path}
+                rootLabel={root.label}
+                initialExpanded={getExpanded(root.id)}
+                persistExpanded={(exp) => persistExpanded(root.id, exp)}
+                onRemove={() => removeRoot(root.id)}
+              />
+            ))}
+            <button className="docs-add-root-btn" onClick={addRoot}>
+              <Plus size="0.9em" weight="regular" aria-hidden="true" />
+              Add folder…
+            </button>
+          </>
         )}
-        {roots.map((root) => (
-          <DocTree
-            key={root.id}
-            ctx={ctx}
-            workspaceId={ws?.id}
-            rootPath={root.path}
-            rootLabel={root.label}
-            initialExpanded={getExpanded(root.id)}
-            persistExpanded={(exp) => persistExpanded(root.id, exp)}
-            onRemove={() => removeRoot(root.id)}
-          />
-        ))}
       </div>
     </div>
   );
