@@ -1,0 +1,25 @@
+{
+  "name": "@silo-extensions/docs-panel",
+  "version": "0.1.0",
+  "description": "Browse and preview markdown documentation from configurable folder roots.",
+  "type": "module",
+  "silo": {
+    "id": "silo.docs-panel",
+    "engine": "^0.7",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": ["fs:read"]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs"
+  },
+  "devDependencies": {
+    "@silo-code/sdk": "^0.6.0",
+    "@phosphor-icons/react": "^2.1.7",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}
