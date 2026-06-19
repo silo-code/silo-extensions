@@ -17,7 +17,9 @@ A Silo extension that adds a dedicated side panel for browsing and reading markd
 
 ### From a GitHub Release
 
-Download the latest `.tgz` from the [releases page](https://github.com/silo-code/silo-extensions/releases?q=docs-panel) and install via **Settings → Extensions → Install from file**.
+1. Go to the [releases page](https://github.com/silo-code/silo-extensions/releases?q=docs-panel) and find the latest `docs-panel` release.
+2. Right-click the `.tgz` asset and **Copy link address**.
+3. In Silo: **Settings → Extensions**, paste the URL into the input field and click **Install**.
 
 ### From source
 

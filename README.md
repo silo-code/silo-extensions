@@ -12,8 +12,9 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 
 ### From a GitHub Release (recommended)
 
-1. Go to [Releases](../../releases) and download the `.tgz` for the extension you want.
-2. In Silo: **Settings → Extensions → Install from file** and select the tarball.
+1. Go to [Releases](../../releases) and find the release for the extension you want.
+2. Right-click the `.tgz` asset and **Copy link address**.
+3. In Silo: **Settings → Extensions**, paste the URL into the input field and click **Install**.
 
 ### From source
 
