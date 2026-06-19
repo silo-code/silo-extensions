@@ -1,0 +1,111 @@
+name: Release
+
+# Runs after a PR is merged into main. Detects which extensions changed,
+# bumps their versions, builds, packs, and creates a GitHub Release.
+#
+# Bump type is controlled by PR labels:
+#   major  →  breaking change
+#   minor  →  new feature
+#   (none) →  patch (default)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write  # push version commit + tag, create release
+
+jobs:
+  # ── docs-panel ──────────────────────────────────────────────────────────────
+  docs-panel:
+    name: Release docs-panel
+    # Only run when the PR was actually merged, and source files changed
+    # (excludes bare version-bump commits from re-triggering a release).
+    if: |
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so git log / npm version can commit cleanly
+          fetch-depth: 0
+          # Use a token with push rights (default GITHUB_TOKEN works if
+          # branch protection does not require PRs for bot pushes)
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for source changes in docs-panel
+        id: changed
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
+            docs-panel/src/ \
+            docs-panel/build.mjs)
+          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Determine bump type from PR labels
+        id: bump
+        if: steps.changed.outputs.any == 'true'
+        run: |
+          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
+          if echo "$LABELS" | grep -qw major; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$LABELS" | grep -qw minor; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.any == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: docs-panel/package-lock.json
+
+      - name: Bump version, build, and pack
+        if: steps.changed.outputs.any == 'true'
+        id: pack
+        working-directory: docs-panel
+        run: |
+          npm ci
+
+          # Configure git for the version commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Bump package.json only (no auto-tag yet — we want a scoped tag name)
+          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Commit the version bump
+          git add package.json package-lock.json
+          git commit -m "chore(release): docs-panel v$NEW_VERSION [skip ci]"
+
+          # Create a scoped tag so multi-extension releases don't collide
+          git tag "docs-panel@v$NEW_VERSION"
+
+          # Build then pack (files: ["dist/"] ensures dist is included)
+          npm run build
+          TARBALL=$(npm pack --pack-destination ../)
+          echo "tarball=../$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Push commit and tag
+        if: steps.changed.outputs.any == 'true'
+        run: git push origin HEAD:main --follow-tags
+
+      - name: Create GitHub Release
+        if: steps.changed.outputs.any == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.pack.outputs.version }}
+          TARBALL=${{ steps.pack.outputs.tarball }}
+          gh release create "docs-panel@v$VERSION" "$TARBALL" \
+            --title "docs-panel v$VERSION" \
+            --generate-notes \
+            --notes-start-tag "docs-panel@v$(cd docs-panel && node -p "require('./package.json').version" 2>/dev/null || echo 0.0.0)"
+
+  # Add a job block here for each new extension, following the same pattern.

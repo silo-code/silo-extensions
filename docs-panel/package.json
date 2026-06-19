@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Browse and preview markdown documentation from configurable folder roots.",
   "type": "module",
+  "files": ["dist/", "build.mjs"],
   "silo": {
     "id": "silo.docs-panel",
     "engine": "^0.7",
