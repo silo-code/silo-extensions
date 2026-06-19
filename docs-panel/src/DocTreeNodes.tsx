@@ -16,7 +16,7 @@ import {
   type Listing,
   type RowFocusProps,
 } from "./tree-types";
-import type { FocusGroupItemProps } from "@silo-code/sdk";
+import { Tooltip, type FocusGroupItemProps } from "@silo-code/sdk";
 
 interface RowSharedProps {
   getRowProps: (path: string, isDir: boolean) => RowFocusProps;
@@ -85,27 +85,21 @@ export function DirNode({
             className="docs-root-actions"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              tabIndex={-1}
-              title="Add folder"
-              onClick={rootActions.onAdd}
-            >
-              <Plus size="1.1em" weight="bold" />
-            </button>
-            <button
-              tabIndex={-1}
-              title="Refresh"
-              onClick={rootActions.onRefresh}
-            >
-              <ArrowClockwise size="1.1em" weight="regular" />
-            </button>
-            <button
-              tabIndex={-1}
-              title="Remove folder"
-              onClick={rootActions.onRemove}
-            >
-              <X size="1.1em" weight="bold" />
-            </button>
+            <Tooltip content="Add folder">
+              <button tabIndex={-1} onClick={rootActions.onAdd}>
+                <Plus size="1.1em" weight="bold" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Refresh">
+              <button tabIndex={-1} onClick={rootActions.onRefresh}>
+                <ArrowClockwise size="1.1em" weight="regular" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Remove folder">
+              <button tabIndex={-1} onClick={rootActions.onRemove}>
+                <X size="1.1em" weight="bold" />
+              </button>
+            </Tooltip>
           </span>
         )}
       </div>

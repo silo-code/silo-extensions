@@ -13,6 +13,6 @@ await build({
   target: "es2020",
   jsx: "automatic",
   minify: false,
-  external: ["react", "react/jsx-runtime", "@silo-code/sdk"],
+  external: ["react", "react/jsx-runtime", "react-dom", "@silo-code/sdk"],
   logLevel: "info",
 });
