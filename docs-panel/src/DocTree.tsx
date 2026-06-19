@@ -184,6 +184,7 @@ export function DocTree({
   function openFile(path: string) {
     editors.open(path, {
       viewType: PREVIEW_VIEW_TYPE,
+      preview: true,
       ...(workspaceId ? { workspaceId } : {}),
     });
   }

@@ -183,7 +183,7 @@ export function FileLeaf({
     >
       <span className="chev" />
       <FileIcon size="1.3em" weight="regular" aria-hidden="true" className="ico" />
-      <span className="name">{name}</span>
+      <span className="name">{name.replace(/\.mdx?$/, "")}</span>
     </div>
   );
 }
