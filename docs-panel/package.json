@@ -1,16 +1,21 @@
 {
   "name": "@silo-extensions/docs-panel",
   "displayName": "Documents Side Panel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browse and preview markdown documentation from configurable folder roots.",
   "type": "module",
-  "files": ["dist/", "build.mjs"],
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
   "silo": {
     "id": "silo.docs-panel",
     "engine": "^0.8.0",
     "main": "dist/index.js",
     "publisher": "Silo",
-    "permissions": ["fs:read"]
+    "permissions": [
+      "fs:read"
+    ]
   },
   "scripts": {
     "build": "node build.mjs",
