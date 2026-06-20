@@ -2,7 +2,7 @@
   "name": "silo-extensions",
   "private": true,
   "scripts": {
-    "build": "cd docs-panel && npm run build",
-    "build:all": "for dir in docs-panel; do (cd \"$dir\" && npm run build); done"
+    "build": "cd web-viewer && npm run build",
+    "build:all": "for dir in docs-panel web-viewer; do (cd \"$dir\" && npm run build); done"
   }
 }
