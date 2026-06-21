@@ -7,6 +7,7 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 | Extension | Latest | Description |
 |---|---|---|
 | [Documents Side Panel](./docs-panel/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=docs-panel*&label=)](https://github.com/silo-code/silo-extensions/releases?q=docs-panel) | Markdown documentation browser with configurable folder roots |
+| [Local Web Viewer](./local-web-viewer/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=local-web-viewer*&label=)](https://github.com/silo-code/silo-extensions/releases?q=local-web-viewer) | Embed local dev servers and `file://` pages as dock panels alongside your code |
 
 ## Installing an extension
 
@@ -49,6 +50,12 @@ cd <extension>
 npm install
 npm run build        # one-shot
 npm run build:watch  # watch mode
+```
+
+Or build all extensions from the repo root:
+
+```sh
+npm run build:all
 ```
 
 ### Releases

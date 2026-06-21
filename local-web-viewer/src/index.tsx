@@ -1,6 +1,6 @@
 import { Globe } from "@phosphor-icons/react";
 import type { DockPanelProps, Extension } from "@silo-code/sdk";
-import { WebViewerPanel } from "./WebViewerPanel";
+import { LocalWebViewerPanel } from "./WebViewerPanel";
 
 /* -------------------------------------------------------------------------- */
 /* Styles. Runtime-loaded extensions must inject their own <style> — the host  */
@@ -8,17 +8,17 @@ import { WebViewerPanel } from "./WebViewerPanel";
 /* themes correctly and scales with uiFontSize.                                */
 /* -------------------------------------------------------------------------- */
 
-const STYLE_ID = "silo-web-viewer-styles";
+const STYLE_ID = "silo-local-web-viewer-styles";
 
 const STYLES = `
-.web-viewer {
+.lwv {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
 }
 
-.web-viewer-bar {
+.lwv-bar {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -28,7 +28,7 @@ const STYLES = `
   flex-shrink: 0;
 }
 
-.web-viewer-nav-btn {
+.lwv-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -44,16 +44,16 @@ const STYLES = `
   opacity: 1;
 }
 
-.web-viewer-nav-btn:hover:not(:disabled) {
+.lwv-btn:hover:not(:disabled) {
   background: var(--silo-color-bg-hover);
 }
 
-.web-viewer-nav-btn:disabled {
+.lwv-btn:disabled {
   color: var(--silo-color-toolbar-text-disabled);
   cursor: default;
 }
 
-.web-viewer-url-input {
+.lwv-url-input {
   flex: 1;
   min-width: 0;
   height: 26px;
@@ -67,17 +67,17 @@ const STYLES = `
   outline: none;
 }
 
-.web-viewer-url-input:focus {
+.lwv-url-input:focus {
   border-color: var(--silo-color-accent);
 }
 
-.web-viewer-content {
+.lwv-content {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.web-viewer-frame {
+.lwv-frame {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -87,7 +87,7 @@ const STYLES = `
   color-scheme: inherit;
 }
 
-.web-viewer-empty {
+.lwv-empty {
   position: absolute;
   inset: 0;
   display: flex;
@@ -99,7 +99,7 @@ const STYLES = `
   font-family: var(--silo-font-ui);
 }
 
-.web-viewer-blocked {
+.lwv-overlay {
   position: absolute;
   inset: 0;
   display: flex;
@@ -113,15 +113,15 @@ const STYLES = `
   font-family: var(--silo-font-ui);
 }
 
-.web-viewer-blocked svg {
+.lwv-overlay svg {
   opacity: 0.4;
 }
 
-.web-viewer-blocked p {
+.lwv-overlay p {
   margin: 0;
 }
 
-.web-viewer-open-external {
+.lwv-open-external {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -135,17 +135,30 @@ const STYLES = `
   cursor: pointer;
 }
 
-.web-viewer-open-external:hover {
+.lwv-open-external:hover {
   background: var(--silo-color-bg-hover);
+}
+
+@keyframes lwv-spin {
+  to { transform: rotate(360deg); }
+}
+
+.lwv-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--silo-color-border);
+  border-top-color: var(--silo-color-accent);
+  border-radius: 50%;
+  animation: lwv-spin 0.8s linear infinite;
 }
 `;
 
 export const extension: Extension = {
-  id: "silo.web-viewer",
+  id: "silo.local-web-viewer",
   manifest: {
-    name: "Web Viewer",
+    name: "Local Web Viewer",
     description:
-      "Browse URLs — remote docs, local dev servers, or file:// HTML — alongside your code.",
+      "Embed local dev servers and file:// pages as dock panels alongside your code. Best suited for localhost — remote URLs that block iframe embedding will show a fallback instead.",
   },
   activate(ctx) {
     if (!document.getElementById(STYLE_ID)) {
@@ -161,21 +174,21 @@ export const extension: Extension = {
     });
 
     ctx.registerDockPanelKind({
-      id: "web-viewer",
+      id: "local-web-viewer",
       component: ((props) => (
-        <WebViewerPanel {...props} ctx={ctx} />
+        <LocalWebViewerPanel {...props} ctx={ctx} />
       )) as React.ComponentType<DockPanelProps>,
       addMenuItem: {
-        label: "New Web Viewer",
+        label: "New Local Web Viewer",
         icon: <Globe size={14} weight="regular" />,
-        params: { title: "Web" },
+        params: { title: "Local" },
       },
     });
 
     ctx.registerCommand({
-      id: "silo.web-viewer.open",
-      label: "Web Viewer: Open",
-      run: () => ctx.layout.openPanel("web-viewer", { title: "Web" }),
+      id: "silo.local-web-viewer.open",
+      label: "Local Web Viewer: Open",
+      run: () => ctx.layout.openPanel("local-web-viewer", { title: "Local" }),
     });
   },
 };

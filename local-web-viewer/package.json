@@ -1,15 +1,15 @@
 {
-  "name": "@silo-extensions/web-viewer",
-  "displayName": "Web Viewer",
+  "name": "@silo-extensions/local-web-viewer",
+  "displayName": "Local Web Viewer",
   "version": "0.1.0",
-  "description": "Browse URLs — remote docs, local dev servers, or file:// HTML — alongside your code.",
+  "description": "Embed local dev servers and file:// pages as dock panels alongside your code.",
   "type": "module",
   "files": [
     "dist/",
     "build.mjs"
   ],
   "silo": {
-    "id": "silo.web-viewer",
+    "id": "silo.local-web-viewer",
     "engine": "^0.8.0",
     "main": "dist/index.js",
     "publisher": "Silo"
