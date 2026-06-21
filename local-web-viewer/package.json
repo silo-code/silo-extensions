@@ -1,0 +1,29 @@
+{
+  "name": "@silo-extensions/local-web-viewer",
+  "displayName": "Local Web Viewer",
+  "version": "0.1.0",
+  "description": "Embed local dev servers and file:// pages as dock panels alongside your code.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.local-web-viewer",
+    "engine": "^0.8.0",
+    "main": "dist/index.js",
+    "publisher": "Silo"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.8.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.24.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}
