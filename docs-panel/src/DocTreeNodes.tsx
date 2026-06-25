@@ -64,7 +64,6 @@ export function DirNode({
         aria-expanded={isExpanded}
         aria-selected={isSelected || undefined}
         onClick={() => onToggle(path, true)}
-        title={path}
       >
         <span className="chev">
           {isExpanded ? (
@@ -79,7 +78,9 @@ export function DirNode({
           ) : (
             <Folder size="1.3em" weight="regular" aria-hidden="true" className="ico" />
           ))}
-        <span className="name">{isRoot ? name.toUpperCase() : name}</span>
+        <Tooltip content={path}>
+          <span className="name">{isRoot ? name.toUpperCase() : name}</span>
+        </Tooltip>
         {isRoot && rootActions && (
           <span
             className="docs-root-actions"
@@ -181,11 +182,12 @@ export function FileLeaf({
       aria-level={depth + 1}
       aria-selected={isSelected || undefined}
       onClick={() => onOpen(path, false)}
-      title={path}
     >
       <span className="chev" />
       <FileIcon size="1.3em" weight="regular" aria-hidden="true" className="ico" />
-      <span className="name">{name.replace(/\.mdx?$/, "")}</span>
+      <Tooltip content={path}>
+        <span className="name">{name.replace(/\.mdx?$/, "")}</span>
+      </Tooltip>
     </div>
   );
 }
