@@ -16,6 +16,27 @@ const STYLES = `
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  color-scheme: inherit;
+}
+
+.lwv ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.lwv ::-webkit-scrollbar-track {
+  background: var(--silo-color-content-bg);
+}
+
+.lwv ::-webkit-scrollbar-thumb {
+  background: var(--silo-color-border-strong);
+  border-radius: 4px;
+  border: 2px solid var(--silo-color-content-bg);
+}
+
+.lwv ::-webkit-scrollbar-thumb:hover {
+  background: var(--silo-color-toolbar-text-disabled);
+  border: 2px solid var(--silo-color-content-bg);
 }
 
 .lwv-bar {
