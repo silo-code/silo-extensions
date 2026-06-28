@@ -123,10 +123,10 @@ export function MemPanel({ live }: { live: LiveData }) {
               <>
                 <span
                   style={{
-                    fontSize: 16,
+                    fontSize: "1.14em",
                     fontWeight: 700,
                     lineHeight: 1,
-                    color: "var(--silo-color-text)",
+                    color: "var(--silo-color-text-hi)",
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
@@ -134,8 +134,8 @@ export function MemPanel({ live }: { live: LiveData }) {
                 </span>
                 <span
                   style={{
-                    fontSize: 9,
-                    color: "var(--silo-color-text-lo)",
+                    fontSize: "0.64em",
+                    color: "var(--silo-color-text)",
                     lineHeight: 1,
                     marginTop: 2,
                   }}

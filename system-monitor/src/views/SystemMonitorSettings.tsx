@@ -27,10 +27,7 @@ function toItems(
   });
 }
 
-// Used both as the registered settings page and inline in the panel overlay.
-// When onClose is provided the component renders in inline mode (compact sm-* layout).
-// When omitted it renders in page mode (host es-* scaffold).
-export function SystemMonitorSettings({ onClose }: { onClose?: () => void }) {
+export function SystemMonitorSettings() {
   const store = useStore();
   const { settings } = store;
 
@@ -58,41 +55,25 @@ export function SystemMonitorSettings({ onClose }: { onClose?: () => void }) {
     });
   }
 
-  const content = (
-    <>
-      <DraggableSection
-        title="Side Panels"
-        items={toItems(settings.panels, "panelHint")}
-        onToggle={(id, next) => toggle("panels", id, next)}
-        onReorder={(from, to) => reorderSection("panels", from, to)}
-      />
-      <DraggableSection
-        title="Status Bar"
-        items={toItems(settings.statusBar, "sbHint")}
-        onToggle={(id, next) => toggle("statusBar", id, next)}
-        onReorder={(from, to) => reorderSection("statusBar", from, to)}
-      />
-    </>
-  );
-
-  const layout = onClose
-    ? { outer: "sm-settings-overlay", scroll: "sm-settings-scroll" }
-    : { outer: "es-page", scroll: "es-scroll" };
-
   return (
-    <div className={layout.outer}>
-      {onClose ? (
-        <div className="sm-settings-header">
-          <button className="sm-back-btn" onClick={onClose}>
-            ← Back
-          </button>
-        </div>
-      ) : (
-        <div className="es-header">
-          <h2>System Monitor</h2>
-        </div>
-      )}
-      <div className={layout.scroll}>{content}</div>
+    <div className="es-page">
+      <div className="es-header">
+        <h2>System Monitor</h2>
+      </div>
+      <div className="es-scroll">
+        <DraggableSection
+          title="Side Panels"
+          items={toItems(settings.panels, "panelHint")}
+          onToggle={(id, next) => toggle("panels", id, next)}
+          onReorder={(from, to) => reorderSection("panels", from, to)}
+        />
+        <DraggableSection
+          title="Status Bar"
+          items={toItems(settings.statusBar, "sbHint")}
+          onToggle={(id, next) => toggle("statusBar", id, next)}
+          onReorder={(from, to) => reorderSection("statusBar", from, to)}
+        />
+      </div>
     </div>
   );
 }

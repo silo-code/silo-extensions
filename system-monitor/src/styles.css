@@ -1,11 +1,10 @@
 /* ─── Container ──────────────────────────────────────────────────────────── */
 .sysmon {
-  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   background: var(--silo-color-bg);
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   font-family: var(
     --silo-font-ui,
     -apple-system,
@@ -16,41 +15,9 @@
   );
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-  font-size: 12px;
+  font-size: 0.9em;
 }
 
-/* ─── Gear button (fades in on panel hover) ──────────────────────────────── */
-.sm-gear-btn {
-  position: absolute;
-  top: 7px;
-  right: 8px;
-  z-index: 2;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  color: var(--silo-color-text-lo);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition:
-    opacity 0.15s,
-    background 0.1s,
-    color 0.1s;
-}
-.sysmon:hover .sm-gear-btn {
-  opacity: 1;
-}
-.sm-gear-btn:hover {
-  color: var(--silo-color-text);
-  background: var(--silo-color-border);
-}
-.sm-gear-btn:focus-visible {
-  opacity: 1;
-  outline: 2px solid var(--silo-color-accent, #4493f8);
-}
 
 /* ─── Panels container ───────────────────────────────────────────────────── */
 .sm-panels {
@@ -81,16 +48,16 @@
   flex-shrink: 0;
 }
 .sm-title {
-  font-size: 10px;
+  font-size: 0.83em;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-text);
 }
 .sm-headline {
-  font-size: 11px;
+  font-size: 0.92em;
   font-weight: 600;
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
 }
@@ -112,7 +79,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1;
 }
 .sm-dot {
@@ -123,12 +90,11 @@
 }
 .sm-leg-label {
   flex: 1;
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-text);
 }
 .sm-leg-val {
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   font-variant-numeric: tabular-nums;
-  font-size: 10px;
 }
 
 /* ─── CPU chart ──────────────────────────────────────────────────────────── */
@@ -167,12 +133,12 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
-  color: var(--silo-color-text-lo);
+  font-size: 0.83em;
+  color: var(--silo-color-text);
 }
 .sm-cpu-pct {
   font-weight: 600;
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   font-variant-numeric: tabular-nums;
   margin-left: 2px;
 }
@@ -183,52 +149,18 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: var(--silo-color-text-lo);
-  font-size: 10px;
+  color: var(--silo-color-text);
+  font-size: 0.83em;
   letter-spacing: 0.05em;
 }
 .sm-error {
   padding: 14px;
   color: var(--silo-color-err, #f47067);
-  font-size: 10px;
+  font-size: 0.83em;
   line-height: 1.7;
   white-space: pre-wrap;
 }
 
-/* ─── Inline settings overlay (gear button → back) ───────────────────────── */
-.sm-settings-overlay {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-.sm-settings-header {
-  padding: 7px 8px 8px;
-  border-bottom: 1px solid var(--silo-color-border);
-  flex-shrink: 0;
-}
-.sm-back-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 3px 6px;
-  border-radius: 3px;
-  color: var(--silo-color-text-lo);
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-family: inherit;
-  line-height: 1;
-}
-.sm-back-btn:hover {
-  color: var(--silo-color-text);
-  background: var(--silo-color-border);
-}
-.sm-settings-scroll {
-  flex: 1;
-  overflow-y: auto;
-}
 .sm-settings-section {
   padding: 12px 14px;
   border-bottom: 1px solid var(--silo-color-border);
@@ -237,11 +169,11 @@
   gap: 9px;
 }
 .sm-settings-label {
-  font-size: 10px;
+  font-size: 0.83em;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-text);
 }
 .sm-settings-row {
   display: flex;
@@ -252,9 +184,9 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 11px;
+  font-size: 0.92em;
   cursor: pointer;
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   user-select: none;
 }
 .sm-settings-check input[type="checkbox"] {
@@ -272,13 +204,13 @@
   border: 1px solid var(--silo-color-border);
   border-radius: 3px;
   cursor: pointer;
-  color: var(--silo-color-text-lo);
-  font-size: 8px;
+  color: var(--silo-color-text);
+  font-size: 0.67em;
   padding: 2px 5px;
   line-height: 1.2;
 }
 .sm-reorder-btns button:hover:not(:disabled) {
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
   background: var(--silo-color-border);
 }
 .sm-reorder-btns button:disabled {
@@ -301,7 +233,7 @@
   display: flex;
   align-items: center;
   padding: 0;
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-text);
   cursor: grab;
   touch-action: none;
 }
@@ -309,7 +241,7 @@
   cursor: grabbing;
 }
 .sms-draggable-row:hover .sms-grip {
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
 }
 .sms-dragging {
   opacity: 0.4;
@@ -352,13 +284,13 @@
   width: 44px;
   height: 8px;
   border-radius: 2px;
-  background: color-mix(in srgb, var(--silo-color-text-lo) 30%, transparent);
+  background: color-mix(in srgb, var(--silo-color-text) 30%, transparent);
   overflow: hidden;
   flex-shrink: 0;
 }
 .sm-sb-bar-fill {
   height: 100%;
-  background: var(--silo-color-text);
+  background: var(--silo-color-text-hi);
   border-radius: 2px;
   transition: width 0.3s ease;
 }
@@ -374,9 +306,9 @@
   white-space: nowrap;
   cursor: default;
   font-variant-numeric: tabular-nums;
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-text);
 }
 .sm-status-val {
   font-weight: 500;
-  color: var(--silo-color-text);
+  color: var(--silo-color-text-hi);
 }
