@@ -120,6 +120,11 @@ const STYLES = `
   justify-content: center;
   color: var(--silo-color-text);
 }
+/* silo-tooltip-host wraps the row <div> — make it block so the span/div nesting is valid */
+.silo-tooltip-host:has(.docs-tree-row) {
+  display: block;
+}
+
 .docs-tree-row .name {
   overflow: hidden;
   text-overflow: ellipsis;
