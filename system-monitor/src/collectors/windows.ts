@@ -5,19 +5,22 @@ import { MEM_COLORS } from "./palette";
 // Windows metrics come from Windows PowerShell (`powershell.exe`, present on
 // every supported Windows install — we don't assume PowerShell 7's `pwsh`).
 // `-NoProfile -NonInteractive` keeps startup fast and side-effect-free.
+//
+// Spawning PowerShell is comparatively expensive (~100–300 ms of startup), so a
+// single poll fetches CPU *and* memory in one invocation and the two collector
+// methods coalesce onto that one process (see createWindowsCollector). One
+// script emits four numbers, in order:
+//   1. \Processor(_Total)\% User Time        → CPU user
+//   2. \Processor(_Total)\% Privileged Time  → CPU system (kernel)
+//   3. Win32_OperatingSystem TotalVisibleMemorySize (KB)
+//   4. Win32_OperatingSystem FreePhysicalMemory      (KB)
 const PS_FLAGS = ["-NoProfile", "-NonInteractive", "-Command"];
 
-// ---------------------------------------------------------------------------
-// CPU — two performance counters give us the same user/system split the other
-// platforms report:
-//   \Processor(_Total)\% User Time       → user
-//   \Processor(_Total)\% Privileged Time → system (kernel)
-// CounterSamples come back in counter-path order, one CookedValue per line.
-// ---------------------------------------------------------------------------
-
-const CPU_PS =
+const SAMPLE_PS =
   "(Get-Counter '\\Processor(_Total)\\% User Time','\\Processor(_Total)\\% Privileged Time')" +
-  ".CounterSamples | ForEach-Object { $_.CookedValue }";
+  ".CounterSamples | ForEach-Object { $_.CookedValue };" +
+  "$o=Get-CimInstance Win32_OperatingSystem;" +
+  "Write-Output $o.TotalVisibleMemorySize;Write-Output $o.FreePhysicalMemory";
 
 /** Pull the leading numbers out of stdout, tolerating locale decimal commas. */
 function numbers(stdout: string): number[] {
@@ -29,60 +32,73 @@ function numbers(stdout: string): number[] {
     .filter((n) => !Number.isNaN(n));
 }
 
-export function parseWindowsCpu(stdout: string): CpuReading | null {
-  const [user, sys] = numbers(stdout);
-  if (user === undefined || sys === undefined) return null;
-  return {
-    user: Math.max(0, Math.min(user, 100)),
-    sys: Math.max(0, Math.min(sys, 100)),
-  };
+const clampPct = (n: number): number => Math.max(0, Math.min(n, 100));
+
+export interface WindowsSample {
+  cpu: CpuReading | null;
+  mem: MemReading | null;
 }
 
-// ---------------------------------------------------------------------------
-// Memory — Win32_OperatingSystem reports total and free in **kilobytes**.
-// Windows doesn't expose a cheap app/wired/cache split, so the donut is the
-// honest two-slice Used / Free.
-// ---------------------------------------------------------------------------
+/** Parse the four-number output of SAMPLE_PS into CPU and memory readings. */
+export function parseWindowsSample(stdout: string): WindowsSample {
+  const [user, sys, totalKb, freeKb] = numbers(stdout);
 
-const MEM_PS =
-  "$o=Get-CimInstance Win32_OperatingSystem;" +
-  "Write-Output $o.TotalVisibleMemorySize;Write-Output $o.FreePhysicalMemory";
+  const cpu: CpuReading | null =
+    user !== undefined && sys !== undefined
+      ? { user: clampPct(user), sys: clampPct(sys) }
+      : null;
 
-export function parseWindowsMem(stdout: string): MemReading | null {
-  const [totalKb, freeKb] = numbers(stdout);
-  if (totalKb === undefined || freeKb === undefined || totalKb === 0)
-    return null;
-  const totalBytes = totalKb * 1024;
-  const free = Math.min(freeKb * 1024, totalBytes);
-  const used = totalBytes - free;
-  return {
-    totalBytes,
-    usedBytes: used,
-    segments: [
-      { label: "Used", bytes: used, color: MEM_COLORS.used },
-      { label: "Free", bytes: free, color: MEM_COLORS.free },
-    ],
-  };
+  let mem: MemReading | null = null;
+  // Windows doesn't expose a cheap app/wired/cache split, so the donut is the
+  // honest two-slice Used / Free.
+  if (totalKb !== undefined && freeKb !== undefined && totalKb !== 0) {
+    const totalBytes = totalKb * 1024;
+    const free = Math.min(freeKb * 1024, totalBytes);
+    const used = totalBytes - free;
+    mem = {
+      totalBytes,
+      usedBytes: used,
+      segments: [
+        { label: "Used", bytes: used, color: MEM_COLORS.used },
+        { label: "Free", bytes: free, color: MEM_COLORS.free },
+      ],
+    };
+  }
+
+  return { cpu, mem };
 }
 
 export function createWindowsCollector(ctx: ExtensionContext): Collector {
+  // Coalesce the cpu()/memory() calls of a single poll onto one PowerShell
+  // process: whichever runs first starts the sample, the other awaits the same
+  // in-flight promise. Cleared once it settles so the next poll re-samples.
+  let inflight: Promise<WindowsSample> | null = null;
+
+  function sample(): Promise<WindowsSample> {
+    if (inflight) return inflight;
+    inflight = (async () => {
+      try {
+        const { stdout } = await ctx.process.exec("powershell", [
+          ...PS_FLAGS,
+          SAMPLE_PS,
+        ]);
+        return parseWindowsSample(stdout);
+      } finally {
+        inflight = null;
+      }
+    })();
+    return inflight;
+  }
+
   return {
     os: "windows",
     async cpu() {
-      const { stdout } = await ctx.process.exec("powershell", [
-        ...PS_FLAGS,
-        CPU_PS,
-      ]);
-      const cpu = parseWindowsCpu(stdout);
+      const { cpu } = await sample();
       if (!cpu) throw new Error("Could not parse Get-Counter output");
       return cpu;
     },
     async memory() {
-      const { stdout } = await ctx.process.exec("powershell", [
-        ...PS_FLAGS,
-        MEM_PS,
-      ]);
-      const mem = parseWindowsMem(stdout);
+      const { mem } = await sample();
       if (!mem) throw new Error("Could not parse Win32_OperatingSystem output");
       return mem;
     },
