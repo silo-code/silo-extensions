@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/docs-panel",
   "displayName": "Documents Side Panel",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Browse and preview markdown documentation from configurable folder roots.",
   "type": "module",
   "files": [
