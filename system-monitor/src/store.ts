@@ -44,13 +44,24 @@ export interface CpuData {
   history: CpuSample[];
 }
 
+/**
+ * One slice of the memory donut. The set of segments is platform-dependent —
+ * macOS reports App / Wired / Cache / Free, Linux reports Used / Cache / Free,
+ * Windows reports Used / Free — so the UI renders whatever the active collector
+ * produces rather than a fixed field list. Segments are ordered and sum to
+ * {@link MemData.totalBytes} (the trailing "Free" slice is the remainder).
+ */
+export interface MemSegment {
+  label: string;
+  bytes: number;
+  /** Data-viz series color (a literal, not a theme token — see MEM_COLORS). */
+  color: string;
+}
+
 export interface MemData {
   totalBytes: number;
   usedBytes: number;
-  activeBytes: number;
-  wiredBytes: number;
-  compBytes: number;
-  freeBytes: number;
+  segments: MemSegment[];
 }
 
 export interface LiveData {

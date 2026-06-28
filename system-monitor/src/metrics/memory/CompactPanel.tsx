@@ -1,12 +1,5 @@
 import type { LiveData } from "../../store";
 
-const MEM_SEGS = [
-  { field: "activeBytes" as const, color: "#e3b341", label: "App" },
-  { field: "wiredBytes" as const, color: "#f47067", label: "Wired" },
-  { field: "compBytes" as const, color: "#8b5cf6", label: "Cache" },
-  // Free is omitted — the bar background shows through, matching the CPU idle treatment.
-];
-
 export function MemCompactPanel({ live }: { live: LiveData }) {
   const data = live.memory;
   const usedGiB = data ? (data.usedBytes / 1024 ** 3).toFixed(1) : "--";
@@ -28,18 +21,22 @@ export function MemCompactPanel({ live }: { live: LiveData }) {
           role="img"
           aria-label={`Memory: ${usedGiB} GB used of ${totalGiB} GB`}
         >
-          {MEM_SEGS.map(({ field, color, label }) => {
-            const pct = (data[field] / data.totalBytes) * 100;
-            if (pct < 0.5) return null;
-            return (
-              <div
-                key={field}
-                className="sm-compact-seg"
-                style={{ width: `${pct}%`, background: color }}
-                title={`${label}: ${pct.toFixed(1)}%`}
-              />
-            );
-          })}
+          {/* Free is omitted — the bar background shows through, matching the
+              CPU idle treatment. The remaining segments are platform-specific. */}
+          {data.segments
+            .filter((s) => s.label !== "Free")
+            .map(({ label, bytes, color }) => {
+              const pct = (bytes / data.totalBytes) * 100;
+              if (pct < 0.5) return null;
+              return (
+                <div
+                  key={label}
+                  className="sm-compact-seg"
+                  style={{ width: `${pct}%`, background: color }}
+                  title={`${label}: ${pct.toFixed(1)}%`}
+                />
+              );
+            })}
         </div>
       )}
     </div>

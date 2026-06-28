@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { neededMetrics } from "./poll";
-import type { Settings } from "./store";
+import { neededMetrics, wants } from "./poll";
+import type { PanelId, Settings } from "./store";
 
 const allEnabled: Settings = {
   panels: [
@@ -69,5 +69,26 @@ describe("neededMetrics", () => {
   it("returns empty set for empty settings", () => {
     const s: Settings = { panels: [], statusBar: [] };
     expect(neededMetrics(s).size).toBe(0);
+  });
+});
+
+describe("wants", () => {
+  const set = (...ids: PanelId[]) => new Set<PanelId>(ids);
+
+  it("matches the base id", () => {
+    expect(wants(set("cpu"), "cpu")).toBe(true);
+    expect(wants(set("memory"), "memory")).toBe(true);
+  });
+
+  it("matches rendering variants by prefix (cpu-bar → cpu)", () => {
+    expect(wants(set("cpu-bar"), "cpu")).toBe(true);
+    expect(wants(set("cpu-compact"), "cpu")).toBe(true);
+    expect(wants(set("memory-pie"), "memory")).toBe(true);
+  });
+
+  it("does not cross metrics", () => {
+    expect(wants(set("memory-pie"), "cpu")).toBe(false);
+    expect(wants(set("cpu-bar"), "memory")).toBe(false);
+    expect(wants(new Set<PanelId>(), "cpu")).toBe(false);
   });
 });

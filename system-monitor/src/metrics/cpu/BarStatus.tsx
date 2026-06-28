@@ -1,11 +1,13 @@
 import { Tooltip } from "@silo-code/sdk";
 import type { LiveData } from "../../store";
+import { severityColor } from "../../severity";
 
 export function CpuBarStatus({ live }: { live: LiveData }) {
   const data = live.cpu;
   const total = data
     ? Math.min(100, Math.round(data.userPct + data.sysPct))
     : 0;
+  const color = data ? severityColor(total) : null;
   const tip = data
     ? `CPU  ${total}%  ·  User ${Math.round(data.userPct)}%  ·  System ${Math.round(data.sysPct)}%`
     : "Waiting for data…";
@@ -18,7 +20,10 @@ export function CpuBarStatus({ live }: { live: LiveData }) {
           aria-label={`CPU ${total}%`}
           role="img"
         >
-          <div className="sm-sb-bar-fill" style={{ width: `${total}%` }} />
+          <div
+            className="sm-sb-bar-fill"
+            style={{ width: `${total}%`, ...(color && { background: color }) }}
+          />
         </div>
       </div>
     </Tooltip>
