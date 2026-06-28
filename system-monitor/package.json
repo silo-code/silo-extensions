@@ -1,0 +1,30 @@
+{
+  "name": "@silo-extensions/system-monitor",
+  "displayName": "System Monitor",
+  "version": "0.1.0",
+  "description": "Live CPU and memory charts in a side panel and status bar, powered by ctx.process.exec.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.system-monitor",
+    "engine": "^0.15.0",
+    "main": "dist/index.js",
+    "publisher": "Silo"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@silo-code/sdk": "^0.16.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.24.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}
