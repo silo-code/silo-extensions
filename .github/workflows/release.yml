@@ -213,4 +213,92 @@ jobs:
             --generate-notes \
             $NOTES_FLAG
 
+  # ── system-monitor ──────────────────────────────────────────────────────────
+  system-monitor:
+    name: Release system-monitor
+    if: |
+      github.event.pull_request.merged == true &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for source changes in system-monitor
+        id: changed
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
+            system-monitor/src/ \
+            system-monitor/build.mjs)
+          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Determine bump type from PR labels
+        id: bump
+        if: steps.changed.outputs.any == 'true'
+        run: |
+          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
+          if echo "$LABELS" | grep -qw major; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$LABELS" | grep -qw minor; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.any == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: system-monitor/package-lock.json
+
+      - name: Bump version, build, and pack
+        if: steps.changed.outputs.any == 'true'
+        id: pack
+        working-directory: system-monitor
+        run: |
+          npm ci
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          OLD_VERSION=$(node -p "require('./package.json').version")
+          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          git add package.json package-lock.json
+          git commit -m "chore(release): system-monitor v$NEW_VERSION [skip ci]"
+          git tag "system-monitor@v$NEW_VERSION"
+          npm test
+          npm run build
+          TARBALL=$(npm pack --pack-destination ../)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Push commit and tag
+        if: steps.changed.outputs.any == 'true'
+        run: |
+          git push origin HEAD:main
+          git push origin "refs/tags/system-monitor@v${{ steps.pack.outputs.version }}"
+
+      - name: Create GitHub Release
+        if: steps.changed.outputs.any == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.pack.outputs.version }}
+          OLD_VERSION=${{ steps.pack.outputs.old_version }}
+          TARBALL=${{ steps.pack.outputs.tarball }}
+          START_TAG="system-monitor@v$OLD_VERSION"
+          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
+            NOTES_FLAG="--notes-start-tag $START_TAG"
+          else
+            NOTES_FLAG=""
+          fi
+          gh release create "system-monitor@v$VERSION" "$TARBALL" \
+            --title "system-monitor v$VERSION" \
+            --generate-notes \
+            $NOTES_FLAG
+
   # Add a job block here for each new extension, following the same pattern.
