@@ -1,6 +1,7 @@
 import { Tooltip } from "@silo-code/sdk";
 import type { LiveData } from "../../store";
 import { segmentTooltip } from "./tooltip";
+import { severityColor } from "../../severity";
 
 const SIZE = 16;
 const CX = SIZE / 2;
@@ -9,11 +10,11 @@ const R = SIZE / 2 - 0.5;
 const FILL = "var(--silo-color-text)";
 const EMPTY = "color-mix(in srgb, var(--silo-color-text-lo) 30%, transparent)";
 
-function PieIcon({ pct }: { pct: number }) {
+function PieIcon({ pct, fill = FILL }: { pct: number; fill?: string }) {
   if (pct >= 99.5) {
     return (
       <svg width={SIZE} height={SIZE} aria-hidden>
-        <circle cx={CX} cy={CX} r={R} fill={FILL} />
+        <circle cx={CX} cy={CX} r={R} fill={fill} />
       </svg>
     );
   }
@@ -33,7 +34,7 @@ function PieIcon({ pct }: { pct: number }) {
   return (
     <svg width={SIZE} height={SIZE} aria-hidden>
       <circle cx={CX} cy={CX} r={R} fill={EMPTY} />
-      <path d={d} fill={FILL} />
+      <path d={d} fill={fill} />
     </svg>
   );
 }
@@ -52,7 +53,7 @@ export function MemPieStatus({ live }: { live: LiveData }) {
         aria-label={data ? `Memory ${Math.round(pct)}%` : "Memory —"}
         role="img"
       >
-        <PieIcon pct={pct} />
+        <PieIcon pct={pct} fill={severityColor(pct) ?? undefined} />
       </div>
     </Tooltip>
   );
