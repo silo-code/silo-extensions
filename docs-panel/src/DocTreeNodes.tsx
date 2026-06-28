@@ -54,34 +54,33 @@ export function DirNode({
 
   return (
     <>
-      <div
-        {...(focusProps as React.HTMLAttributes<HTMLDivElement>)}
-        ref={setRef}
-        className={`docs-tree-row dir ${isRoot ? "root" : ""} ${isSelected ? "selected" : ""}`}
-        style={rowIndent(depth)}
-        role="treeitem"
-        aria-level={depth + 1}
-        aria-expanded={isExpanded}
-        aria-selected={isSelected || undefined}
-        onClick={() => onToggle(path, true)}
-      >
-        <span className="chev">
-          {isExpanded ? (
-            <CaretDown size="1.15em" weight="bold" aria-hidden="true" />
-          ) : (
-            <CaretRight size="1.15em" weight="bold" aria-hidden="true" />
-          )}
-        </span>
-        {!isRoot &&
-          (isExpanded ? (
-            <FolderOpen size="1.3em" weight="regular" aria-hidden="true" className="ico" />
-          ) : (
-            <Folder size="1.3em" weight="regular" aria-hidden="true" className="ico" />
-          ))}
-        <Tooltip content={path}>
+      <Tooltip content={path}>
+        <div
+          {...(focusProps as React.HTMLAttributes<HTMLDivElement>)}
+          ref={setRef}
+          className={`docs-tree-row dir ${isRoot ? "root" : ""} ${isSelected ? "selected" : ""}`}
+          style={rowIndent(depth)}
+          role="treeitem"
+          aria-level={depth + 1}
+          aria-expanded={isExpanded}
+          aria-selected={isSelected || undefined}
+          onClick={() => onToggle(path, true)}
+        >
+          <span className="chev">
+            {isExpanded ? (
+              <CaretDown size="1.15em" weight="bold" aria-hidden="true" />
+            ) : (
+              <CaretRight size="1.15em" weight="bold" aria-hidden="true" />
+            )}
+          </span>
+          {!isRoot &&
+            (isExpanded ? (
+              <FolderOpen size="1.3em" weight="regular" aria-hidden="true" className="ico" />
+            ) : (
+              <Folder size="1.3em" weight="regular" aria-hidden="true" className="ico" />
+            ))}
           <span className="name">{isRoot ? name.toUpperCase() : name}</span>
-        </Tooltip>
-        {isRoot && rootActions && (
+          {isRoot && rootActions && (
           <span
             className="docs-root-actions"
             onClick={(e) => e.stopPropagation()}
@@ -103,7 +102,8 @@ export function DirNode({
             </Tooltip>
           </span>
         )}
-      </div>
+        </div>
+      </Tooltip>
       {isExpanded && (
         <div className="docs-children" role="group">
           {!isRoot && (
@@ -173,21 +173,21 @@ export function FileLeaf({
   const setRef = (el: HTMLDivElement | null) => focusRef?.(el);
 
   return (
-    <div
-      {...(focusProps as React.HTMLAttributes<HTMLDivElement>)}
-      ref={setRef}
-      className={`docs-tree-row file ${isSelected ? "selected" : ""}`}
-      style={rowIndent(depth)}
-      role="treeitem"
-      aria-level={depth + 1}
-      aria-selected={isSelected || undefined}
-      onClick={() => onOpen(path, false)}
-    >
-      <span className="chev" />
-      <FileIcon size="1.3em" weight="regular" aria-hidden="true" className="ico" />
-      <Tooltip content={path}>
+    <Tooltip content={path}>
+      <div
+        {...(focusProps as React.HTMLAttributes<HTMLDivElement>)}
+        ref={setRef}
+        className={`docs-tree-row file ${isSelected ? "selected" : ""}`}
+        style={rowIndent(depth)}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-selected={isSelected || undefined}
+        onClick={() => onOpen(path, false)}
+      >
+        <span className="chev" />
+        <FileIcon size="1.3em" weight="regular" aria-hidden="true" className="ico" />
         <span className="name">{name.replace(/\.mdx?$/, "")}</span>
-      </Tooltip>
-    </div>
+      </div>
+    </Tooltip>
   );
 }
