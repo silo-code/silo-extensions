@@ -120,11 +120,17 @@ const STYLES = `
   justify-content: center;
   color: var(--silo-color-text);
 }
+.docs-tree-row .silo-tooltip-host {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin-left: calc(0.4em - 4px);
+}
+
 .docs-tree-row .name {
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  margin-left: calc(0.4em - 4px);
+  display: block;
 }
 
 .docs-tree-row.error {
