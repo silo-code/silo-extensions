@@ -1,13 +1,6 @@
 import type React from "react";
 import { formatBytes } from "../../metrics";
-import type { LiveData, MemData } from "../../store";
-
-const MEM_DEFS = [
-  { label: "App", field: "activeBytes" as const, color: "#e3b341" },
-  { label: "Wired", field: "wiredBytes" as const, color: "#f47067" },
-  { label: "Cache", field: "compBytes" as const, color: "#4493f8" },
-  { label: "Free", field: "freeBytes" as const, color: "#3fb950" },
-] satisfies { label: string; field: keyof MemData; color: string }[];
+import type { LiveData } from "../../store";
 
 interface DonutSegment {
   pct: number;
@@ -93,17 +86,19 @@ export function MemPanel({ live }: { live: LiveData }) {
   const usedGiB = data ? (data.usedBytes / 1024 ** 3).toFixed(1) : "--";
   const totalGiB = data ? (data.totalBytes / 1024 ** 3).toFixed(1) : "--";
 
-  const segments = data
-    ? MEM_DEFS.map((d) => ({
-        pct: (data[d.field] / data.totalBytes) * 100,
-        color: d.color,
+  const segments: DonutSegment[] = data
+    ? data.segments.map((s) => ({
+        pct: (s.bytes / data.totalBytes) * 100,
+        color: s.color,
       }))
     : [];
 
-  const legend = MEM_DEFS.map((d) => ({
-    label: d.label,
-    val: data ? formatBytes(data[d.field]) : "—",
-    color: d.color,
+  // The legend mirrors whatever segments the active platform's collector
+  // produced (App/Wired/Cache/Free on macOS, Used/Cache/Free on Linux, …).
+  const legend = (data?.segments ?? []).map((s) => ({
+    label: s.label,
+    val: formatBytes(s.bytes),
+    color: s.color,
   }));
 
   return (

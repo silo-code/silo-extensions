@@ -1,6 +1,6 @@
 import { Tooltip } from "@silo-code/sdk";
-import { formatBytes } from "../../metrics";
 import type { LiveData } from "../../store";
+import { segmentTooltip } from "./tooltip";
 
 const SIZE = 16;
 const CX = SIZE / 2;
@@ -42,7 +42,7 @@ export function MemPieStatus({ live }: { live: LiveData }) {
   const data = live.memory;
   const pct = data ? (data.usedBytes / data.totalBytes) * 100 : 0;
   const tip = data
-    ? `Memory  ${Math.round(pct)}%  ·  App ${formatBytes(data.activeBytes)}  ·  Wired ${formatBytes(data.wiredBytes)}  ·  Cache ${formatBytes(data.compBytes)}  ·  Free ${formatBytes(data.freeBytes)}`
+    ? `Memory  ${Math.round(pct)}%  ·  ${segmentTooltip(data)}`
     : "Waiting for data…";
 
   return (

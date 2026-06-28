@@ -37,7 +37,7 @@ export const METRIC_REGISTRY: MetricDescriptor[] = [
   {
     id: "memory",
     label: "Memory",
-    panelHint: "Donut chart with app, wired, cache, and free segments.",
+    panelHint: "Donut chart of used, cache, and free memory.",
     sbHint: "Show memory percentage in the status bar.",
     PanelComponent: MemPanel,
     StatusComponent: MemStatus,
@@ -53,7 +53,7 @@ export const METRIC_REGISTRY: MetricDescriptor[] = [
   {
     id: "memory-compact",
     label: "Memory Bar",
-    panelHint: "Compact single-bar view of app, wired, cache, and free memory.",
+    panelHint: "Compact single-bar view of used and cache memory.",
     sbHint: "Show memory percentage in the status bar.",
     PanelComponent: MemCompactPanel,
     StatusComponent: MemStatus,

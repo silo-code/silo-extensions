@@ -13,7 +13,7 @@ export const extension: Extension = {
   manifest: {
     name: "System Monitor",
     description:
-      "Live CPU and memory charts in a side panel and status bar, powered by ctx.process.exec().",
+      "Live CPU and memory charts in a side panel and status bar — cross-platform (macOS, Linux, Windows).",
   },
   activate(ctx) {
     const styleEl = document.createElement("style");
