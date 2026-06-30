@@ -1,0 +1,3 @@
+/* GitHub Actions extension — all component styles are co-located in their
+   own .css files and concatenated here at import time. The combined string
+   is injected as a single <style> element in activate(). */
