@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { GitFork } from "@phosphor-icons/react";
+import { Tooltip } from "@silo-code/sdk";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { StatusBarState } from "./store";
 import { ActionsModal } from "./actions-modal";
 import { AuthHelpModal } from "./auth-help-modal";
-import { getIconVariant, getLabel, getTooltip } from "./status-labels";
+import { getIconVariant, getLabel } from "./status-labels";
 
 interface Props {
   ctx: ExtensionContext;
@@ -29,28 +30,29 @@ export function GhActionsStatusItem({ ctx, service }: Props) {
       ctx.ui.showModal((close) => <AuthHelpModal close={close} ctx={ctx} />, {
         title: "GitHub Actions — Setup",
         dismissible: true,
-        size: "md",
+        size: "sm",
       });
       return;
     }
     if (state.kind === "no-repo" || state.kind === "checking") return;
     ctx.ui.showModal(
       (close) => <ActionsModal ctx={ctx} service={service} close={close} />,
-      { title: "GitHub Actions", dismissible: true, size: "lg" },
+      { title: "GitHub Actions", dismissible: true, size: "md" },
     );
   };
 
   return (
-    <button
-      className="gha-status"
-      onClick={handleClick}
-      title={getTooltip(state)}
-      aria-label="GitHub Actions status"
-    >
-      <span className={`gha-status__icon gha-status__icon--${getIconVariant(state)}`}>
-        <GitFork weight="bold" size={15} />
-      </span>
-      <span className="gha-status__label">{getLabel(state)}</span>
-    </button>
+    <Tooltip content={service.getTooltipContent()}>
+      <button
+        className="gha-status"
+        onClick={handleClick}
+        aria-label="GitHub Actions status"
+      >
+        <span className={`gha-status__icon gha-status__icon--${getIconVariant(state)}`}>
+          <GitFork weight="bold" size={15} />
+        </span>
+        <span className="gha-status__label">{getLabel(state)}</span>
+      </button>
+    </Tooltip>
   );
 }
