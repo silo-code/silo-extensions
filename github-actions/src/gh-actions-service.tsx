@@ -60,6 +60,13 @@ export class GhActionsService {
     ctx.log.info("GitHub Actions extension initializing");
     ghStore.hydrate(ctx.storage.global);
 
+    // Wire up decoration invalidation unconditionally — needed whether auth
+    // succeeds now or later via the retry timer.
+    ghStore.subscribe(() => {
+      ctx.workspaces.invalidateBadges();
+      ctx.workspaces.invalidateStatus();
+    });
+
     const authState = await checkAuth(ctx);
     ghStore.setAuthState(authState);
 
@@ -74,6 +81,7 @@ export class GhActionsService {
           ghStore.setAuthState("ok");
           clearInterval(this._authRetryTimer!);
           this._authRetryTimer = null;
+          ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
           this._reconcileWorkspaces(ctx);
         } else {
           ghStore.setAuthState(state);
@@ -84,12 +92,6 @@ export class GhActionsService {
 
     this._reconcileWorkspaces(ctx);
     ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
-
-    // Whenever the store changes (including clearAlerts), push fresh data to workspace decorations
-    ghStore.subscribe(() => {
-      ctx.workspaces.invalidateBadges();
-      ctx.workspaces.invalidateStatus();
-    });
   }
 
   private _notifyAuthIssue(ctx: ExtensionContext, state: "unauthenticated" | "missing"): void {
