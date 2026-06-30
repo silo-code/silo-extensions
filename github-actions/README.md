@@ -8,7 +8,7 @@ A [Silo](https://github.com/silo-code/silo) extension that surfaces GitHub Actio
 
 - **Status bar item** — live count of failing and running workflows for the active workspace, always visible at the bottom of the window
 - **Workspace badges and decorations** — failure counts and status labels appear next to each workspace in the sidebar so you can spot problems at a glance
-- **Workflow modal** — click the status bar item to open a full list of failing and running runs, with one-click re-run and links to GitHub
+- **Workflow modal** — click the status bar item to open a full list of failing and running runs, with one-click re-run of a workflow and links to GitHub
 - **Failure notifications** — desktop alerts when a new failure is detected in any open workspace
 - **Per-workspace branch filter** — optionally restrict monitoring to only the checked-out branch for each workspace independently
 - **Configurable polling** — separate intervals for the active workspace and background workspaces
@@ -53,7 +53,7 @@ Once installed and authenticated, the extension starts polling automatically. A 
 | Label | Meaning |
 |---|---|
 | `Actions: ok` | All workflows passing |
-| `Actions: 2 failing workflows` | Two distinct workflows have recent failures |
+| `Actions: 2 failed` | Two distinct workflows have recent failures |
 | `Actions: 3 running` | Three runs in progress |
 | `Actions: Auth failed` | `gh auth login` required |
 | `Actions: cli missing` | `gh` CLI not installed |
@@ -77,7 +77,7 @@ Open **Settings → GitHub Actions** to configure:
 
 Declared in `package.json` under `silo.permissions`:
 
-- **`process`** — run `gh run list` to fetch workflow runs and `gh auth status` to check authentication
+- **`process`** — run `gh api` to fetch workflow runs (and trigger re-runs) and `gh auth status` to check authentication
 
 ## Building
 

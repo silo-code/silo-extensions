@@ -44,6 +44,23 @@ export type StatusBarState =
   | { kind: "api-error"; message: string }
   | { kind: "ok"; failed: number; running: number };
 
+// Failed runs that haven't been cleared, newest first. Shared by the modal list
+// and the workspace decoration so both apply identical filtering.
+export function selectFailedRuns(runs: WorkflowRun[], clearedBefore?: Date): WorkflowRun[] {
+  return runs
+    .filter(
+      (r) =>
+        r.status === "completed" &&
+        r.conclusion === "failure" &&
+        (!clearedBefore || new Date(r.created_at) > clearedBefore),
+    )
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+}
+
+export function selectRunningRuns(runs: WorkflowRun[]): WorkflowRun[] {
+  return runs.filter((r) => r.status === "in_progress" || r.status === "queued");
+}
+
 export function aggregateRunState(runs: WorkflowRun[], clearedBefore?: Date): { failed: number; running: number } {
   // Count distinct workflows with any failure run that isn't cleared.
   // Running counts all in-progress/queued runs regardless of clear state.
@@ -108,12 +125,12 @@ export class GhActionsStore {
 
   hydrate(storage: ExtensionStorage): void {
     this._storage = storage;
-    const saved_cleared = storage.get<Record<string, string>>("workspaceClearedAt") ?? {};
-    for (const [id, iso] of Object.entries(saved_cleared)) {
+    const savedClearedAt = storage.get<Record<string, string>>("workspaceClearedAt") ?? {};
+    for (const [id, iso] of Object.entries(savedClearedAt)) {
       this._workspaceClearedAt.set(id, new Date(iso));
     }
-    const saved_cbo = storage.get<Record<string, boolean>>("workspaceCurrentBranchOnly") ?? {};
-    for (const [id, val] of Object.entries(saved_cbo)) {
+    const savedBranchOnly = storage.get<Record<string, boolean>>("workspaceCurrentBranchOnly") ?? {};
+    for (const [id, val] of Object.entries(savedBranchOnly)) {
       this._workspaceCurrentBranchOnly.set(id, val);
     }
     const apply = (): void => {
@@ -132,11 +149,6 @@ export class GhActionsStore {
     this._authState = state;
     this._initialized = true;
     this._notify();
-  }
-
-  /** @deprecated use setAuthState */
-  setAuthenticated(value: boolean): void {
-    this.setAuthState(value ? "ok" : "unauthenticated");
   }
 
   updateSettings(patch: Partial<GhActionsSettings>): void {

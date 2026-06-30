@@ -16,10 +16,12 @@ export const extension: Extension = {
       "Monitor GitHub Actions workflow runs across workspace repos — status bar, workspace badges, and failure notifications.",
   },
   activate(ctx) {
-    const styleEl = document.createElement("style");
-    styleEl.id = STYLE_ID;
-    styleEl.textContent = GLOBAL_STYLES + STATUS_ITEM_STYLES + MODAL_STYLES;
-    document.head.appendChild(styleEl);
+    if (!document.getElementById(STYLE_ID)) {
+      const styleEl = document.createElement("style");
+      styleEl.id = STYLE_ID;
+      styleEl.textContent = GLOBAL_STYLES + STATUS_ITEM_STYLES + MODAL_STYLES;
+      document.head.appendChild(styleEl);
+    }
 
     const service = new GhActionsService();
 

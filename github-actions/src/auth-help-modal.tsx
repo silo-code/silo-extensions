@@ -7,12 +7,12 @@ interface Props {
 
 export function AuthHelpModal({ close, ctx }: Props) {
   return (
-    <div className="gh-actions-auth-help">
-      <p className="gh-actions-auth-help__text">
+    <div className="gha-auth-help">
+      <p className="gha-auth-help__text">
         GitHub Actions monitoring requires the{" "}
         <strong>GitHub CLI</strong> to be installed and authenticated.
       </p>
-      <ol className="gh-actions-auth-help__steps">
+      <ol className="gha-auth-help__steps">
         <li>
           Install the CLI:{" "}
           <a
@@ -27,8 +27,8 @@ export function AuthHelpModal({ close, ctx }: Props) {
         </li>
         <li>The extension will detect authentication automatically within 2 minutes.</li>
       </ol>
-      <div className="gh-actions-auth-help__actions">
-        <button className="gh-actions-btn" onClick={close}>Close</button>
+      <div className="gha-auth-help__actions">
+        <button className="gha-auth-help__close" onClick={close}>Close</button>
       </div>
     </div>
   );
