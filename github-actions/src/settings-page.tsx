@@ -98,8 +98,6 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
             </div>
           </div>
         </section>
-
-
       </div>
     </div>
   );

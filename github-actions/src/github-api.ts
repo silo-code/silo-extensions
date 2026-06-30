@@ -1,5 +1,9 @@
 import type { ExtensionContext } from "@silo-code/sdk";
 
+// How many recent runs to request per repo. GitHub returns newest-first, so this
+// is a ceiling on how far back the panel and counts look.
+const RUNS_PER_PAGE = 50;
+
 // macOS app bundles don't inherit the user's shell PATH, so `gh` installed via
 // Homebrew (or similar) is invisible to production Silo. Probe known locations
 // and return the first one that responds to `gh --version`.
@@ -56,6 +60,24 @@ type FetchRunsResult =
   | { ok: true; runs: WorkflowRun[] }
   | { ok: false; error: GitHubApiError };
 
+// Maps a failed `gh api` invocation's stderr to a typed error. Pure so the
+// classification ladder can be unit-tested without spawning a process. Order
+// matters: an auth failure that also mentions a rate limit is reported as
+// unauthenticated, since re-auth is the actionable fix.
+export function classifyFetchError(stderr: string): GitHubApiError {
+  const s = stderr.toLowerCase();
+  if (s.includes("401") || s.includes("403") || s.includes("authentication") || s.includes("not logged")) {
+    return { kind: "unauthenticated", message: "gh CLI is not authenticated — run gh auth login" };
+  }
+  if (s.includes("404")) {
+    return { kind: "not-found", message: "Actions not found — Actions may be disabled or the token lacks workflow scope" };
+  }
+  if (s.includes("429") || s.includes("rate limit")) {
+    return { kind: "rate-limited", message: "GitHub API rate limit exceeded" };
+  }
+  return { kind: "network", message: stderr.trim() || "gh api call failed" };
+}
+
 // Uses `gh api` so auth is handled by the gh CLI — no token management needed.
 // Branch filtering is done client-side to avoid URL-encoding issues with branch
 // names that contain slashes (e.g. feat/my-feature).
@@ -66,28 +88,19 @@ export async function fetchRuns(
   cwd: string,
   ghBin: string,
 ): Promise<FetchRunsResult> {
-  const endpoint = `repos/${owner}/${repo}/actions/runs?per_page=50`;
+  const endpoint = `repos/${owner}/${repo}/actions/runs?per_page=${RUNS_PER_PAGE}`;
   const args = ["api", endpoint];
 
   ctx.log.debug(`Fetching runs for ${owner}/${repo}`);
   const result = await ctx.process.exec(ghBin, args, { cwd });
 
   if (result.code !== 0) {
-    const stderr = result.stderr.toLowerCase();
-    if (stderr.includes("401") || stderr.includes("403") || stderr.includes("authentication") || stderr.includes("not logged")) {
-      ctx.log.warn(`Auth error fetching runs for ${owner}/${repo}`, { stderr: result.stderr.trim() });
-      return { ok: false, error: { kind: "unauthenticated", message: "gh CLI is not authenticated — run gh auth login" } };
-    }
-    if (stderr.includes("404")) {
-      ctx.log.warn(`404 fetching Actions runs for ${owner}/${repo} — Actions may be disabled or token lacks workflow scope`, { stderr: result.stderr.trim() });
-      return { ok: false, error: { kind: "not-found", message: `${owner}/${repo}: Actions not found — Actions may be disabled or token lacks workflow scope` } };
-    }
-    if (stderr.includes("429") || stderr.includes("rate limit")) {
-      ctx.log.warn(`Rate limit hit fetching runs for ${owner}/${repo}`);
-      return { ok: false, error: { kind: "rate-limited", message: "GitHub API rate limit exceeded" } };
-    }
-    ctx.log.error(`gh api call failed for ${owner}/${repo}`, { stderr: result.stderr.trim() });
-    return { ok: false, error: { kind: "network", message: result.stderr.trim() || "gh api call failed" } };
+    const error = classifyFetchError(result.stderr);
+    const msg = `gh api error (${error.kind}) for ${owner}/${repo}`;
+    const detail = { stderr: result.stderr.trim() };
+    if (error.kind === "network") ctx.log.error(msg, detail);
+    else ctx.log.warn(msg, detail);
+    return { ok: false, error };
   }
 
   try {

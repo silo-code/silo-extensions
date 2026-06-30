@@ -1,9 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowClockwise, CopySimple } from "@phosphor-icons/react";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { WorkflowRun } from "./github-api";
-import { ghStore } from "./store";
+import { ghStore, selectFailedRuns, selectRunningRuns } from "./store";
+import { formatElapsed } from "./format-elapsed";
+
+// How long the "Copied!" confirmation stays visible after copying a run URL.
+const COPY_RESET_MS = 1500;
 
 interface Props {
   ctx: ExtensionContext;
@@ -65,7 +69,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
         ctx.ui.notify("error", result.message ?? "Re-run failed");
       }
     },
-    [ctx, wsState, handleRefresh],
+    [ctx, wsState, activeId, service, handleRefresh],
   );
 
   if (!wsState || !wsState.repoInfo) {
@@ -84,18 +88,8 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const currentBranch = wsState.branch;
   const repoUrl = `https://github.com/${owner}/${repo}/actions`;
 
-  const failedRuns = wsState.runs
-    .filter(
-      (r) =>
-        r.status === "completed" &&
-        r.conclusion === "failure" &&
-        (!clearedAt || new Date(r.created_at) > clearedAt),
-    )
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-  const runningRuns = wsState.runs.filter(
-    (r) => r.status === "in_progress" || r.status === "queued",
-  );
+  const failedRuns = selectFailedRuns(wsState.runs, clearedAt);
+  const runningRuns = selectRunningRuns(wsState.runs);
 
   return (
     <div className="gha-modal">
@@ -241,11 +235,17 @@ function RunCard({ run, ctx, variant, showBranch, rerunning, onRerun }: RunCardP
   const pr = run.pull_requests?.[0];
   const isFailed = variant === "failed";
   const [copied, setCopied] = useState(false);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(run.html_url).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = setTimeout(() => setCopied(false), COPY_RESET_MS);
     });
   };
 
@@ -272,13 +272,7 @@ function RunCard({ run, ctx, variant, showBranch, rerunning, onRerun }: RunCardP
               <span className="gha-run__sep">·</span>
               <button
                 className="gha-run__pr"
-                onClick={() =>
-                  ctx.ui.openExternal(
-                    pr.url
-                      .replace("api.github.com/repos", "github.com")
-                      .replace("/pulls/", "/pull/"),
-                  )
-                }
+                onClick={() => ctx.ui.openExternal(prApiUrlToHtmlUrl(pr.url))}
               >
                 PR #{pr.number}
               </button>
@@ -296,8 +290,8 @@ function RunCard({ run, ctx, variant, showBranch, rerunning, onRerun }: RunCardP
           View
         </button>
         {isFailed && (
-          <button className="gha-btn gha-btn--rerun" onClick={onRerun} disabled={rerunning} title="Re-run failed jobs">
-            <IconRefresh />
+          <button className="gha-btn gha-btn--rerun" onClick={onRerun} disabled={rerunning} title="Re-run this workflow">
+            <ArrowClockwise size={13} weight="bold" />
             {rerunning ? "Running…" : "Re-run"}
           </button>
         )}
@@ -331,10 +325,6 @@ function IconBranch() {
       <path d="M5.75 1a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm.75 2.927A2.25 2.25 0 1 0 4.25 3.5v.677a3.25 3.25 0 0 0 2.668 3.195 1.75 1.75 0 0 1 1.332 1.7V9.5a2.25 2.25 0 1 0 1.5 0v-.428a3.25 3.25 0 0 0-2.668-3.195A1.75 1.75 0 0 1 5.75 4.18v-.253zM10.25 9a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5z" />
     </svg>
   );
-}
-
-function IconRefresh() {
-  return <ArrowClockwise size={13} weight="bold" />;
 }
 
 function IconWarn() {
@@ -375,13 +365,10 @@ function IconCheckCircle() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatElapsed(date: Date): string {
-  const ms = Date.now() - date.getTime();
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+// GitHub's API returns a PR's API URL (api.github.com/repos/o/r/pulls/N); turn
+// it into the user-facing web URL (github.com/o/r/pull/N).
+function prApiUrlToHtmlUrl(apiUrl: string): string {
+  return apiUrl
+    .replace("api.github.com/repos", "github.com")
+    .replace("/pulls/", "/pull/");
 }

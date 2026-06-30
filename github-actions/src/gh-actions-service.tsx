@@ -6,12 +6,14 @@ import {
   WorkspaceGhState,
   aggregateRunState,
   deriveStatusBarState,
+  selectFailedRuns,
   StatusBarState,
 } from "./store";
-import type { WorkspaceBadge, WorkspaceStatusRow } from "@silo-code/sdk";
+import type { WorkspaceBadge, WorkspaceStatusRow, Disposable } from "@silo-code/sdk";
 import { AuthHelpModal } from "./auth-help-modal";
 
 const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
+const RECONCILE_DEBOUNCE_MS = 150;
 
 async function resolveRemote(
   ctx: ExtensionContext,
@@ -55,6 +57,8 @@ export class GhActionsService {
   private _seenFailedRuns = new Set<number>();
   private _ctx: ExtensionContext | null = null;
   private _ghBin = "gh";
+  private _storeUnsub: (() => void) | null = null;
+  private _wsSub: Disposable | null = null;
 
   async init(ctx: ExtensionContext): Promise<void> {
     this._ctx = ctx;
@@ -65,7 +69,7 @@ export class GhActionsService {
 
     // Wire up decoration invalidation unconditionally — needed whether auth
     // succeeds now or later via the retry timer.
-    ghStore.subscribe(() => {
+    this._storeUnsub = ghStore.subscribe(() => {
       ctx.workspaces.invalidateBadges();
       ctx.workspaces.invalidateStatus();
     });
@@ -84,7 +88,7 @@ export class GhActionsService {
           ghStore.setAuthState("ok");
           clearInterval(this._authRetryTimer!);
           this._authRetryTimer = null;
-          ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
+          this._wsSub = ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
           this._reconcileWorkspaces(ctx);
         } else {
           ghStore.setAuthState(state);
@@ -94,7 +98,7 @@ export class GhActionsService {
     }
 
     this._reconcileWorkspaces(ctx);
-    ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
+    this._wsSub = ctx.workspaces.subscribe(() => this._scheduleReconcile(ctx));
   }
 
   private _notifyAuthIssue(ctx: ExtensionContext, state: "unauthenticated" | "missing"): void {
@@ -126,7 +130,7 @@ export class GhActionsService {
     this._reconcileDebounceTimer = setTimeout(() => {
       this._reconcileDebounceTimer = null;
       this._reconcileWorkspaces(ctx);
-    }, 150);
+    }, RECONCILE_DEBOUNCE_MS);
   }
 
   private _reconcileWorkspaces(ctx: ExtensionContext): void {
@@ -194,7 +198,10 @@ export class GhActionsService {
         return;
       }
 
-      const repoInfo = await resolveRemote(ctx, folder);
+      const [repoInfo, headBranch] = await Promise.all([
+        resolveRemote(ctx, folder),
+        resolveHeadBranch(ctx, folder),
+      ]);
       if (!repoInfo) {
         ctx.log.debug(`No GitHub remote found for workspace ${workspaceId} (${folder})`);
         const state: WorkspaceGhState = {
@@ -206,7 +213,7 @@ export class GhActionsService {
         return;
       }
 
-      const branch = (await resolveHeadBranch(ctx, folder)) ?? "main";
+      const branch = headBranch ?? "main";
       const currentBranchOnly = ghStore.getWorkspaceCurrentBranchOnly(workspaceId);
       ctx.log.debug(`Refreshing ${repoInfo.owner}/${repoInfo.repo}@${branch} for workspace ${workspaceId}`, { currentBranchOnly });
       const result = await fetchRuns(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
@@ -247,9 +254,6 @@ export class GhActionsService {
       } else {
         this._detectAndNotifyNewFailures(ctx, workspaceId, runs);
       }
-
-      const { failed, running } = aggregateRunState(runs, ghStore.getClearedAt(workspaceId));
-      ctx.log.debug(`Status bar state for workspace ${workspaceId}: "${deriveStatusBarState(next, ghStore.getClearedAt(workspaceId)).kind}" (${failed} failed, ${running} running)`);
     } finally {
       this._refreshingWorkspaces.delete(workspaceId);
     }
@@ -313,14 +317,12 @@ export class GhActionsService {
     const { failed, running } = aggregateRunState(ws.runs, clearedBefore);
 
     if (failed > 0) {
-      const oldest = ws.runs
-        .filter((r) => r.status === "completed" && r.conclusion === "failure" && (!clearedBefore || new Date(r.created_at) > clearedBefore))
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      const mostRecent = selectFailedRuns(ws.runs, clearedBefore)[0];
       return [{
         id: "gh-actions",
         status: "error",
         label: failed === 1 ? "1 workflow failed" : `${failed} workflows failed`,
-        startedAt: oldest?.created_at,
+        startedAt: mostRecent?.created_at,
       }];
     }
 
@@ -355,5 +357,9 @@ export class GhActionsService {
       clearTimeout(this._reconcileDebounceTimer);
       this._reconcileDebounceTimer = null;
     }
+    this._wsSub?.dispose();
+    this._wsSub = null;
+    this._storeUnsub?.();
+    this._storeUnsub = null;
   }
 }
