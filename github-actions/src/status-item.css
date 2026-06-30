@@ -9,6 +9,12 @@
   border: none;
 }
 
+/* The SDK <Tooltip> wraps children in a <span>; keep it inline-flex so it
+   participates in the status bar flex row the same way as the button itself. */
+.silo-tooltip-host:has(.gha-status) {
+  display: inline-flex;
+}
+
 .gha-status__icon {
   display: flex;
   align-items: center;

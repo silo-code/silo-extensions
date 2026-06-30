@@ -11,6 +11,7 @@ import {
 } from "./store";
 import type { WorkspaceBadge, WorkspaceStatusRow, Disposable } from "@silo-code/sdk";
 import { AuthHelpModal } from "./auth-help-modal";
+import { getTooltip, getRichTooltip } from "./status-labels";
 
 const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
@@ -117,7 +118,7 @@ export class GhActionsService {
               ctx.ui.showModal((close) => <AuthHelpModal close={close} ctx={ctx} />, {
                 title: "GitHub Actions — Setup",
                 dismissible: true,
-                size: "md",
+                size: "sm",
               }),
           },
         ],
@@ -341,6 +342,14 @@ export class GhActionsService {
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return { kind: "hidden" };
     return deriveStatusBarState(ghStore.workspaces.get(activeId), ghStore.getClearedAt(activeId));
+  }
+
+  getTooltipContent(): string {
+    const state = this.getStatusBarState();
+    if (state.kind !== "ok" || !this._ctx) return getTooltip(state);
+    const activeId = this._ctx.workspaces.getState().activeId;
+    if (!activeId) return getTooltip(state);
+    return getRichTooltip(state, ghStore.workspaces.get(activeId), ghStore.getClearedAt(activeId));
   }
 
   subscribe(fn: () => void): () => void {
