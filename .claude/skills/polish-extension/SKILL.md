@@ -154,12 +154,32 @@ Would a new developer be proud to read this as a reference?
 
 ---
 
-## Phase 2 — Apply
+## Phase 2 — Summarize and confirm
 
-Wait for all six. Dedup findings that point at the same mechanism. Fix
-everything that is clearly correct. For each skip, state the reason in one
-line. Don't be conservative: if a function needs to be extracted, extract it;
-if a test file needs to be written from scratch, write it.
+Wait for all six agents. Dedup findings that point at the same mechanism.
+Then **stop and present the review to the user** before touching any files:
+
+1. **Summary paragraph** — one short paragraph describing the overall quality
+   of the extension and the themes that came up across agents.
+
+2. **Proposed changes** — a grouped list of every finding, organized by agent.
+   For each finding: file + line, one-line description of the problem, and the
+   intended fix. Mark any finding you'd skip with `[skip]` and a reason.
+
+3. **Task list** — use TaskCreate to create one task per proposed change (not
+   per agent — one task per discrete edit). This gives the user a visible
+   checklist they can track as work proceeds.
+
+4. **Ask for confirmation** — explicitly ask the user to review the list, make
+   any changes (remove items, reword, add concerns), and confirm before
+   proceeding. Do not apply any changes until the user says to go ahead.
+
+## Phase 3 — Apply
+
+After the user confirms (updating the task list if they removed or added
+items), apply each change and mark its task complete as you go. Don't be
+conservative: if a function needs to be extracted, extract it; if a test file
+needs to be written from scratch, write it.
 
 Finish with: `npm test && npm run typecheck && node build.mjs`. Report the
 outcome and a one-paragraph summary of what changed.
