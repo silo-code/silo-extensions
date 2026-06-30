@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@silo-code/sdk";
 import { parseGitHubRemote } from "./parse-remote";
-import { fetchRuns, checkAuth, WorkflowRun } from "./github-api";
+import { fetchRuns, checkAuth, resolveGhBin, rerunWorkflow, WorkflowRun } from "./github-api";
 import {
   ghStore,
   WorkspaceGhState,
@@ -54,11 +54,14 @@ export class GhActionsService {
   private _refreshingWorkspaces = new Set<string>();
   private _seenFailedRuns = new Set<number>();
   private _ctx: ExtensionContext | null = null;
+  private _ghBin = "gh";
 
   async init(ctx: ExtensionContext): Promise<void> {
     this._ctx = ctx;
     ctx.log.info("GitHub Actions extension initializing");
     ghStore.hydrate(ctx.storage.global);
+
+    this._ghBin = await resolveGhBin(ctx);
 
     // Wire up decoration invalidation unconditionally — needed whether auth
     // succeeds now or later via the retry timer.
@@ -67,7 +70,7 @@ export class GhActionsService {
       ctx.workspaces.invalidateStatus();
     });
 
-    const authState = await checkAuth(ctx);
+    const authState = await checkAuth(ctx, this._ghBin);
     ghStore.setAuthState(authState);
 
     if (authState !== "ok") {
@@ -75,7 +78,7 @@ export class GhActionsService {
       ctx.log.warn(`${reason} — will retry every ${AUTH_RETRY_INTERVAL_MS / 1000}s`);
       this._notifyAuthIssue(ctx, authState);
       this._authRetryTimer = setInterval(async () => {
-        const state = await checkAuth(ctx);
+        const state = await checkAuth(ctx, this._ghBin);
         if (state === "ok") {
           ctx.log.info("Authentication succeeded — starting workspace polling");
           ghStore.setAuthState("ok");
@@ -206,7 +209,7 @@ export class GhActionsService {
       const branch = (await resolveHeadBranch(ctx, folder)) ?? "main";
       const { currentBranchOnly } = ghStore.settings;
       ctx.log.debug(`Refreshing ${repoInfo.owner}/${repoInfo.repo}@${branch} for workspace ${workspaceId}`, { currentBranchOnly });
-      const result = await fetchRuns(ctx, repoInfo.owner, repoInfo.repo, folder);
+      const result = await fetchRuns(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
 
       if (!result.ok) {
         ctx.log.warn(`Error fetching runs for workspace ${workspaceId}`, { error: result.error });
@@ -283,6 +286,11 @@ export class GhActionsService {
     const ws = this._ctx.workspaces.get(activeId);
     if (!ws) return;
     await this._refreshWorkspace(this._ctx, activeId, ws.folder);
+  }
+
+  async rerun(owner: string, repo: string, runId: number, cwd: string): Promise<{ ok: boolean; message?: string }> {
+    if (!this._ctx) return { ok: false, message: "Service not initialized" };
+    return rerunWorkflow(this._ctx, owner, repo, runId, cwd, this._ghBin);
   }
 
   clearAlerts(workspaceId: string): void {

@@ -3,7 +3,6 @@ import { ArrowClockwise, CopySimple } from "@phosphor-icons/react";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { WorkflowRun } from "./github-api";
-import { rerunWorkflow } from "./github-api";
 import { ghStore } from "./store";
 
 interface Props {
@@ -42,7 +41,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       const ws = ctx.workspaces.get(activeId);
       if (!repo || !ws) return;
       setRerunning((prev) => new Set(prev).add(run.id));
-      const result = await rerunWorkflow(ctx, repo.owner, repo.repo, run.id, ws.folder);
+      const result = await service.rerun(repo.owner, repo.repo, run.id, ws.folder);
       setRerunning((prev) => {
         const next = new Set(prev);
         next.delete(run.id);

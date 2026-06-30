@@ -1,5 +1,31 @@
 import type { ExtensionContext } from "@silo-code/sdk";
 
+// macOS app bundles don't inherit the user's shell PATH, so `gh` installed via
+// Homebrew (or similar) is invisible to production Silo. Probe known locations
+// and return the first one that responds to `gh --version`.
+const GH_CANDIDATE_PATHS = [
+  "gh",
+  "/opt/homebrew/bin/gh",  // Apple Silicon Homebrew
+  "/usr/local/bin/gh",     // Intel Homebrew / manual install
+  "/opt/local/bin/gh",     // MacPorts
+  "/home/linuxbrew/.linuxbrew/bin/gh", // Linux Homebrew
+];
+
+export async function resolveGhBin(ctx: ExtensionContext): Promise<string> {
+  for (const bin of GH_CANDIDATE_PATHS) {
+    try {
+      const r = await ctx.process.exec(bin, ["--version"], {});
+      if (r.code === 0) {
+        if (bin !== "gh") ctx.log.info(`gh CLI resolved to ${bin}`);
+        return bin;
+      }
+    } catch {
+      // binary not found at this path — try next
+    }
+  }
+  return "gh"; // fall back; checkAuth will report it as missing
+}
+
 export interface WorkflowRun {
   id: number;
   name: string;
@@ -38,12 +64,13 @@ export async function fetchRuns(
   owner: string,
   repo: string,
   cwd: string,
+  ghBin: string,
 ): Promise<FetchRunsResult> {
   const endpoint = `repos/${owner}/${repo}/actions/runs?per_page=50`;
   const args = ["api", endpoint];
 
   ctx.log.debug(`Fetching runs for ${owner}/${repo}`);
-  const result = await ctx.process.exec("gh", args, { cwd });
+  const result = await ctx.process.exec(ghBin, args, { cwd });
 
   if (result.code !== 0) {
     const stderr = result.stderr.toLowerCase();
@@ -80,9 +107,10 @@ export async function rerunWorkflow(
   repo: string,
   runId: number,
   cwd: string,
+  ghBin: string,
 ): Promise<{ ok: boolean; message?: string }> {
   const result = await ctx.process.exec(
-    "gh",
+    ghBin,
     ["api", `repos/${owner}/${repo}/actions/runs/${runId}/rerun`, "--method", "POST"],
     { cwd },
   );
@@ -97,10 +125,10 @@ export async function rerunWorkflow(
 
 export type AuthState = "ok" | "unauthenticated" | "missing";
 
-export async function checkAuth(ctx: ExtensionContext): Promise<AuthState> {
+export async function checkAuth(ctx: ExtensionContext, ghBin: string): Promise<AuthState> {
   ctx.log.debug("Checking gh CLI authentication");
   try {
-    const result = await ctx.process.exec("gh", ["auth", "status"], {});
+    const result = await ctx.process.exec(ghBin, ["auth", "status"], {});
     if (result.code === 0) {
       ctx.log.info("gh CLI is authenticated");
       return "ok";
