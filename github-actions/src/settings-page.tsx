@@ -7,15 +7,6 @@ interface Props {
   ctx: ExtensionContext;
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <label className="es-switch">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
-      <span className="es-switch-track" />
-    </label>
-  );
-}
-
 export function GhActionsSettings({ ctx: _ctx }: Props) {
   const [settings, setSettings] = useState<GhActionsSettings>(() => ghStore.settings);
   const [authState, setAuthState] = useState<AuthState | null>(() => ghStore.authState);
@@ -108,24 +99,7 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
           </div>
         </section>
 
-        <section className="es-section">
-          <h3 className="es-section-title">Filters</h3>
-          <div className="es-rows">
-            <div className="es-row">
-              <div className="es-row-text">
-                <span className="es-label">Current branch only</span>
-                <span className="es-hint">Only show failures on the workspace's checked-out branch</span>
-              </div>
-              <div className="es-control">
-                <Toggle
-                  label="Current branch only"
-                  checked={settings.currentBranchOnly}
-                  onChange={(v) => update({ currentBranchOnly: v })}
-                />
-              </div>
-            </div>
-          </div>
-        </section>
+
       </div>
     </div>
   );

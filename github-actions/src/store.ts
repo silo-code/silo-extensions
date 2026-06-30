@@ -6,14 +6,11 @@ import type { WorkflowRun, GitHubApiError, AuthState } from "./github-api";
 export interface GhActionsSettings {
   activePollIntervalMs: number;
   inactivePollIntervalMs: number;
-  /** When true, only show failures on the workspace's current branch. Default: false (all branches). */
-  currentBranchOnly: boolean;
 }
 
 const DEFAULTS: GhActionsSettings = {
   activePollIntervalMs: 60_000,
   inactivePollIntervalMs: 10 * 60_000,
-  currentBranchOnly: false,
 };
 
 // ─── Per-workspace state ──────────────────────────────────────────────────────
@@ -83,6 +80,7 @@ export class GhActionsStore {
   private _settings: GhActionsSettings = { ...DEFAULTS };
   private _workspaces = new Map<string, WorkspaceGhState>();
   private _workspaceClearedAt = new Map<string, Date>();
+  private _workspaceCurrentBranchOnly = new Map<string, boolean>();
   private _authState: AuthState | null = null;
   private _initialized = false;
   private _storage: ExtensionStorage | null = null;
@@ -110,17 +108,19 @@ export class GhActionsStore {
 
   hydrate(storage: ExtensionStorage): void {
     this._storage = storage;
-    // Load persisted cleared-at timestamps
     const saved_cleared = storage.get<Record<string, string>>("workspaceClearedAt") ?? {};
     for (const [id, iso] of Object.entries(saved_cleared)) {
       this._workspaceClearedAt.set(id, new Date(iso));
+    }
+    const saved_cbo = storage.get<Record<string, boolean>>("workspaceCurrentBranchOnly") ?? {};
+    for (const [id, val] of Object.entries(saved_cbo)) {
+      this._workspaceCurrentBranchOnly.set(id, val);
     }
     const apply = (): void => {
       const saved = storage.get<Partial<GhActionsSettings>>("settings") ?? {};
       this._settings = {
         activePollIntervalMs: saved.activePollIntervalMs ?? DEFAULTS.activePollIntervalMs,
         inactivePollIntervalMs: saved.inactivePollIntervalMs ?? DEFAULTS.inactivePollIntervalMs,
-        currentBranchOnly: saved.currentBranchOnly ?? DEFAULTS.currentBranchOnly,
       };
       this._notify();
     };
@@ -150,12 +150,33 @@ export class GhActionsStore {
     this._notify();
   }
 
+  clearWorkspaceRuns(workspaceId: string): void {
+    const prev = this._workspaces.get(workspaceId);
+    if (!prev) return;
+    this._workspaces.set(workspaceId, { ...prev, runs: [], lastFetched: null });
+    this._notify();
+  }
+
   removeWorkspace(workspaceId: string): void {
     if (this._workspaces.delete(workspaceId)) this._notify();
   }
 
   getClearedAt(workspaceId: string): Date | undefined {
     return this._workspaceClearedAt.get(workspaceId);
+  }
+
+  getWorkspaceCurrentBranchOnly(workspaceId: string): boolean {
+    return this._workspaceCurrentBranchOnly.get(workspaceId) ?? false;
+  }
+
+  setWorkspaceCurrentBranchOnly(workspaceId: string, value: boolean): void {
+    this._workspaceCurrentBranchOnly.set(workspaceId, value);
+    const record: Record<string, boolean> = {};
+    for (const [id, val] of this._workspaceCurrentBranchOnly) {
+      record[id] = val;
+    }
+    this._storage?.set("workspaceCurrentBranchOnly", record);
+    this._notify();
   }
 
   clearAlerts(workspaceId: string): void {

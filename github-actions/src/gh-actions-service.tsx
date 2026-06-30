@@ -207,7 +207,7 @@ export class GhActionsService {
       }
 
       const branch = (await resolveHeadBranch(ctx, folder)) ?? "main";
-      const { currentBranchOnly } = ghStore.settings;
+      const currentBranchOnly = ghStore.getWorkspaceCurrentBranchOnly(workspaceId);
       ctx.log.debug(`Refreshing ${repoInfo.owner}/${repoInfo.repo}@${branch} for workspace ${workspaceId}`, { currentBranchOnly });
       const result = await fetchRuns(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
 

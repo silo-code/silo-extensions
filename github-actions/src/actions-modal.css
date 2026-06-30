@@ -5,8 +5,42 @@
   flex-direction: column;
   min-width: 0;
   font-size: var(--silo-font-size-base, 13px);
+  height: 600px;
   max-height: 70vh;
   overflow: hidden;
+}
+
+.gha-modal__footer {
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--silo-color-border-lo, rgba(128,128,128,0.12));
+}
+
+.gha-modal__footer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 1em;
+  color: var(--silo-color-text-lo);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gha-modal__footer-toggle input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--silo-color-accent, #4f8ef7);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.gha-modal__footer-toggle:hover {
+  color: var(--silo-color-text);
+}
+
+.gha-modal__footer-toggle:has(input:disabled) {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .gha-modal__body {
@@ -384,6 +418,15 @@
 .gha-btn--rerun:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.gha-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+  font-size: 1.08em;
+  color: var(--silo-color-text-lo);
 }
 
 .gha-empty {
