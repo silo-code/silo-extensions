@@ -1,0 +1,35 @@
+{
+  "name": "@silo-extensions/github-actions",
+  "displayName": "GitHub Actions",
+  "version": "0.1.0",
+  "description": "Monitor GitHub Actions workflow runs across workspace repos — status bar, workspace badges, and failure notifications.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.github-actions",
+    "engine": "^0.19.0",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": [
+      "process"
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "file:../../xerro-edit/packages/sdk",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.24.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}

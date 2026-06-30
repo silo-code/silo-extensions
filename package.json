@@ -3,6 +3,6 @@
   "private": true,
   "scripts": {
     "build": "cd local-web-viewer && npm run build",
-    "build:all": "for dir in docs-panel local-web-viewer system-monitor; do (cd \"$dir\" && npm run build); done"
+    "build:all": "for dir in docs-panel local-web-viewer system-monitor github-actions; do (cd \"$dir\" && npm run build); done"
   }
 }

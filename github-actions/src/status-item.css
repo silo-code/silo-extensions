@@ -1,0 +1,55 @@
+.gh-actions-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: var(--silo-radius-sm, 3px);
+  background: none;
+  border: none;
+  color: var(--silo-color-text-lo);
+  transition: color 0.1s;
+}
+
+.gh-actions-status:hover {
+  color: var(--silo-color-text);
+}
+
+.gh-actions-status__icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.gh-actions-status__label {
+  font-size: inherit;
+}
+
+.gh-actions-status__icon--ok {
+  color: var(--silo-color-success, #22c55e);
+}
+
+.gh-actions-status__icon--failed {
+  color: var(--silo-color-danger, #e53e3e);
+}
+
+.gh-actions-status__icon--warn {
+  color: var(--silo-color-warn, #d97706);
+}
+
+.gh-actions-status__icon--running {
+  color: var(--silo-color-accent, #4f8ef7);
+}
+
+.gh-actions-status__icon--dim {
+  color: var(--silo-color-text);
+}
+
+@keyframes gh-spin {
+  to { transform: rotate(360deg); }
+}
+
+.gh-actions-status__icon--spinning svg {
+  animation: gh-spin 1.2s linear infinite;
+}
