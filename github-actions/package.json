@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/github-actions",
   "displayName": "GitHub Actions",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Monitor GitHub Actions workflow runs across workspace repos — status bar, workspace badges, and failure notifications.",
   "type": "module",
   "files": [
