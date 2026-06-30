@@ -16,6 +16,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const activeId = ctx.workspaces.getState().activeId ?? "";
   const [wsState, setWsState] = useState(() => ghStore.workspaces.get(activeId));
   const [clearedAt, setClearedAt] = useState(() => ghStore.getClearedAt(activeId));
+  const [currentBranchOnly, setCurrentBranchOnly] = useState(() => ghStore.getWorkspaceCurrentBranchOnly(activeId));
   const [refreshing, setRefreshing] = useState(false);
   const [rerunning, setRerunning] = useState<Set<number>>(new Set());
 
@@ -23,18 +24,28 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
     return ghStore.subscribe(() => {
       setWsState(ghStore.workspaces.get(activeId));
       setClearedAt(ghStore.getClearedAt(activeId));
+      setCurrentBranchOnly(ghStore.getWorkspaceCurrentBranchOnly(activeId));
     });
   }, [activeId]);
 
   const handleRefresh = useCallback(async () => {
+    ghStore.clearWorkspaceRuns(activeId);
     setRefreshing(true);
     await service.refreshActive();
     setRefreshing(false);
-  }, [service]);
+  }, [service, activeId]);
 
   const handleClearAlerts = useCallback(() => {
     service.clearAlerts(activeId);
   }, [service, activeId]);
+
+  const handleToggleCurrentBranchOnly = useCallback(async (value: boolean) => {
+    ghStore.setWorkspaceCurrentBranchOnly(activeId, value);
+    ghStore.clearWorkspaceRuns(activeId);
+    setRefreshing(true);
+    await service.refreshActive();
+    setRefreshing(false);
+  }, [activeId, service]);
 
   const handleRerun = useCallback(
     async (run: WorkflowRun) => {
@@ -72,7 +83,6 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
 
   const { owner, repo } = wsState.repoInfo;
   const currentBranch = wsState.branch;
-  const currentBranchOnly = ghStore.settings.currentBranchOnly;
   const repoUrl = `https://github.com/${owner}/${repo}/actions`;
 
   const failedRuns = wsState.runs
@@ -126,8 +136,13 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       {/* ── Scrollable body ── */}
       <div className="gha-modal__body">
 
+      {/* ── Loading ── */}
+      {refreshing && (
+        <div className="gha-loading">Checking workflows…</div>
+      )}
+
       {/* ── API error ── */}
-      {wsState.error?.kind === "api-error" && (
+      {!refreshing && wsState.error?.kind === "api-error" && (
         <div className="gha-error-banner">
           <IconWarn />
           {wsState.error.error.message}
@@ -135,7 +150,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       )}
 
       {/* ── Failed section ── */}
-      {failedRuns.length > 0 && (
+      {!refreshing && failedRuns.length > 0 && (
         <section className="gha-section">
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--failed" />
@@ -162,7 +177,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       )}
 
       {/* ── Running section ── */}
-      {runningRuns.length > 0 && (
+      {!refreshing && runningRuns.length > 0 && (
         <section className="gha-section">
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--running" />
@@ -186,7 +201,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       )}
 
       {/* ── All clear ── */}
-      {failedRuns.length === 0 && runningRuns.length === 0 && (
+      {!refreshing && failedRuns.length === 0 && runningRuns.length === 0 && (
         <div className="gha-empty">
           <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
           <div className="gha-empty__title">All workflows passing</div>
@@ -194,6 +209,19 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
         </div>
       )}
 
+      </div>
+
+      {/* ── Footer ── */}
+      <div className="gha-modal__footer">
+        <label className="gha-modal__footer-toggle">
+          <input
+            type="checkbox"
+            checked={currentBranchOnly}
+            disabled={refreshing}
+            onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)}
+          />
+          <span>Only monitor the checked-out branch</span>
+        </label>
       </div>
     </div>
   );
