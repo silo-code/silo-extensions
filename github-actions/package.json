@@ -20,16 +20,14 @@
   "scripts": {
     "build": "node build.mjs",
     "build:watch": "node --watch build.mjs",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "file:../../xerro-edit/packages/sdk",
+    "@silo-code/sdk": "^0.20.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.24.0",
     "react": "^19.0.0",
-    "typescript": "^5.6.0",
-    "vitest": "^4.1.7"
+    "typescript": "^5.6.0"
   }
 }
