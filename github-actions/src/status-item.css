@@ -2,18 +2,11 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 4px;
+  padding: 2px 4px;
   cursor: pointer;
   white-space: nowrap;
-  border-radius: var(--silo-radius-sm, 3px);
   background: none;
   border: none;
-  color: var(--silo-color-text-lo);
-  transition: color 0.1s;
-}
-
-.gh-actions-status:hover {
-  color: var(--silo-color-text);
 }
 
 .gh-actions-status__icon {
