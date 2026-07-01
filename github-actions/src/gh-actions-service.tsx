@@ -5,7 +5,7 @@ import {
   ghStore,
   WorkspaceGhState,
   aggregateRunState,
-  deriveStatusBarState,
+  deriveWorkspaceStatusBarState,
   selectFailedRuns,
   StatusBarState,
 } from "./store";
@@ -54,7 +54,8 @@ export class GhActionsService {
   private _timers = new Map<string, ReturnType<typeof setInterval>>();
   private _authRetryTimer: ReturnType<typeof setInterval> | null = null;
   private _reconcileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private _refreshingWorkspaces = new Set<string>();
+  // Key: `${workspaceId}:${folder}` — prevents concurrent refreshes per folder.
+  private _refreshingFolders = new Set<string>();
   private _seenFailedRuns = new Set<number>();
   private _ctx: ExtensionContext | null = null;
   private _ghBin = "gh";
@@ -141,8 +142,9 @@ export class GhActionsService {
 
     ctx.log.debug(`Reconciling workspaces — ${allOpen.length} open, active: ${activeId ?? "none"}`);
 
+    // Remove state for workspaces that are no longer open (use timer keys as proxy).
     const liveIds = new Set(allOpen.map((w) => w.id));
-    for (const id of ghStore.workspaces.keys()) {
+    for (const id of this._timers.keys()) {
       if (!liveIds.has(id)) {
         ctx.log.debug(`Removing closed workspace: ${id}`);
         this._clearTimer(id);
@@ -151,12 +153,23 @@ export class GhActionsService {
     }
 
     for (const ws of allOpen) {
+      const folders = [ws.folder, ...(ws.extraFolders ?? [])];
+
+      // Prune stale folder entries when a folder has been removed from the workspace.
+      const liveFolderSet = new Set(folders);
+      for (const state of ghStore.getRepoStates(ws.id)) {
+        if (!liveFolderSet.has(state.folder)) {
+          ctx.log.debug(`Removing stale folder ${state.folder} from workspace ${ws.id}`);
+          ghStore.removeFolderState(ws.id, state.folder);
+        }
+      }
+
       if (ws.id === activeId) {
-        this._refreshWorkspace(ctx, ws.id, ws.folder);
-        this._startPolling(ctx, ws.id, ws.folder, false);
+        for (const folder of folders) this._refreshFolder(ctx, ws.id, folder);
+        this._startPolling(ctx, ws.id, false);
       } else if (!this._timers.has(ws.id)) {
-        this._refreshWorkspace(ctx, ws.id, ws.folder);
-        this._startPolling(ctx, ws.id, ws.folder, true);
+        for (const folder of folders) this._refreshFolder(ctx, ws.id, folder);
+        this._startPolling(ctx, ws.id, true);
       }
     }
   }
@@ -164,7 +177,6 @@ export class GhActionsService {
   private _startPolling(
     ctx: ExtensionContext,
     workspaceId: string,
-    folder: string,
     inactive: boolean,
   ): void {
     this._clearTimer(workspaceId);
@@ -173,29 +185,34 @@ export class GhActionsService {
       : ghStore.settings.activePollIntervalMs;
     this._timers.set(
       workspaceId,
-      setInterval(() => this._refreshWorkspace(ctx, workspaceId, folder), interval),
+      setInterval(() => {
+        const ws = ctx.workspaces.get(workspaceId);
+        if (!ws) return;
+        for (const folder of [ws.folder, ...(ws.extraFolders ?? [])]) {
+          this._refreshFolder(ctx, workspaceId, folder);
+        }
+      }, interval),
     );
   }
 
-  private async _refreshWorkspace(
+  private async _refreshFolder(
     ctx: ExtensionContext,
     workspaceId: string,
     folder: string,
   ): Promise<void> {
-    if (this._refreshingWorkspaces.has(workspaceId)) {
-      ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — fetch already in flight`);
+    const refreshKey = `${workspaceId}:${folder}`;
+    if (this._refreshingFolders.has(refreshKey)) {
+      ctx.log.debug(`Skipping refresh for ${folder} in workspace ${workspaceId} — fetch already in flight`);
       return;
     }
-    this._refreshingWorkspaces.add(workspaceId);
+    this._refreshingFolders.add(refreshKey);
     try {
       if (!ghStore.authenticated) {
         ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
-        const state: WorkspaceGhState = {
-          repoInfo: null, branch: null, runs: [], lastFetched: null,
+        ghStore.setFolderState(workspaceId, folder, {
+          folder, repoInfo: null, branch: null, runs: [], lastFetched: null,
           error: { kind: "unauthenticated" },
-        };
-        ghStore.setWorkspaceState(workspaceId, state);
-        ctx.log.debug(`Status bar state for workspace ${workspaceId}: "unauthenticated"`);
+        });
         return;
       }
 
@@ -204,31 +221,26 @@ export class GhActionsService {
         resolveHeadBranch(ctx, folder),
       ]);
       if (!repoInfo) {
-        ctx.log.debug(`No GitHub remote found for workspace ${workspaceId} (${folder})`);
-        const state: WorkspaceGhState = {
-          repoInfo: null, branch: null, runs: [], lastFetched: null,
-          error: { kind: "no-repo" },
-        };
-        ghStore.setWorkspaceState(workspaceId, state);
-        ctx.log.debug(`Status bar state for workspace ${workspaceId}: "hidden" (no-repo)`);
+        ctx.log.debug(`No GitHub remote found for folder ${folder} in workspace ${workspaceId}`);
+        // Remove any previously stored state so it doesn't linger.
+        ghStore.removeFolderState(workspaceId, folder);
         return;
       }
 
       const branch = headBranch ?? "main";
       const currentBranchOnly = ghStore.getWorkspaceCurrentBranchOnly(workspaceId);
-      ctx.log.debug(`Refreshing ${repoInfo.owner}/${repoInfo.repo}@${branch} for workspace ${workspaceId}`, { currentBranchOnly });
+      ctx.log.debug(`Refreshing ${repoInfo.owner}/${repoInfo.repo}@${branch} (${folder})`, { currentBranchOnly });
       const result = await fetchRuns(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
 
       if (!result.ok) {
-        ctx.log.warn(`Error fetching runs for workspace ${workspaceId}`, { error: result.error });
-        const prev = ghStore.workspaces.get(workspaceId);
-        ghStore.setWorkspaceState(workspaceId, {
-          repoInfo, branch,
+        ctx.log.warn(`Error fetching runs for ${folder} in workspace ${workspaceId}`, { error: result.error });
+        const prev = ghStore.getRepoStates(workspaceId).find((s) => s.folder === folder);
+        ghStore.setFolderState(workspaceId, folder, {
+          folder, repoInfo, branch,
           runs: prev?.runs ?? [],
           lastFetched: prev?.lastFetched ?? null,
           error: { kind: "api-error", error: result.error },
         });
-        ctx.log.debug(`Status bar state for workspace ${workspaceId}: "api-error" (${result.error.message})`);
         return;
       }
 
@@ -236,27 +248,27 @@ export class GhActionsService {
         ? result.runs.filter((r) => r.head_branch === branch)
         : result.runs;
 
-      const prev = ghStore.workspaces.get(workspaceId);
+      const prev = ghStore.getRepoStates(workspaceId).find((s) => s.folder === folder);
       const isFirstFetch = !prev || prev.lastFetched === null;
       const next: WorkspaceGhState = {
-        repoInfo, branch, runs,
+        folder, repoInfo, branch, runs,
         lastFetched: new Date(),
         error: null,
       };
 
-      ghStore.setWorkspaceState(workspaceId, next);
+      ghStore.setFolderState(workspaceId, folder, next);
       if (isFirstFetch) {
         for (const run of runs) {
           if (run.status === "completed" && run.conclusion === "failure") {
             this._seenFailedRuns.add(run.id);
           }
         }
-        ctx.log.debug(`Seeded ${this._seenFailedRuns.size} pre-existing failed run(s) for workspace ${workspaceId} — no notifications`);
+        ctx.log.debug(`Seeded ${this._seenFailedRuns.size} pre-existing failed run(s) for ${folder} — no notifications`);
       } else {
         this._detectAndNotifyNewFailures(ctx, workspaceId, runs);
       }
     } finally {
-      this._refreshingWorkspaces.delete(workspaceId);
+      this._refreshingFolders.delete(refreshKey);
     }
   }
 
@@ -290,7 +302,9 @@ export class GhActionsService {
     if (!activeId) return;
     const ws = this._ctx.workspaces.get(activeId);
     if (!ws) return;
-    await this._refreshWorkspace(this._ctx, activeId, ws.folder);
+    for (const folder of [ws.folder, ...(ws.extraFolders ?? [])]) {
+      await this._refreshFolder(this._ctx, activeId, folder);
+    }
   }
 
   async rerun(owner: string, repo: string, runId: number, cwd: string): Promise<{ ok: boolean; message?: string }> {
@@ -303,32 +317,42 @@ export class GhActionsService {
   }
 
   getBadgesFor(workspaceId: string): WorkspaceBadge[] {
-    const ws = ghStore.workspaces.get(workspaceId);
-    if (!ws || ws.error?.kind === "no-repo" || !ws.repoInfo) return [];
-    const { failed } = aggregateRunState(
-      ws.runs,
-      ghStore.getClearedAt(workspaceId),
-      ghStore.getWorkspaceDismissOnSuccess(workspaceId),
-    );
+    const states = ghStore.getRepoStates(workspaceId).filter((s) => s.repoInfo !== null);
+    if (states.length === 0) return [];
+    const clearedBefore = ghStore.getClearedAt(workspaceId);
+    const dismissOnSuccess = ghStore.getWorkspaceDismissOnSuccess(workspaceId);
+    let failed = 0;
+    for (const s of states) {
+      failed += aggregateRunState(s.runs, clearedBefore, dismissOnSuccess).failed;
+    }
     if (failed === 0) return [];
     return [{ id: "gh-actions-failed", text: String(failed), color: "var(--silo-color-err)" }];
   }
 
   getDecorationsFor(workspaceId: string): WorkspaceStatusRow[] {
-    const ws = ghStore.workspaces.get(workspaceId);
-    if (!ws || ws.error?.kind === "no-repo" || !ws.repoInfo) return [];
+    const states = ghStore.getRepoStates(workspaceId).filter((s) => s.repoInfo !== null);
+    if (states.length === 0) return [];
 
     const clearedBefore = ghStore.getClearedAt(workspaceId);
     const dismissOnSuccess = ghStore.getWorkspaceDismissOnSuccess(workspaceId);
-    const { failed, running } = aggregateRunState(ws.runs, clearedBefore, dismissOnSuccess);
+    let failed = 0, running = 0;
+    let mostRecentFailed: WorkflowRun | undefined;
+    for (const s of states) {
+      const agg = aggregateRunState(s.runs, clearedBefore, dismissOnSuccess);
+      failed += agg.failed;
+      running += agg.running;
+      const top = selectFailedRuns(s.runs, clearedBefore, dismissOnSuccess)[0];
+      if (top && (!mostRecentFailed || new Date(top.created_at) > new Date(mostRecentFailed.created_at))) {
+        mostRecentFailed = top;
+      }
+    }
 
     if (failed > 0) {
-      const mostRecent = selectFailedRuns(ws.runs, clearedBefore, dismissOnSuccess)[0];
       return [{
         id: "gh-actions",
         status: "error",
         label: failed === 1 ? "1 workflow failed" : `${failed} workflows failed`,
-        startedAt: mostRecent?.created_at,
+        startedAt: mostRecentFailed?.created_at,
       }];
     }
 
@@ -346,8 +370,8 @@ export class GhActionsService {
     if (!this._ctx) return { kind: "hidden" };
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return { kind: "hidden" };
-    return deriveStatusBarState(
-      ghStore.workspaces.get(activeId),
+    return deriveWorkspaceStatusBarState(
+      ghStore.getRepoStates(activeId),
       ghStore.getClearedAt(activeId),
       ghStore.getWorkspaceDismissOnSuccess(activeId),
     );
@@ -358,12 +382,10 @@ export class GhActionsService {
     if (state.kind !== "ok" || !this._ctx) return getTooltip(state);
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return getTooltip(state);
-    return getRichTooltip(
-      state,
-      ghStore.workspaces.get(activeId),
-      ghStore.getClearedAt(activeId),
-      ghStore.getWorkspaceDismissOnSuccess(activeId),
-    );
+    const states = ghStore.getRepoStates(activeId);
+    // Pass primary repo state for rich tooltip (first with a repo info).
+    const primary = states.find((s) => s.repoInfo !== null);
+    return getRichTooltip(state, primary, ghStore.getClearedAt(activeId), ghStore.getWorkspaceDismissOnSuccess(activeId));
   }
 
   subscribe(fn: () => void): () => void {

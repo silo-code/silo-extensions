@@ -423,6 +423,59 @@
   animation: gha-spin 0.8s linear infinite;
 }
 
+/* ─── Multi-repo layout ───────────────────────────────────────── */
+
+.gha-modal__title {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--silo-color-text);
+}
+
+.gha-modal__header--multi {
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: 10px;
+}
+
+.gha-modal__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gha-modal__actions .gha-section__action {
+  margin-left: 0;
+}
+
+.gha-repo-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--silo-color-border-lo, rgba(128,128,128,0.12));
+}
+
+.gha-repo-section:first-child {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.gha-repo-section__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.gha-repo-section__header .gha-modal__repo-link {
+  font-size: 1.1em;
+}
+
+.gha-repo-section .gha-section:first-of-type {
+  margin-top: 10px;
+}
+
 .gha-auth-help {
   display: flex;
   flex-direction: column;
