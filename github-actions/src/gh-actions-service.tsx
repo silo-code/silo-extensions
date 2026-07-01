@@ -320,9 +320,10 @@ export class GhActionsService {
     const states = ghStore.getRepoStates(workspaceId).filter((s) => s.repoInfo !== null);
     if (states.length === 0) return [];
     const clearedBefore = ghStore.getClearedAt(workspaceId);
+    const dismissOnSuccess = ghStore.getWorkspaceDismissOnSuccess(workspaceId);
     let failed = 0;
     for (const s of states) {
-      failed += aggregateRunState(s.runs, clearedBefore).failed;
+      failed += aggregateRunState(s.runs, clearedBefore, dismissOnSuccess).failed;
     }
     if (failed === 0) return [];
     return [{ id: "gh-actions-failed", text: String(failed), color: "var(--silo-color-err)" }];
@@ -333,13 +334,14 @@ export class GhActionsService {
     if (states.length === 0) return [];
 
     const clearedBefore = ghStore.getClearedAt(workspaceId);
+    const dismissOnSuccess = ghStore.getWorkspaceDismissOnSuccess(workspaceId);
     let failed = 0, running = 0;
     let mostRecentFailed: WorkflowRun | undefined;
     for (const s of states) {
-      const agg = aggregateRunState(s.runs, clearedBefore);
+      const agg = aggregateRunState(s.runs, clearedBefore, dismissOnSuccess);
       failed += agg.failed;
       running += agg.running;
-      const top = selectFailedRuns(s.runs, clearedBefore)[0];
+      const top = selectFailedRuns(s.runs, clearedBefore, dismissOnSuccess)[0];
       if (top && (!mostRecentFailed || new Date(top.created_at) > new Date(mostRecentFailed.created_at))) {
         mostRecentFailed = top;
       }
@@ -371,6 +373,7 @@ export class GhActionsService {
     return deriveWorkspaceStatusBarState(
       ghStore.getRepoStates(activeId),
       ghStore.getClearedAt(activeId),
+      ghStore.getWorkspaceDismissOnSuccess(activeId),
     );
   }
 
@@ -382,7 +385,7 @@ export class GhActionsService {
     const states = ghStore.getRepoStates(activeId);
     // Pass primary repo state for rich tooltip (first with a repo info).
     const primary = states.find((s) => s.repoInfo !== null);
-    return getRichTooltip(state, primary, ghStore.getClearedAt(activeId));
+    return getRichTooltip(state, primary, ghStore.getClearedAt(activeId), ghStore.getWorkspaceDismissOnSuccess(activeId));
   }
 
   subscribe(fn: () => void): () => void {

@@ -20,6 +20,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const [repoStates, setRepoStates] = useState(() => ghStore.getRepoStates(activeId));
   const [clearedAt, setClearedAt] = useState(() => ghStore.getClearedAt(activeId));
   const [currentBranchOnly, setCurrentBranchOnly] = useState(() => ghStore.getWorkspaceCurrentBranchOnly(activeId));
+  const [dismissOnSuccess, setDismissOnSuccess] = useState(() => ghStore.getWorkspaceDismissOnSuccess(activeId));
   const [refreshing, setRefreshing] = useState(false);
   const [rerunning, setRerunning] = useState<Set<number>>(new Set());
 
@@ -28,6 +29,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       setRepoStates(ghStore.getRepoStates(activeId));
       setClearedAt(ghStore.getClearedAt(activeId));
       setCurrentBranchOnly(ghStore.getWorkspaceCurrentBranchOnly(activeId));
+      setDismissOnSuccess(ghStore.getWorkspaceDismissOnSuccess(activeId));
     });
   }, [activeId]);
 
@@ -41,6 +43,10 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const handleClearAlerts = useCallback(() => {
     service.clearAlerts(activeId);
   }, [service, activeId]);
+
+  const handleToggleDismissOnSuccess = useCallback((value: boolean) => {
+    ghStore.setWorkspaceDismissOnSuccess(activeId, value);
+  }, [activeId]);
 
   const handleToggleCurrentBranchOnly = useCallback(async (value: boolean) => {
     ghStore.setWorkspaceCurrentBranchOnly(activeId, value);
@@ -91,7 +97,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
     const { owner, repo } = wsState.repoInfo!;
     const currentBranch = wsState.branch;
     const repoUrl = `https://github.com/${owner}/${repo}/actions`;
-    const failedRuns = selectFailedRuns(wsState.runs, clearedAt);
+    const failedRuns = selectFailedRuns(wsState.runs, clearedAt, dismissOnSuccess);
     const runningRuns = selectRunningRuns(wsState.runs);
 
     return (
@@ -186,13 +192,21 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
               onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
             <span>Only monitor the checked-out branch</span>
           </label>
+          <label className="gha-modal__footer-toggle">
+            <input
+              type="checkbox"
+              checked={dismissOnSuccess}
+              onChange={(e) => handleToggleDismissOnSuccess(e.target.checked)}
+            />
+            <span>Auto-dismiss alerts when workflows pass</span>
+          </label>
         </div>
       </div>
     );
   }
 
   // Multi-repo layout — one collapsible section per repo.
-  const totalFailed = visibleStates.reduce((n, s) => n + selectFailedRuns(s.runs, clearedAt).length, 0);
+  const totalFailed = visibleStates.reduce((n, s) => n + selectFailedRuns(s.runs, clearedAt, dismissOnSuccess).length, 0);
   const totalRunning = visibleStates.reduce((n, s) => n + selectRunningRuns(s.runs).length, 0);
 
   return (
@@ -225,6 +239,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
             repoState={repoState}
             ctx={ctx}
             clearedAt={clearedAt}
+            dismissOnSuccess={dismissOnSuccess}
             currentBranchOnly={currentBranchOnly}
             rerunning={rerunning}
             onRerun={(run) => handleRerun(run, repoState)}
@@ -245,6 +260,14 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
             onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
           <span>Only monitor the checked-out branch</span>
         </label>
+        <label className="gha-modal__footer-toggle">
+          <input
+            type="checkbox"
+            checked={dismissOnSuccess}
+            onChange={(e) => handleToggleDismissOnSuccess(e.target.checked)}
+          />
+          <span>Auto-dismiss alerts when workflows pass</span>
+        </label>
       </div>
     </div>
   );
@@ -256,16 +279,17 @@ interface RepoSectionProps {
   repoState: WorkspaceGhState;
   ctx: ExtensionContext;
   clearedAt?: Date;
+  dismissOnSuccess: boolean;
   currentBranchOnly: boolean;
   rerunning: Set<number>;
   onRerun: (run: WorkflowRun) => void;
 }
 
-function RepoSection({ repoState, ctx, clearedAt, currentBranchOnly, rerunning, onRerun }: RepoSectionProps) {
+function RepoSection({ repoState, ctx, clearedAt, dismissOnSuccess, currentBranchOnly, rerunning, onRerun }: RepoSectionProps) {
   const { owner, repo } = repoState.repoInfo!;
   const currentBranch = repoState.branch;
   const repoUrl = `https://github.com/${owner}/${repo}/actions`;
-  const failedRuns = selectFailedRuns(repoState.runs, clearedAt);
+  const failedRuns = selectFailedRuns(repoState.runs, clearedAt, dismissOnSuccess);
   const runningRuns = selectRunningRuns(repoState.runs);
 
   return (

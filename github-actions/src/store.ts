@@ -45,15 +45,39 @@ export type StatusBarState =
   | { kind: "api-error"; message: string }
   | { kind: "ok"; failed: number; running: number };
 
+// Builds a name → latest-success-date map used by dismissOnSuccess filtering.
+function buildLatestSuccessMap(runs: WorkflowRun[]): Map<string, Date> {
+  const map = new Map<string, Date>();
+  for (const r of runs) {
+    if (r.status === "completed" && r.conclusion === "success") {
+      const t = new Date(r.created_at);
+      const prev = map.get(r.name);
+      if (!prev || t > prev) map.set(r.name, t);
+    }
+  }
+  return map;
+}
+
+function isDismissedBySuccess(run: WorkflowRun, latestSuccess: Map<string, Date>): boolean {
+  const successDate = latestSuccess.get(run.name);
+  return !!successDate && successDate >= new Date(run.created_at);
+}
+
 // Failed runs that haven't been cleared, newest first. Shared by the modal list
 // and the workspace decoration so both apply identical filtering.
-export function selectFailedRuns(runs: WorkflowRun[], clearedBefore?: Date): WorkflowRun[] {
+export function selectFailedRuns(
+  runs: WorkflowRun[],
+  clearedBefore?: Date,
+  dismissOnSuccess?: boolean,
+): WorkflowRun[] {
+  const latestSuccess = buildLatestSuccessMap(dismissOnSuccess ? runs : []);
   return runs
     .filter(
       (r) =>
         r.status === "completed" &&
         r.conclusion === "failure" &&
-        (!clearedBefore || new Date(r.created_at) > clearedBefore),
+        (!clearedBefore || new Date(r.created_at) > clearedBefore) &&
+        !isDismissedBySuccess(r, latestSuccess),
     )
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
@@ -62,16 +86,24 @@ export function selectRunningRuns(runs: WorkflowRun[]): WorkflowRun[] {
   return runs.filter((r) => r.status === "in_progress" || r.status === "queued");
 }
 
-export function aggregateRunState(runs: WorkflowRun[], clearedBefore?: Date): { failed: number; running: number } {
+export function aggregateRunState(
+  runs: WorkflowRun[],
+  clearedBefore?: Date,
+  dismissOnSuccess?: boolean,
+): { failed: number; running: number } {
   // Count distinct workflows with any failure run that isn't cleared.
   // Running counts all in-progress/queued runs regardless of clear state.
+  const latestSuccess = buildLatestSuccessMap(dismissOnSuccess ? runs : []);
   const failedWorkflows = new Set<string>();
   let running = 0;
   for (const run of runs) {
     if (run.status === "in_progress" || run.status === "queued") {
       running++;
     } else if (run.status === "completed" && run.conclusion === "failure") {
-      if (!clearedBefore || new Date(run.created_at) > clearedBefore) {
+      if (
+        (!clearedBefore || new Date(run.created_at) > clearedBefore) &&
+        !isDismissedBySuccess(run, latestSuccess)
+      ) {
         failedWorkflows.add(run.name);
       }
     }
@@ -79,14 +111,18 @@ export function aggregateRunState(runs: WorkflowRun[], clearedBefore?: Date): { 
   return { failed: failedWorkflows.size, running };
 }
 
-export function deriveStatusBarState(ws: WorkspaceGhState | undefined, clearedBefore?: Date): StatusBarState {
+export function deriveStatusBarState(
+  ws: WorkspaceGhState | undefined,
+  clearedBefore?: Date,
+  dismissOnSuccess?: boolean,
+): StatusBarState {
   if (!ws) return { kind: "checking" };
   if (ws.error?.kind === "unauthenticated") return { kind: "unauthenticated" };
   if (ws.error?.kind === "no-repo") return { kind: "no-repo" };
   if (ws.error?.kind === "api-error") return { kind: "api-error", message: ws.error.error.message };
   if (!ws.repoInfo) return { kind: "checking" };
 
-  const { failed, running } = aggregateRunState(ws.runs, clearedBefore);
+  const { failed, running } = aggregateRunState(ws.runs, clearedBefore, dismissOnSuccess);
   return { kind: "ok", failed, running };
 }
 
@@ -94,6 +130,7 @@ export function deriveStatusBarState(ws: WorkspaceGhState | undefined, clearedBe
 export function deriveWorkspaceStatusBarState(
   states: WorkspaceGhState[],
   clearedBefore?: Date,
+  dismissOnSuccess?: boolean,
 ): StatusBarState {
   if (states.length === 0) return { kind: "checking" };
   const withRepo = states.filter((s) => s.repoInfo !== null);
@@ -104,7 +141,7 @@ export function deriveWorkspaceStatusBarState(
   if (apiErr) return { kind: "api-error", message: (apiErr.error as Extract<WorkspaceError, { kind: "api-error" }>).error.message };
   let failed = 0, running = 0;
   for (const s of withRepo) {
-    const agg = aggregateRunState(s.runs, clearedBefore);
+    const agg = aggregateRunState(s.runs, clearedBefore, dismissOnSuccess);
     failed += agg.failed;
     running += agg.running;
   }
@@ -121,6 +158,7 @@ export class GhActionsStore {
   private _folderStates = new Map<string, WorkspaceGhState>();
   private _workspaceClearedAt = new Map<string, Date>();
   private _workspaceCurrentBranchOnly = new Map<string, boolean>();
+  private _workspaceDismissOnSuccess = new Map<string, boolean>();
   private _authState: AuthState | null = null;
   private _initialized = false;
   private _storage: ExtensionStorage | null = null;
@@ -160,6 +198,10 @@ export class GhActionsStore {
     const savedBranchOnly = storage.get<Record<string, boolean>>("workspaceCurrentBranchOnly") ?? {};
     for (const [id, val] of Object.entries(savedBranchOnly)) {
       this._workspaceCurrentBranchOnly.set(id, val);
+    }
+    const savedDismissOnSuccess = storage.get<Record<string, boolean>>("workspaceDismissOnSuccess") ?? {};
+    for (const [id, val] of Object.entries(savedDismissOnSuccess)) {
+      this._workspaceDismissOnSuccess.set(id, val);
     }
     const apply = (): void => {
       const saved = storage.get<Partial<GhActionsSettings>>("settings") ?? {};
@@ -230,6 +272,20 @@ export class GhActionsStore {
       record[id] = val;
     }
     this._storage?.set("workspaceCurrentBranchOnly", record);
+    this._notify();
+  }
+
+  getWorkspaceDismissOnSuccess(workspaceId: string): boolean {
+    return this._workspaceDismissOnSuccess.get(workspaceId) ?? false;
+  }
+
+  setWorkspaceDismissOnSuccess(workspaceId: string, value: boolean): void {
+    this._workspaceDismissOnSuccess.set(workspaceId, value);
+    const record: Record<string, boolean> = {};
+    for (const [id, val] of this._workspaceDismissOnSuccess) {
+      record[id] = val;
+    }
+    this._storage?.set("workspaceDismissOnSuccess", record);
     this._notify();
   }
 
