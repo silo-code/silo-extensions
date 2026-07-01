@@ -13,7 +13,7 @@ const DEFAULTS: GhActionsSettings = {
   inactivePollIntervalMs: 10 * 60_000,
 };
 
-// ─── Per-workspace state ──────────────────────────────────────────────────────
+// ─── Per-folder state ─────────────────────────────────────────────────────────
 
 export interface RepoInfo {
   owner: string;
@@ -26,6 +26,7 @@ export type WorkspaceError =
   | { kind: "no-repo" };
 
 export interface WorkspaceGhState {
+  folder: string;
   repoInfo: RepoInfo | null;
   branch: string | null;
   runs: WorkflowRun[];
@@ -89,13 +90,35 @@ export function deriveStatusBarState(ws: WorkspaceGhState | undefined, clearedBe
   return { kind: "ok", failed, running };
 }
 
+// Aggregates status across all folder states in a workspace.
+export function deriveWorkspaceStatusBarState(
+  states: WorkspaceGhState[],
+  clearedBefore?: Date,
+): StatusBarState {
+  if (states.length === 0) return { kind: "checking" };
+  const withRepo = states.filter((s) => s.repoInfo !== null);
+  if (withRepo.length === 0) return { kind: "no-repo" };
+  const unauth = states.find((s) => s.error?.kind === "unauthenticated");
+  if (unauth) return { kind: "unauthenticated" };
+  const apiErr = states.find((s) => s.error?.kind === "api-error");
+  if (apiErr) return { kind: "api-error", message: (apiErr.error as Extract<WorkspaceError, { kind: "api-error" }>).error.message };
+  let failed = 0, running = 0;
+  for (const s of withRepo) {
+    const agg = aggregateRunState(s.runs, clearedBefore);
+    failed += agg.failed;
+    running += agg.running;
+  }
+  return { kind: "ok", failed, running };
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 type Listener = () => void;
 
 export class GhActionsStore {
   private _settings: GhActionsSettings = { ...DEFAULTS };
-  private _workspaces = new Map<string, WorkspaceGhState>();
+  // Key: `${workspaceId}:${folder}` — one entry per (workspace, folder) pair.
+  private _folderStates = new Map<string, WorkspaceGhState>();
   private _workspaceClearedAt = new Map<string, Date>();
   private _workspaceCurrentBranchOnly = new Map<string, boolean>();
   private _authState: AuthState | null = null;
@@ -119,8 +142,13 @@ export class GhActionsStore {
     return this._initialized;
   }
 
-  get workspaces(): ReadonlyMap<string, WorkspaceGhState> {
-    return this._workspaces;
+  getRepoStates(workspaceId: string): WorkspaceGhState[] {
+    const prefix = `${workspaceId}:`;
+    const result: WorkspaceGhState[] = [];
+    for (const [key, state] of this._folderStates) {
+      if (key.startsWith(prefix)) result.push(state);
+    }
+    return result;
   }
 
   hydrate(storage: ExtensionStorage): void {
@@ -157,20 +185,34 @@ export class GhActionsStore {
     this._notify();
   }
 
-  setWorkspaceState(workspaceId: string, state: WorkspaceGhState): void {
-    this._workspaces.set(workspaceId, state);
+  setFolderState(workspaceId: string, folder: string, state: WorkspaceGhState): void {
+    this._folderStates.set(`${workspaceId}:${folder}`, state);
     this._notify();
+  }
+
+  removeFolderState(workspaceId: string, folder: string): void {
+    if (this._folderStates.delete(`${workspaceId}:${folder}`)) this._notify();
   }
 
   clearWorkspaceRuns(workspaceId: string): void {
-    const prev = this._workspaces.get(workspaceId);
-    if (!prev) return;
-    this._workspaces.set(workspaceId, { ...prev, runs: [], lastFetched: null });
-    this._notify();
+    const prefix = `${workspaceId}:`;
+    let changed = false;
+    for (const [key, state] of this._folderStates) {
+      if (key.startsWith(prefix)) {
+        this._folderStates.set(key, { ...state, runs: [], lastFetched: null });
+        changed = true;
+      }
+    }
+    if (changed) this._notify();
   }
 
   removeWorkspace(workspaceId: string): void {
-    if (this._workspaces.delete(workspaceId)) this._notify();
+    const prefix = `${workspaceId}:`;
+    let changed = false;
+    for (const key of this._folderStates.keys()) {
+      if (key.startsWith(prefix)) { this._folderStates.delete(key); changed = true; }
+    }
+    if (changed) this._notify();
   }
 
   getClearedAt(workspaceId: string): Date | undefined {

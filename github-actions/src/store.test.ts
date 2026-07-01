@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   aggregateRunState,
   deriveStatusBarState,
+  deriveWorkspaceStatusBarState,
   selectFailedRuns,
   selectRunningRuns,
   type WorkspaceGhState,
@@ -103,6 +104,7 @@ describe("selectRunningRuns", () => {
 
 describe("deriveStatusBarState", () => {
   const base: WorkspaceGhState = {
+    folder: "/repo",
     repoInfo: { owner: "o", repo: "r" },
     branch: "main",
     runs: [],
@@ -132,5 +134,66 @@ describe("deriveStatusBarState", () => {
   it("returns ok with aggregated counts for a healthy workspace", () => {
     const runs = [failed({ name: "build" }), run({ status: "in_progress", conclusion: null })];
     expect(deriveStatusBarState({ ...base, runs })).toEqual({ kind: "ok", failed: 1, running: 1 });
+  });
+});
+
+describe("deriveWorkspaceStatusBarState", () => {
+  const mkState = (overrides: Partial<WorkspaceGhState> = {}): WorkspaceGhState => ({
+    folder: "/repo",
+    repoInfo: { owner: "o", repo: "r" },
+    branch: "main",
+    runs: [],
+    lastFetched: new Date(),
+    error: null,
+    ...overrides,
+  });
+
+  it("is checking when there are no folder states", () => {
+    expect(deriveWorkspaceStatusBarState([])).toEqual({ kind: "checking" });
+  });
+
+  it("is no-repo when all states have no repoInfo", () => {
+    expect(deriveWorkspaceStatusBarState([
+      mkState({ repoInfo: null, error: { kind: "no-repo" } }),
+    ])).toEqual({ kind: "no-repo" });
+  });
+
+  it("bubbles up unauthenticated from any repo", () => {
+    expect(deriveWorkspaceStatusBarState([
+      mkState({ error: { kind: "unauthenticated" }, repoInfo: null }),
+      mkState(),
+    ]).kind).toBe("unauthenticated");
+  });
+
+  it("bubbles up api-error from any repo", () => {
+    const result = deriveWorkspaceStatusBarState([
+      mkState({ error: { kind: "api-error", error: { kind: "network", message: "timeout" } } }),
+      mkState(),
+    ]);
+    expect(result).toEqual({ kind: "api-error", message: "timeout" });
+  });
+
+  it("aggregates failures across multiple repos", () => {
+    const states = [
+      mkState({ runs: [failed({ name: "build" })] }),
+      mkState({ folder: "/repo2", repoInfo: { owner: "o", repo: "r2" }, runs: [failed({ name: "lint" })] }),
+    ];
+    expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 2, running: 0 });
+  });
+
+  it("aggregates running runs across multiple repos", () => {
+    const states = [
+      mkState({ runs: [run({ status: "in_progress", conclusion: null })] }),
+      mkState({ folder: "/repo2", repoInfo: { owner: "o", repo: "r2" }, runs: [run({ status: "queued", conclusion: null })] }),
+    ];
+    expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 0, running: 2 });
+  });
+
+  it("ignores no-repo folders when other repos have data", () => {
+    const states = [
+      mkState({ runs: [failed({ name: "CI" })] }),
+      mkState({ folder: "/not-github", repoInfo: null, error: { kind: "no-repo" } }),
+    ];
+    expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 1, running: 0 });
   });
 });

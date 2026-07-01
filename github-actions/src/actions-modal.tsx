@@ -3,7 +3,7 @@ import { ArrowClockwise, CopySimple } from "@phosphor-icons/react";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { WorkflowRun } from "./github-api";
-import { ghStore, selectFailedRuns, selectRunningRuns } from "./store";
+import { ghStore, WorkspaceGhState, selectFailedRuns, selectRunningRuns } from "./store";
 import { formatElapsed } from "./format-elapsed";
 
 // How long the "Copied!" confirmation stays visible after copying a run URL.
@@ -17,7 +17,7 @@ interface Props {
 
 export function ActionsModal({ ctx, service, close: _close }: Props) {
   const activeId = ctx.workspaces.getState().activeId ?? "";
-  const [wsState, setWsState] = useState(() => ghStore.workspaces.get(activeId));
+  const [repoStates, setRepoStates] = useState(() => ghStore.getRepoStates(activeId));
   const [clearedAt, setClearedAt] = useState(() => ghStore.getClearedAt(activeId));
   const [currentBranchOnly, setCurrentBranchOnly] = useState(() => ghStore.getWorkspaceCurrentBranchOnly(activeId));
   const [refreshing, setRefreshing] = useState(false);
@@ -25,7 +25,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
 
   useEffect(() => {
     return ghStore.subscribe(() => {
-      setWsState(ghStore.workspaces.get(activeId));
+      setRepoStates(ghStore.getRepoStates(activeId));
       setClearedAt(ghStore.getClearedAt(activeId));
       setCurrentBranchOnly(ghStore.getWorkspaceCurrentBranchOnly(activeId));
     });
@@ -51,12 +51,11 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   }, [activeId, service]);
 
   const handleRerun = useCallback(
-    async (run: WorkflowRun) => {
-      const repo = wsState?.repoInfo;
-      const ws = ctx.workspaces.get(activeId);
-      if (!repo || !ws) return;
+    async (run: WorkflowRun, repoState: WorkspaceGhState) => {
+      const repo = repoState.repoInfo;
+      if (!repo) return;
       setRerunning((prev) => new Set(prev).add(run.id));
-      const result = await service.rerun(repo.owner, repo.repo, run.id, ws.folder);
+      const result = await service.rerun(repo.owner, repo.repo, run.id, repoState.folder);
       setRerunning((prev) => {
         const next = new Set(prev);
         next.delete(run.id);
@@ -69,10 +68,12 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
         ctx.ui.notify("error", result.message ?? "Re-run failed");
       }
     },
-    [ctx, wsState, activeId, service, handleRefresh],
+    [ctx, service, handleRefresh],
   );
 
-  if (!wsState || !wsState.repoInfo) {
+  const visibleStates = repoStates.filter((s) => s.repoInfo !== null);
+
+  if (visibleStates.length === 0) {
     return (
       <div className="gha-modal">
         <div className="gha-empty">
@@ -84,93 +85,231 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
     );
   }
 
-  const { owner, repo } = wsState.repoInfo;
-  const currentBranch = wsState.branch;
-  const repoUrl = `https://github.com/${owner}/${repo}/actions`;
+  // Single-repo layout — identical to original design.
+  if (visibleStates.length === 1) {
+    const wsState = visibleStates[0];
+    const { owner, repo } = wsState.repoInfo!;
+    const currentBranch = wsState.branch;
+    const repoUrl = `https://github.com/${owner}/${repo}/actions`;
+    const failedRuns = selectFailedRuns(wsState.runs, clearedAt);
+    const runningRuns = selectRunningRuns(wsState.runs);
 
-  const failedRuns = selectFailedRuns(wsState.runs, clearedAt);
-  const runningRuns = selectRunningRuns(wsState.runs);
+    return (
+      <div className="gha-modal">
+        <div className="gha-modal__header">
+          <button
+            className="gha-modal__repo-link"
+            onClick={() => ctx.ui.openExternal(repoUrl)}
+            title="Open on GitHub"
+          >
+            <IconGitHub className="gha-modal__github-icon" />
+            <span className="gha-modal__repo-name">{owner}/{repo}</span>
+            <IconExternalLink className="gha-modal__ext-icon" />
+          </button>
+          <div className="gha-modal__subrow">
+            {currentBranch && (
+              <span className="gha-modal__branch">
+                <IconBranch />
+                {currentBranch}
+              </span>
+            )}
+            {wsState.lastFetched && (
+              <span className="gha-modal__updated">Updated {formatElapsed(wsState.lastFetched)}</span>
+            )}
+            <button
+              className={`gha-refresh-btn${refreshing ? " gha-refresh-btn--spinning" : ""}`}
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh"
+              aria-label="Refresh workflows"
+            >
+              <ArrowClockwise size={14} weight="bold" />
+            </button>
+          </div>
+        </div>
+
+        <div className="gha-modal__body">
+          {refreshing && <div className="gha-loading">Checking workflows…</div>}
+          {!refreshing && wsState.error?.kind === "api-error" && (
+            <div className="gha-error-banner"><IconWarn />{wsState.error.error.message}</div>
+          )}
+          {!refreshing && failedRuns.length > 0 && (
+            <section className="gha-section">
+              <div className="gha-section__header">
+                <span className="gha-section__dot gha-section__dot--failed" />
+                <span className="gha-section__title">Failed</span>
+                <span className="gha-section__count">{failedRuns.length}</span>
+                <button className="gha-section__action" onClick={handleClearAlerts} title="Mark current failures as seen">
+                  Clear alerts
+                </button>
+              </div>
+              <div className="gha-runs">
+                {failedRuns.map((run) => (
+                  <RunCard key={run.id} run={run} ctx={ctx} variant="failed"
+                    showBranch={!currentBranchOnly && run.head_branch !== currentBranch}
+                    rerunning={rerunning.has(run.id)}
+                    onRerun={() => handleRerun(run, wsState)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {!refreshing && runningRuns.length > 0 && (
+            <section className="gha-section">
+              <div className="gha-section__header">
+                <span className="gha-section__dot gha-section__dot--running" />
+                <span className="gha-section__title">Running</span>
+                <span className="gha-section__count">{runningRuns.length}</span>
+              </div>
+              <div className="gha-runs">
+                {runningRuns.map((run) => (
+                  <RunCard key={run.id} run={run} ctx={ctx} variant="running"
+                    showBranch={!currentBranchOnly && run.head_branch !== currentBranch}
+                    rerunning={false} onRerun={() => {}}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {!refreshing && failedRuns.length === 0 && runningRuns.length === 0 && (
+            <div className="gha-empty">
+              <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
+              <div className="gha-empty__title">All workflows passing</div>
+              <div className="gha-empty__sub">No failures or active runs on this repo.</div>
+            </div>
+          )}
+        </div>
+
+        <div className="gha-modal__footer">
+          <label className="gha-modal__footer-toggle">
+            <input type="checkbox" checked={currentBranchOnly} disabled={refreshing}
+              onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
+            <span>Only monitor the checked-out branch</span>
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  // Multi-repo layout — one collapsible section per repo.
+  const totalFailed = visibleStates.reduce((n, s) => n + selectFailedRuns(s.runs, clearedAt).length, 0);
+  const totalRunning = visibleStates.reduce((n, s) => n + selectRunningRuns(s.runs).length, 0);
 
   return (
     <div className="gha-modal">
-      {/* ── Header ── */}
-      <div className="gha-modal__header">
-        <button
-          className="gha-modal__repo-link"
-          onClick={() => ctx.ui.openExternal(repoUrl)}
-          title="Open on GitHub"
-        >
-          <IconGitHub className="gha-modal__github-icon" />
-          <span className="gha-modal__repo-name">{owner}/{repo}</span>
-          <IconExternalLink className="gha-modal__ext-icon" />
-        </button>
-        <div className="gha-modal__subrow">
-          {currentBranch && (
-            <span className="gha-modal__branch">
-              <IconBranch />
-              {currentBranch}
-            </span>
-          )}
-          {wsState.lastFetched && (
-            <span className="gha-modal__updated">Updated {formatElapsed(wsState.lastFetched)}</span>
+      <div className="gha-modal__header gha-modal__header--multi">
+        <span className="gha-modal__title">{visibleStates.length} repositories</span>
+        <div className="gha-modal__actions">
+          {totalFailed > 0 && (
+            <button className="gha-section__action" onClick={handleClearAlerts} title="Mark all failures as seen">
+              Clear alerts
+            </button>
           )}
           <button
             className={`gha-refresh-btn${refreshing ? " gha-refresh-btn--spinning" : ""}`}
             onClick={handleRefresh}
             disabled={refreshing}
-            title="Refresh"
-            aria-label="Refresh workflows"
+            title="Refresh all"
+            aria-label="Refresh all repositories"
           >
             <ArrowClockwise size={14} weight="bold" />
           </button>
         </div>
       </div>
 
-      {/* ── Scrollable body ── */}
       <div className="gha-modal__body">
+        {refreshing && <div className="gha-loading">Checking workflows…</div>}
+        {!refreshing && visibleStates.map((repoState) => (
+          <RepoSection
+            key={repoState.folder}
+            repoState={repoState}
+            ctx={ctx}
+            clearedAt={clearedAt}
+            currentBranchOnly={currentBranchOnly}
+            rerunning={rerunning}
+            onRerun={(run) => handleRerun(run, repoState)}
+          />
+        ))}
+        {!refreshing && totalFailed === 0 && totalRunning === 0 && (
+          <div className="gha-empty">
+            <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
+            <div className="gha-empty__title">All workflows passing</div>
+            <div className="gha-empty__sub">No failures or active runs across all repos.</div>
+          </div>
+        )}
+      </div>
 
-      {/* ── Loading ── */}
-      {refreshing && (
-        <div className="gha-loading">Checking workflows…</div>
+      <div className="gha-modal__footer">
+        <label className="gha-modal__footer-toggle">
+          <input type="checkbox" checked={currentBranchOnly} disabled={refreshing}
+            onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
+          <span>Only monitor the checked-out branch</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ─── Per-repo section (multi-repo layout) ─────────────────────────────────────
+
+interface RepoSectionProps {
+  repoState: WorkspaceGhState;
+  ctx: ExtensionContext;
+  clearedAt?: Date;
+  currentBranchOnly: boolean;
+  rerunning: Set<number>;
+  onRerun: (run: WorkflowRun) => void;
+}
+
+function RepoSection({ repoState, ctx, clearedAt, currentBranchOnly, rerunning, onRerun }: RepoSectionProps) {
+  const { owner, repo } = repoState.repoInfo!;
+  const currentBranch = repoState.branch;
+  const repoUrl = `https://github.com/${owner}/${repo}/actions`;
+  const failedRuns = selectFailedRuns(repoState.runs, clearedAt);
+  const runningRuns = selectRunningRuns(repoState.runs);
+
+  return (
+    <div className="gha-repo-section">
+      <div className="gha-repo-section__header">
+        <button className="gha-modal__repo-link" onClick={() => ctx.ui.openExternal(repoUrl)} title="Open on GitHub">
+          <IconGitHub className="gha-modal__github-icon" />
+          <span className="gha-modal__repo-name">{owner}/{repo}</span>
+          <IconExternalLink className="gha-modal__ext-icon" />
+        </button>
+        {currentBranch && (
+          <span className="gha-modal__branch">
+            <IconBranch />{currentBranch}
+          </span>
+        )}
+        {repoState.lastFetched && (
+          <span className="gha-modal__updated">Updated {formatElapsed(repoState.lastFetched)}</span>
+        )}
+      </div>
+
+      {repoState.error?.kind === "api-error" && (
+        <div className="gha-error-banner"><IconWarn />{repoState.error.error.message}</div>
       )}
 
-      {/* ── API error ── */}
-      {!refreshing && wsState.error?.kind === "api-error" && (
-        <div className="gha-error-banner">
-          <IconWarn />
-          {wsState.error.error.message}
-        </div>
-      )}
-
-      {/* ── Failed section ── */}
-      {!refreshing && failedRuns.length > 0 && (
+      {failedRuns.length > 0 && (
         <section className="gha-section">
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--failed" />
             <span className="gha-section__title">Failed</span>
             <span className="gha-section__count">{failedRuns.length}</span>
-            <button className="gha-section__action" onClick={handleClearAlerts} title="Mark current failures as seen">
-              Clear alerts
-            </button>
           </div>
           <div className="gha-runs">
             {failedRuns.map((run) => (
-              <RunCard
-                key={run.id}
-                run={run}
-                ctx={ctx}
-                variant="failed"
+              <RunCard key={run.id} run={run} ctx={ctx} variant="failed"
                 showBranch={!currentBranchOnly && run.head_branch !== currentBranch}
                 rerunning={rerunning.has(run.id)}
-                onRerun={() => handleRerun(run)}
+                onRerun={() => onRerun(run)}
               />
             ))}
           </div>
         </section>
       )}
 
-      {/* ── Running section ── */}
-      {!refreshing && runningRuns.length > 0 && (
+      {runningRuns.length > 0 && (
         <section className="gha-section">
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--running" />
@@ -179,43 +318,14 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
           </div>
           <div className="gha-runs">
             {runningRuns.map((run) => (
-              <RunCard
-                key={run.id}
-                run={run}
-                ctx={ctx}
-                variant="running"
+              <RunCard key={run.id} run={run} ctx={ctx} variant="running"
                 showBranch={!currentBranchOnly && run.head_branch !== currentBranch}
-                rerunning={false}
-                onRerun={() => {}}
+                rerunning={false} onRerun={() => {}}
               />
             ))}
           </div>
         </section>
       )}
-
-      {/* ── All clear ── */}
-      {!refreshing && failedRuns.length === 0 && runningRuns.length === 0 && (
-        <div className="gha-empty">
-          <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
-          <div className="gha-empty__title">All workflows passing</div>
-          <div className="gha-empty__sub">No failures or active runs on this repo.</div>
-        </div>
-      )}
-
-      </div>
-
-      {/* ── Footer ── */}
-      <div className="gha-modal__footer">
-        <label className="gha-modal__footer-toggle">
-          <input
-            type="checkbox"
-            checked={currentBranchOnly}
-            disabled={refreshing}
-            onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)}
-          />
-          <span>Only monitor the checked-out branch</span>
-        </label>
-      </div>
     </div>
   );
 }
