@@ -26,7 +26,7 @@
 }
 
 .gha-status__icon--failed {
-  color: var(--silo-color-danger);
+  color: var(--silo-color-err);
 }
 
 .gha-status__icon--dim {
