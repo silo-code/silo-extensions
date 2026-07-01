@@ -70,6 +70,38 @@ describe("aggregateRunState", () => {
     const runs = [failed({ name: "a" }), failed({ name: "b" })];
     expect(aggregateRunState(runs).failed).toBe(2);
   });
+
+  it("dismissOnSuccess: hides failure when a newer success exists for the same workflow", () => {
+    const runs = [
+      failed({ name: "CI", created_at: "2026-01-01T00:00:00Z" }),
+      run({ name: "CI", conclusion: "success", created_at: "2026-01-02T00:00:00Z" }),
+    ];
+    expect(aggregateRunState(runs, undefined, true).failed).toBe(0);
+  });
+
+  it("dismissOnSuccess: keeps failure when no success exists for that workflow", () => {
+    const runs = [
+      failed({ name: "CI", created_at: "2026-01-01T00:00:00Z" }),
+      run({ name: "lint", conclusion: "success", created_at: "2026-01-02T00:00:00Z" }),
+    ];
+    expect(aggregateRunState(runs, undefined, true).failed).toBe(1);
+  });
+
+  it("dismissOnSuccess: keeps failure when the only success is older than the failure", () => {
+    const runs = [
+      run({ name: "CI", conclusion: "success", created_at: "2026-01-01T00:00:00Z" }),
+      failed({ name: "CI", created_at: "2026-01-02T00:00:00Z" }),
+    ];
+    expect(aggregateRunState(runs, undefined, true).failed).toBe(1);
+  });
+
+  it("dismissOnSuccess: false keeps all failures regardless of successes", () => {
+    const runs = [
+      failed({ name: "CI", created_at: "2026-01-01T00:00:00Z" }),
+      run({ name: "CI", conclusion: "success", created_at: "2026-01-02T00:00:00Z" }),
+    ];
+    expect(aggregateRunState(runs, undefined, false).failed).toBe(1);
+  });
 });
 
 describe("selectFailedRuns", () => {
@@ -86,6 +118,26 @@ describe("selectFailedRuns", () => {
       "2026-01-08T00:00:00Z",
       "2026-01-06T00:00:00Z",
     ]);
+  });
+
+  it("dismissOnSuccess: excludes failures superseded by a newer success", () => {
+    const runs = [
+      failed({ name: "CI", created_at: "2026-01-01T00:00:00Z" }),
+      failed({ name: "lint", created_at: "2026-01-02T00:00:00Z" }),
+      run({ name: "CI", conclusion: "success", created_at: "2026-01-03T00:00:00Z" }),
+    ];
+    const result = selectFailedRuns(runs, undefined, true);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe("lint");
+  });
+
+  it("dismissOnSuccess: keeps failures with no newer success", () => {
+    const runs = [
+      failed({ name: "CI", created_at: "2026-01-02T00:00:00Z" }),
+      run({ name: "CI", conclusion: "success", created_at: "2026-01-01T00:00:00Z" }),
+    ];
+    const result = selectFailedRuns(runs, undefined, true);
+    expect(result).toHaveLength(1);
   });
 });
 

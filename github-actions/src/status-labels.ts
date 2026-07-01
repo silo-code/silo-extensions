@@ -60,6 +60,7 @@ export function getRichTooltip(
   state: StatusBarState,
   ws?: WorkspaceGhState,
   clearedAt?: Date,
+  dismissOnSuccess?: boolean,
 ): string {
   if (state.kind !== "ok") return getTooltip(state);
 
@@ -73,7 +74,7 @@ export function getRichTooltip(
 
   if (state.failed > 0) {
     const names = ws
-      ? [...new Set(selectFailedRuns(ws.runs, clearedAt).map((r) => r.name))]
+      ? [...new Set(selectFailedRuns(ws.runs, clearedAt, dismissOnSuccess).map((r) => r.name))]
       : [];
     if (names.length > 0) {
       const shown = names.slice(0, 3);
