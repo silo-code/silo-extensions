@@ -36,13 +36,13 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
               </div>
               <div className="es-control">
                 {authState === "ok" && (
-                  <span style={{ color: "var(--silo-color-success, #22c55e)", fontWeight: 500 }}>✓ Authenticated</span>
+                  <span style={{ color: "var(--silo-color-ok)", fontWeight: 500 }}>✓ Authenticated</span>
                 )}
                 {authState === "unauthenticated" && (
-                  <span style={{ color: "var(--silo-color-danger, #e53e3e)", fontWeight: 500 }}>✗ Not authenticated — run <code>gh auth login</code></span>
+                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>✗ Not authenticated — run <code>gh auth login</code></span>
                 )}
                 {authState === "missing" && (
-                  <span style={{ color: "var(--silo-color-danger, #e53e3e)", fontWeight: 500 }}>
+                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>
                     ✗ gh CLI not installed —{" "}
                     <a href="https://cli.github.com" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
                       cli.github.com

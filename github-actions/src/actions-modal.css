@@ -151,9 +151,9 @@
   padding: 10px 12px;
   margin-bottom: 4px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--silo-color-danger, #e53e3e) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--silo-color-danger, #e53e3e) 25%, transparent);
-  color: var(--silo-color-danger, #e53e3e);
+  background: color-mix(in srgb, var(--silo-color-err) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--silo-color-err) 25%, transparent);
+  color: var(--silo-color-err);
   font-size: 1.08em;
 }
 
@@ -180,8 +180,8 @@
 }
 
 .gha-section__dot--failed {
-  background: var(--silo-color-danger, #e53e3e);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--silo-color-danger, #e53e3e) 20%, transparent);
+  background: var(--silo-color-err);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--silo-color-err) 20%, transparent);
 }
 
 .gha-section__dot--running {
@@ -258,7 +258,7 @@
   margin-left: 9px;
 }
 
-.gha-run__icon--failed { color: var(--silo-color-danger, #e53e3e); }
+.gha-run__icon--failed { color: var(--silo-color-err); }
 .gha-run__icon--running { color: var(--silo-color-accent, #4f8ef7); }
 
 .gha-run__body {
@@ -361,12 +361,12 @@
 
 .gha-btn--rerun {
   background: none;
-  border: 1px solid color-mix(in srgb, var(--silo-color-danger, #e53e3e) 50%, transparent);
-  color: var(--silo-color-danger, #e53e3e);
+  border: 1px solid color-mix(in srgb, var(--silo-color-err) 50%, transparent);
+  color: var(--silo-color-err);
 }
 
 .gha-btn--rerun:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--silo-color-danger, #e53e3e) 10%, transparent);
+  background: color-mix(in srgb, var(--silo-color-err) 10%, transparent);
 }
 
 .gha-btn--rerun:disabled {
@@ -394,7 +394,7 @@
 }
 
 .gha-empty__icon-wrap {
-  color: var(--silo-color-success, #38a169);
+  color: var(--silo-color-ok);
   margin-bottom: 4px;
 }
 

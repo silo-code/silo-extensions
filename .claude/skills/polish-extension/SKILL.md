@@ -16,6 +16,9 @@ Identify the target extension (from the argument, or the nearest extension
 directory). Read every file under `src/`. Also read `system-monitor/src/` —
 it is the canonical reference; agents compare against it.
 
+Also read `xerro-edit/tools/stylelint/design-tokens-only.mjs` to get the
+authoritative whitelist of every extension-consumable `--silo-*` token name.
+
 ## Phase 1 — Six review agents, all at once
 
 Launch all six in a single message. Give each agent the full source of both
@@ -76,10 +79,31 @@ Does the CSS respect the Silo design token contract?
 - CSS is in `styles.css`, not a template-literal string in any `.ts`/`.tsx` file.
 - `build.mjs` has `loader: { ".css": "text" }`. `css.d.ts` declares
   `module "*.css" { const content: string; export default content; }`.
-- Every property that varies with the theme uses the appropriate token tier:
-  colors → `--silo-color-*`, type → `--silo-font-ui` / `--silo-font-mono` /
-  `--silo-font-size-*`, corners → `--silo-radius-*`, button chrome →
-  `--silo-button-*`.
+- Every property that varies with the theme uses an **actual Silo token** — never
+  fabricate names. The valid design tokens are defined in the stylelint whitelist
+  (`xerro-edit/tools/stylelint/design-tokens-only.mjs` → `DESIGN_TOKENS`) and
+  documented at `xerro-edit/apps/docs/api/theming.md`:
+
+  **Generic colors** (extension-consumable):
+  `--silo-color-bg`, `--silo-color-bg-hover`, `--silo-color-bg-active`,
+  `--silo-color-text`, `--silo-color-text-hi`, `--silo-color-text-lo`,
+  `--silo-color-accent`, `--silo-color-accent-2`, `--silo-color-border`,
+  `--silo-color-border-strong`, `--silo-color-input-bg`, `--silo-color-input-text`,
+  `--silo-color-button-bg`, `--silo-color-button-text`,
+  `--silo-color-toolbar-*`, `--silo-color-content-*`
+
+  **Status** (semantic treatments — the only correct names):
+  `--silo-color-ok` (success), `--silo-color-warn` (warning),
+  `--silo-color-err` (error / destructive)
+
+  **Typography + sizing**: `--silo-font-ui`, `--silo-font-mono`,
+  `--silo-font-size-base`, `--silo-font-size-sm`, `--silo-font-size-chrome`,
+  `--silo-radius-sm`, `--silo-radius-md`
+
+  **Buttons**: `--silo-button-bg`, `--silo-button-text`, `--silo-button-border`,
+  `--silo-button-primary-bg`, `--silo-button-primary-text`,
+  `--silo-button-danger-bg`, `--silo-button-danger-text`
+
 - No component tokens (`--silo-content-*`, `--silo-statusbar-*`) or internal
   tokens (`--silo-internal-*`).
 - No hard-coded hex/rgb colors, named colors, pixel font sizes, or font family

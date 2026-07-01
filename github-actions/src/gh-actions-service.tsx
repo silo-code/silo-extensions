@@ -307,7 +307,7 @@ export class GhActionsService {
     if (!ws || ws.error?.kind === "no-repo" || !ws.repoInfo) return [];
     const { failed } = aggregateRunState(ws.runs, ghStore.getClearedAt(workspaceId));
     if (failed === 0) return [];
-    return [{ id: "gh-actions-failed", text: String(failed), color: "var(--silo-color-danger, #e53e3e)" }];
+    return [{ id: "gh-actions-failed", text: String(failed), color: "var(--silo-color-err)" }];
   }
 
   getDecorationsFor(workspaceId: string): WorkspaceStatusRow[] {
