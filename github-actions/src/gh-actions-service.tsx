@@ -305,7 +305,11 @@ export class GhActionsService {
   getBadgesFor(workspaceId: string): WorkspaceBadge[] {
     const ws = ghStore.workspaces.get(workspaceId);
     if (!ws || ws.error?.kind === "no-repo" || !ws.repoInfo) return [];
-    const { failed } = aggregateRunState(ws.runs, ghStore.getClearedAt(workspaceId));
+    const { failed } = aggregateRunState(
+      ws.runs,
+      ghStore.getClearedAt(workspaceId),
+      ghStore.getWorkspaceDismissOnSuccess(workspaceId),
+    );
     if (failed === 0) return [];
     return [{ id: "gh-actions-failed", text: String(failed), color: "var(--silo-color-err)" }];
   }
@@ -315,10 +319,11 @@ export class GhActionsService {
     if (!ws || ws.error?.kind === "no-repo" || !ws.repoInfo) return [];
 
     const clearedBefore = ghStore.getClearedAt(workspaceId);
-    const { failed, running } = aggregateRunState(ws.runs, clearedBefore);
+    const dismissOnSuccess = ghStore.getWorkspaceDismissOnSuccess(workspaceId);
+    const { failed, running } = aggregateRunState(ws.runs, clearedBefore, dismissOnSuccess);
 
     if (failed > 0) {
-      const mostRecent = selectFailedRuns(ws.runs, clearedBefore)[0];
+      const mostRecent = selectFailedRuns(ws.runs, clearedBefore, dismissOnSuccess)[0];
       return [{
         id: "gh-actions",
         status: "error",
@@ -341,7 +346,11 @@ export class GhActionsService {
     if (!this._ctx) return { kind: "hidden" };
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return { kind: "hidden" };
-    return deriveStatusBarState(ghStore.workspaces.get(activeId), ghStore.getClearedAt(activeId));
+    return deriveStatusBarState(
+      ghStore.workspaces.get(activeId),
+      ghStore.getClearedAt(activeId),
+      ghStore.getWorkspaceDismissOnSuccess(activeId),
+    );
   }
 
   getTooltipContent(): string {
@@ -349,7 +358,12 @@ export class GhActionsService {
     if (state.kind !== "ok" || !this._ctx) return getTooltip(state);
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return getTooltip(state);
-    return getRichTooltip(state, ghStore.workspaces.get(activeId), ghStore.getClearedAt(activeId));
+    return getRichTooltip(
+      state,
+      ghStore.workspaces.get(activeId),
+      ghStore.getClearedAt(activeId),
+      ghStore.getWorkspaceDismissOnSuccess(activeId),
+    );
   }
 
   subscribe(fn: () => void): () => void {

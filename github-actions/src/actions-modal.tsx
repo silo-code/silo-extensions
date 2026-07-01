@@ -20,6 +20,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const [wsState, setWsState] = useState(() => ghStore.workspaces.get(activeId));
   const [clearedAt, setClearedAt] = useState(() => ghStore.getClearedAt(activeId));
   const [currentBranchOnly, setCurrentBranchOnly] = useState(() => ghStore.getWorkspaceCurrentBranchOnly(activeId));
+  const [dismissOnSuccess, setDismissOnSuccess] = useState(() => ghStore.getWorkspaceDismissOnSuccess(activeId));
   const [refreshing, setRefreshing] = useState(false);
   const [rerunning, setRerunning] = useState<Set<number>>(new Set());
 
@@ -28,6 +29,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       setWsState(ghStore.workspaces.get(activeId));
       setClearedAt(ghStore.getClearedAt(activeId));
       setCurrentBranchOnly(ghStore.getWorkspaceCurrentBranchOnly(activeId));
+      setDismissOnSuccess(ghStore.getWorkspaceDismissOnSuccess(activeId));
     });
   }, [activeId]);
 
@@ -41,6 +43,10 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const handleClearAlerts = useCallback(() => {
     service.clearAlerts(activeId);
   }, [service, activeId]);
+
+  const handleToggleDismissOnSuccess = useCallback((value: boolean) => {
+    ghStore.setWorkspaceDismissOnSuccess(activeId, value);
+  }, [activeId]);
 
   const handleToggleCurrentBranchOnly = useCallback(async (value: boolean) => {
     ghStore.setWorkspaceCurrentBranchOnly(activeId, value);
@@ -88,7 +94,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   const currentBranch = wsState.branch;
   const repoUrl = `https://github.com/${owner}/${repo}/actions`;
 
-  const failedRuns = selectFailedRuns(wsState.runs, clearedAt);
+  const failedRuns = selectFailedRuns(wsState.runs, clearedAt, dismissOnSuccess);
   const runningRuns = selectRunningRuns(wsState.runs);
 
   return (
@@ -214,6 +220,14 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
             onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)}
           />
           <span>Only monitor the checked-out branch</span>
+        </label>
+        <label className="gha-modal__footer-toggle">
+          <input
+            type="checkbox"
+            checked={dismissOnSuccess}
+            onChange={(e) => handleToggleDismissOnSuccess(e.target.checked)}
+          />
+          <span>Auto-dismiss alerts when workflows pass</span>
         </label>
       </div>
     </div>
