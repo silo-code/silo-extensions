@@ -15,6 +15,7 @@ import { getTooltip, getRichTooltip } from "./status-labels";
 
 const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
+const MIN_FETCH_INTERVAL_MS = 10_000;
 
 async function resolveRemote(
   ctx: ExtensionContext,
@@ -57,6 +58,14 @@ export class GhActionsService {
   // Key: `${workspaceId}:${folder}` — prevents concurrent refreshes per folder.
   private _refreshingFolders = new Set<string>();
   private _seenFailedRuns = new Set<number>();
+  // Current polling mode per workspace. Reconciles are driven by workspace
+  // events that fire on unrelated changes (terminal output, editor tabs), so
+  // refresh/restart only on mode transitions — never on every event.
+  private _pollingMode = new Map<string, "active" | "inactive">();
+  private _knownFolders = new Map<string, Set<string>>();
+  private _lastFetchedAt = new Map<string, number>();
+  private _lastActiveIntervalMs: number | null = null;
+  private _lastInactiveIntervalMs: number | null = null;
   private _ctx: ExtensionContext | null = null;
   private _ghBin = "gh";
   private _storeUnsub: (() => void) | null = null;
@@ -74,6 +83,7 @@ export class GhActionsService {
     this._storeUnsub = ghStore.subscribe(() => {
       ctx.workspaces.invalidateBadges();
       ctx.workspaces.invalidateStatus();
+      this._applySettingsChange(ctx);
     });
 
     const authState = await checkAuth(ctx, this._ghBin);
@@ -140,14 +150,14 @@ export class GhActionsService {
     const activeId = wsState.activeId ?? undefined;
     const allOpen = wsState.open;
 
-    ctx.log.debug(`Reconciling workspaces — ${allOpen.length} open, active: ${activeId ?? "none"}`);
-
-    // Remove state for workspaces that are no longer open (use timer keys as proxy).
+    // Remove state for workspaces that are no longer open.
     const liveIds = new Set(allOpen.map((w) => w.id));
-    for (const id of this._timers.keys()) {
+    for (const id of [...this._pollingMode.keys()]) {
       if (!liveIds.has(id)) {
         ctx.log.debug(`Removing closed workspace: ${id}`);
         this._clearTimer(id);
+        this._pollingMode.delete(id);
+        this._knownFolders.delete(id);
         ghStore.removeWorkspace(id);
       }
     }
@@ -163,14 +173,58 @@ export class GhActionsService {
           ghStore.removeFolderState(ws.id, state.folder);
         }
       }
-
-      if (ws.id === activeId) {
-        for (const folder of folders) this._refreshFolder(ctx, ws.id, folder);
-        this._startPolling(ctx, ws.id, false);
-      } else if (!this._timers.has(ws.id)) {
-        for (const folder of folders) this._refreshFolder(ctx, ws.id, folder);
-        this._startPolling(ctx, ws.id, true);
+      let known = this._knownFolders.get(ws.id);
+      if (!known) {
+        known = new Set();
+        this._knownFolders.set(ws.id, known);
       }
+      for (const f of [...known]) {
+        if (!liveFolderSet.has(f)) known.delete(f);
+      }
+
+      const mode = ws.id === activeId ? "active" : "inactive";
+      const modeChanged = this._pollingMode.get(ws.id) !== mode;
+      if (modeChanged) {
+        this._pollingMode.set(ws.id, mode);
+        this._startPolling(ctx, ws.id, mode === "inactive");
+      }
+
+      // Fetch immediately only when the workspace just became active or a
+      // folder is newly seen; otherwise let the poll timer drive fetches.
+      // Activation fetches are throttled: skip if we fetched this workspace
+      // within the last MIN_FETCH_INTERVAL_MS (rapid workspace-switching).
+      const becameActive = modeChanged && mode === "active";
+      const sinceLastFetch = Date.now() - (this._lastFetchedAt.get(ws.id) ?? 0);
+      const activationThrottled = becameActive && sinceLastFetch < MIN_FETCH_INTERVAL_MS;
+      let willFetch = false;
+      for (const folder of folders) {
+        const isNewFolder = !known.has(folder);
+        known.add(folder);
+        if (isNewFolder || (becameActive && !activationThrottled)) {
+          this._refreshFolder(ctx, ws.id, folder);
+          willFetch = true;
+        }
+      }
+      if (willFetch) this._lastFetchedAt.set(ws.id, Date.now());
+    }
+  }
+
+  // Restart timers when the poll intervals change so new settings apply
+  // without waiting for a workspace switch.
+  private _applySettingsChange(ctx: ExtensionContext): void {
+    const { activePollIntervalMs, inactivePollIntervalMs } = ghStore.settings;
+    if (
+      this._lastActiveIntervalMs === activePollIntervalMs &&
+      this._lastInactiveIntervalMs === inactivePollIntervalMs
+    ) {
+      return;
+    }
+    const isFirst = this._lastActiveIntervalMs === null;
+    this._lastActiveIntervalMs = activePollIntervalMs;
+    this._lastInactiveIntervalMs = inactivePollIntervalMs;
+    if (isFirst) return;
+    for (const [id, mode] of this._pollingMode) {
+      this._startPolling(ctx, id, mode === "inactive");
     }
   }
 
@@ -188,6 +242,7 @@ export class GhActionsService {
       setInterval(() => {
         const ws = ctx.workspaces.get(workspaceId);
         if (!ws) return;
+        this._lastFetchedAt.set(workspaceId, Date.now());
         for (const folder of [ws.folder, ...(ws.extraFolders ?? [])]) {
           this._refreshFolder(ctx, workspaceId, folder);
         }
@@ -393,7 +448,10 @@ export class GhActionsService {
   }
 
   dispose(): void {
-    for (const id of this._timers.keys()) this._clearTimer(id);
+    for (const id of [...this._timers.keys()]) this._clearTimer(id);
+    this._pollingMode.clear();
+    this._knownFolders.clear();
+    this._lastFetchedAt.clear();
     if (this._authRetryTimer) {
       clearInterval(this._authRetryTimer);
       this._authRetryTimer = null;
