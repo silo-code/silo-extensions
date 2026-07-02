@@ -11,6 +11,7 @@ export interface DocsRoot {
 
 type ExpandedMap = Record<string, boolean>;
 
+// DocsPanel renders the markdown documentation side panel.
 export function DocsPanel({
   ctx,
   storage,
