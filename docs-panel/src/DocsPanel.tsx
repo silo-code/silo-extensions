@@ -3,6 +3,7 @@ import { useServiceState, type ExtensionContext, type SidePanelProps } from "@si
 import { Plus } from "@phosphor-icons/react";
 import { DocTree } from "./DocTree";
 
+/// Renders the markdown documentation side panel.
 export interface DocsRoot {
   id: string;
   label: string;
