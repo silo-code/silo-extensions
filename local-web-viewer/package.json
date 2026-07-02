@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "^0.9.0",
+    "@silo-code/sdk": "^0.21.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.24.0",
     "react": "^19.0.0",

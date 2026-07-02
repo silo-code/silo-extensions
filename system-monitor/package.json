@@ -24,7 +24,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@silo-code/sdk": "^0.18.0",
+    "@silo-code/sdk": "^0.21.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.24.0",
     "react": "^19.0.0",

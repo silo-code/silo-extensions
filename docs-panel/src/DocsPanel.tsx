@@ -23,7 +23,10 @@ export function DocsPanel({
   // Force a re-render when storage.set() is called within this panel so that
   // the storage.get() calls below pick up the change immediately.
   const [, tick] = useState(0);
-  useEffect(() => storage.subscribe(() => tick((n) => n + 1)), [storage]);
+  useEffect(() => {
+    const sub = storage.subscribe(() => tick((n) => n + 1));
+    return () => sub.dispose();
+  }, [storage]);
 
   // Read directly from storage each render — same pattern as FileExplorerPanel
   // reading treeExpanded. No useState wrapper needed; workspace switches cause
