@@ -92,7 +92,7 @@ describe("sysmonStore persistence", () => {
       get: () => undefined,
       set,
       keys: () => [],
-      subscribe: () => () => {},
+      subscribe: () => ({ dispose: () => {} }),
     };
 
     // Hydrated from activate() — no panel ever mounted.
@@ -118,7 +118,7 @@ describe("sysmonStore persistence", () => {
       keys: () => (saved ? ["settings"] : []),
       subscribe: (listener: () => void) => {
         notify = listener;
-        return () => {};
+        return { dispose: () => {} };
       },
     } as ExtensionStorage;
 
