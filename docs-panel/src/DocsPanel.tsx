@@ -30,24 +30,26 @@ export function DocsPanel({
     return () => sub.dispose();
   }, [storage]);
 
-  // Read directly from storage each render — same pattern as FileExplorerPanel
-  // reading treeExpanded. No useState wrapper needed; workspace switches cause
-  // a re-render via wsState above, at which point storage already holds the
-  // new workspace's data.
-  const roots = storage.get<DocsRoot[]>("roots", []);
+  // Scope roots by workspace ID so each workspace has its own folder list.
+  // storage may be shared across workspaces (global scope), so we namespace
+  // manually — the same pattern used by the github-actions extension.
+  const rootsKey = ws ? `roots:${ws.id}` : null;
+  const roots = rootsKey ? storage.get<DocsRoot[]>(rootsKey, []) : [];
 
   async function addRoot() {
+    if (!rootsKey) return;
     const folder = await ctx.ui.pickFolder();
     if (!folder) return;
     const label = folder.split("/").filter(Boolean).pop() ?? folder;
-    storage.set("roots", [
-      ...storage.get<DocsRoot[]>("roots", []),
+    storage.set(rootsKey, [
+      ...storage.get<DocsRoot[]>(rootsKey, []),
       { id: crypto.randomUUID(), label, path: folder },
     ]);
   }
 
   function removeRoot(id: string) {
-    storage.set("roots", storage.get<DocsRoot[]>("roots", []).filter((r) => r.id !== id));
+    if (!rootsKey) return;
+    storage.set(rootsKey, storage.get<DocsRoot[]>(rootsKey, []).filter((r) => r.id !== id));
   }
 
   function persistExpanded(rootId: string, expanded: ExpandedMap) {
