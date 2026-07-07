@@ -7,6 +7,9 @@ import {
   stripStatusMarker,
   toPersisted,
   restoreState,
+  isLiveSignal,
+  isSuppressedByFocus,
+  staleSuffix,
   STALE_THRESHOLD_MS,
   type AgentEvent,
   type TerminalAgentState,
@@ -426,6 +429,13 @@ describe("toPersisted / restoreState (app-restart persistence)", () => {
     expect(restoreState("claude", toPersisted(s), SHORT_GAP).stale).toBe(false);
   });
 
+  it("does not mark stale exactly at the threshold (only strictly over)", () => {
+    const s = run(initialState("claude"), detected("working", "agent"));
+    expect(
+      restoreState("claude", toPersisted(s), STALE_THRESHOLD_MS).stale,
+    ).toBe(false);
+  });
+
   it("does not mark stale when not showing a duration, however long the gap", () => {
     // "waiting" with no pending attention derives no row — nothing for
     // staleness to qualify, regardless of the gap.
@@ -461,5 +471,55 @@ describe("toPersisted / restoreState (app-restart persistence)", () => {
     expect(restored.stale).toBe(true);
     const afterTimer = reduce(restored, detected("waiting", "timer"));
     expect(afterTimer.stale).toBe(true);
+  });
+});
+
+describe("isLiveSignal", () => {
+  it("is true for agent/shell-sourced detected events", () => {
+    expect(isLiveSignal(detected("working", "agent"))).toBe(true);
+    expect(isLiveSignal(detected("waiting", "shell"))).toBe(true);
+  });
+
+  it("is false for timer-sourced detected events", () => {
+    expect(isLiveSignal(detected("waiting", "timer"))).toBe(false);
+  });
+
+  it("is false for activated events", () => {
+    expect(isLiveSignal({ type: "activated" })).toBe(false);
+  });
+});
+
+describe("isSuppressedByFocus", () => {
+  it("is false whenever the setting is disabled, even for the active terminal", () => {
+    expect(isSuppressedByFocus(false, "t1", "t1")).toBe(false);
+  });
+
+  it("is true when enabled and the terminal is the active one", () => {
+    expect(isSuppressedByFocus(true, "t1", "t1")).toBe(true);
+  });
+
+  it("is false when enabled but the terminal is not the active one", () => {
+    expect(isSuppressedByFocus(true, "t1", "t2")).toBe(false);
+    expect(isSuppressedByFocus(true, "t1", null)).toBe(false);
+  });
+});
+
+describe("staleSuffix", () => {
+  it("returns an empty string when not stale, for either variant", () => {
+    const s = run(initialState("claude"), detected("working", "agent"));
+    expect(staleSuffix(s, "label")).toBe("");
+    expect(staleSuffix(s, "tooltip")).toBe("");
+  });
+
+  it("returns the terse suffix for the label variant when stale", () => {
+    const s = run(initialState("claude"), detected("working", "agent"));
+    const restored = restoreState("claude", toPersisted(s), STALE_THRESHOLD_MS + 1);
+    expect(staleSuffix(restored, "label")).toBe(" (unconfirmed)");
+  });
+
+  it("returns the fuller suffix for the tooltip variant when stale", () => {
+    const s = run(initialState("claude"), detected("working", "agent"));
+    const restored = restoreState("claude", toPersisted(s), STALE_THRESHOLD_MS + 1);
+    expect(staleSuffix(restored, "tooltip")).toBe(" (unconfirmed since restart)");
   });
 });

@@ -74,6 +74,31 @@ export type AgentEvent =
     }
   | { type: "activated" };
 
+/**
+ * A live, non-timer detection — real information from the terminal, as
+ * opposed to an internal debounce firing on silence. `reduce()`'s stale-flag
+ * clearing and `index.tsx`'s `lastSeenAt` heartbeat bump must agree on this
+ * definition, so both call this rather than reimplementing the check.
+ */
+export function isLiveSignal(
+  ev: AgentEvent,
+): ev is Extract<AgentEvent, { type: "detected" }> {
+  return ev.type === "detected" && ev.source !== "timer";
+}
+
+/**
+ * Whether focus should suppress this terminal's row/badge right now — gated
+ * by the "hide status when focused" setting; when disabled, focus never
+ * suppresses anything.
+ */
+export function isSuppressedByFocus(
+  hideStatusWhenFocused: boolean,
+  terminalId: string,
+  activeTerminalId: string | null,
+): boolean {
+  return hideStatusWhenFocused && terminalId === activeTerminalId;
+}
+
 export function initialState(kind: TerminalKind): TerminalAgentState {
   return {
     kind,
@@ -167,7 +192,7 @@ export function reduce(
   // changes activity — clears a `stale` flag set by restoreState() after an
   // app-closed gap. A timer event is purely-internal debounce firing on
   // silence, not new information from the terminal, so it doesn't clear it.
-  if (ev.source !== "timer") stale = false;
+  if (isLiveSignal(ev)) stale = false;
 
   if (ev.status !== activity) {
     // Block demotion events that shouldn't end an agent's working phase:
@@ -273,6 +298,20 @@ export function deriveStatusRow(
     return { status: "warn", startedAt: s.attentionSince ?? undefined };
   }
   return null;
+}
+
+/**
+ * The "(unconfirmed...)" suffix appended to a status-row label or tab-badge
+ * tooltip when {@link TerminalAgentState.stale} is set. `variant` picks the
+ * wording: the row label has little room, so it's terse; the tab tooltip
+ * appears on hover with room to spell out why.
+ */
+export function staleSuffix(
+  s: TerminalAgentState,
+  variant: "label" | "tooltip",
+): string {
+  if (!s.stale) return "";
+  return variant === "label" ? " (unconfirmed)" : " (unconfirmed since restart)";
 }
 
 export type TabBadge = "working" | "attention" | "waiting" | "done" | "error";

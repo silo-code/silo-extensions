@@ -33,6 +33,10 @@ describe("detectClaudeCode", () => {
     expect(detectClaudeCode(0, "my-project")).toBeNull();
   });
 
+  it("returns null for an empty title (Codex's exit signal, not Claude's)", () => {
+    expect(detectClaudeCode(0, "")).toBeNull();
+  });
+
   it("returns null for non-OSC-0 codes", () => {
     expect(detectClaudeCode(9, "⠋ spinner")).toBeNull();
     expect(detectClaudeCode(133, "C")).toBeNull();

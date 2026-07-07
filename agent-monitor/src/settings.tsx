@@ -15,17 +15,14 @@ export {
   type AgentMonitorSettings,
 } from "./settings-store";
 
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
+interface ToggleRowProps {
   label: string;
   hint: string;
   checked: boolean;
   onChange: (next: boolean) => void;
-}) {
+}
+
+function ToggleRow({ label, hint, checked, onChange }: ToggleRowProps) {
   return (
     <div className="am-row">
       <div className="am-row-text">
