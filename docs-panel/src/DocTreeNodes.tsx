@@ -16,14 +16,17 @@ import {
   type Listing,
   type RowFocusProps,
 } from "./tree-types";
-import { Tooltip, type FocusGroupItemProps } from "@silo-code/sdk";
+import { DND_MIME, Tooltip, type DndService, type FocusGroupItemProps } from "@silo-code/sdk";
 
 interface RowSharedProps {
+  dnd: DndService;
   getRowProps: (path: string, isDir: boolean) => RowFocusProps;
   selected: string | null;
+  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
 }
 
 export function DirNode({
+  dnd,
   getRowProps,
   path,
   name,
@@ -34,6 +37,7 @@ export function DirNode({
   onToggle,
   selected,
   rootActions,
+  onContextMenu,
 }: {
   path: string;
   name: string;
@@ -52,6 +56,15 @@ export function DirNode({
   const focusRef = (focusProps as Partial<FocusGroupItemProps>).ref;
   const setRef = (el: HTMLDivElement | null) => focusRef?.(el);
 
+  function onDragStart(e: React.DragEvent<HTMLDivElement>) {
+    if (isRoot) { e.preventDefault(); return; }
+    dnd.beginDrag(e, {
+      items: [{ mime: DND_MIME.filePath, value: path }],
+      label: name,
+      effect: "copy",
+    });
+  }
+
   return (
     <>
       <Tooltip content={path}>
@@ -65,6 +78,9 @@ export function DirNode({
           aria-expanded={isExpanded}
           aria-selected={isSelected || undefined}
           onClick={() => onToggle(path, true)}
+          onContextMenu={(e) => !isRoot && onContextMenu(e, path, true)}
+          draggable={!isRoot}
+          onDragStart={onDragStart}
         >
           <span className="chev">
             {isExpanded ? (
@@ -121,6 +137,7 @@ export function DirNode({
             entry.isDir ? (
               <DirNode
                 key={entry.path}
+                dnd={dnd}
                 getRowProps={getRowProps}
                 path={entry.path}
                 name={entry.name}
@@ -129,16 +146,19 @@ export function DirNode({
                 listings={listings}
                 onToggle={onToggle}
                 selected={selected}
+                onContextMenu={onContextMenu}
               />
             ) : (
               <FileLeaf
                 key={entry.path}
+                dnd={dnd}
                 getRowProps={getRowProps}
                 path={entry.path}
                 name={entry.name}
                 depth={depth + 1}
                 onOpen={onToggle}
                 selected={selected}
+                onContextMenu={onContextMenu}
               />
             ),
           )}
@@ -154,12 +174,14 @@ export function DirNode({
 }
 
 export function FileLeaf({
+  dnd,
   getRowProps,
   path,
   name,
   depth,
   onOpen,
   selected,
+  onContextMenu,
 }: {
   path: string;
   name: string;
@@ -172,6 +194,14 @@ export function FileLeaf({
   const focusRef = (focusProps as Partial<FocusGroupItemProps>).ref;
   const setRef = (el: HTMLDivElement | null) => focusRef?.(el);
 
+  function onDragStart(e: React.DragEvent<HTMLDivElement>) {
+    dnd.beginDrag(e, {
+      items: [{ mime: DND_MIME.filePath, value: path }],
+      label: name,
+      effect: "copy",
+    });
+  }
+
   return (
     <Tooltip content={path}>
       <div
@@ -183,6 +213,9 @@ export function FileLeaf({
         aria-level={depth + 1}
         aria-selected={isSelected || undefined}
         onClick={() => onOpen(path, false)}
+        onContextMenu={(e) => onContextMenu(e, path, false)}
+        draggable
+        onDragStart={onDragStart}
       >
         <span className="chev" />
         <FileIcon size="1.3em" weight="regular" aria-hidden="true" className="ico" />

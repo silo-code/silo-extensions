@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFocusGroup, type ExtensionContext } from "@silo-code/sdk";
+import { useFocusGroup, type ExtensionContext, type MenuEntry } from "@silo-code/sdk";
 import type { FileMeta } from "@silo-code/sdk";
 import { flattenVisible, treeArrowNav } from "./tree-nav";
 import { DirNode } from "./DocTreeNodes";
@@ -199,6 +199,39 @@ export function DocTree({
     }
   }
 
+  function handleContextMenu(e: React.MouseEvent, path: string, isDir: boolean) {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelected(path);
+    void ctx.ui.showMenu({
+      items: menuItemsFor(path, isDir),
+      at: { x: e.clientX, y: e.clientY },
+      toggle: false,
+    });
+  }
+
+  function menuItemsFor(path: string, isDir: boolean): MenuEntry[] {
+    const items: MenuEntry[] = [];
+    if (!isDir) {
+      items.push({ label: "Open", run: () => openFile(path) });
+      items.push({ type: "separator" });
+    }
+    items.push({ label: "Reveal in Finder", run: () => void ctx.files.reveal(path) });
+    items.push({ type: "separator" });
+    items.push({
+      label: "Copy Path",
+      run: () => void navigator.clipboard.writeText(path),
+    });
+    const relPath = path.startsWith(rootPath + "/")
+      ? path.slice(rootPath.length + 1)
+      : path;
+    items.push({
+      label: "Copy Relative Path",
+      run: () => void navigator.clipboard.writeText(relPath),
+    });
+    return items;
+  }
+
   return (
     <div
       className="docs-tree"
@@ -207,6 +240,7 @@ export function DocTree({
       {...group.containerProps}
     >
       <DirNode
+        dnd={ctx.dnd}
         getRowProps={getRowProps}
         path={rootPath}
         name={rootLabel}
@@ -217,6 +251,7 @@ export function DocTree({
         onToggle={toggle}
         selected={selected}
         rootActions={{ onAdd, onRemove, onRefresh: refresh }}
+        onContextMenu={handleContextMenu}
       />
     </div>
   );
