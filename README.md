@@ -10,6 +10,7 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 | [Local Web Viewer](./local-web-viewer/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=local-web-viewer*&label=)](https://github.com/silo-code/silo-extensions/releases?q=local-web-viewer) | Embed local dev servers and `file://` pages as dock panels alongside your code |
 | [System Monitor](./system-monitor/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=system-monitor*&label=)](https://github.com/silo-code/silo-extensions/releases?q=system-monitor) | Live CPU and memory charts in a side panel and status bar |
 | [GitHub Actions](./github-actions/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=github-actions*&label=)](https://github.com/silo-code/silo-extensions/releases?q=github-actions) | Monitor workflow runs across workspaces with status bar and badge decorations (requires `gh` CLI) |
+| [Agent Monitor](./agent-monitor/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=agent-monitor*&label=)](https://github.com/silo-code/silo-extensions/releases?q=agent-monitor) | At-a-glance status rows and tab badges for coding agents running in your terminals |
 
 ## Installing an extension
 

@@ -1,0 +1,32 @@
+{
+  "name": "@silo-extensions/agent-monitor",
+  "displayName": "Agent Monitor",
+  "version": "0.1.0",
+  "description": "At-a-glance agent status in the Workspaces panel: rows for coding agents that are working or finished and need attention, cleared when you view the terminal.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.agent-monitor",
+    "engine": "^0.23.0",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": []
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@silo-code/sdk": "^0.23.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}
