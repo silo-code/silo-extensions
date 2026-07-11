@@ -14,16 +14,24 @@ import { MEM_COLORS } from "./palette";
 // ---------------------------------------------------------------------------
 
 export function parseIostatOutput(out: string): CpuReading | null {
-  const dataLines = out
-    .trim()
-    .split("\n")
-    .filter((l) => /^\s*[\d.]/.test(l));
+  const lines = out.trim().split("\n");
+
+  // Find the column header line (e.g. "KB/t  tps  MB/s  us sy id ...")
+  // The number of disk columns varies with the number of attached disks.
+  const headerLine = lines.find((l) => /\bus\b/.test(l) && /\bsy\b/.test(l));
+  if (!headerLine) return null;
+  const headers = headerLine.trim().split(/\s+/);
+  const userIdx = headers.indexOf("us");
+  const sysIdx = headers.indexOf("sy");
+  if (userIdx === -1 || sysIdx === -1) return null;
+
+  // Use the last data line (the delta measurement, not the since-boot row).
+  const dataLines = lines.filter((l) => /^\s*[\d.]/.test(l));
   const last = dataLines[dataLines.length - 1];
   if (!last) return null;
   const cols = last.trim().split(/\s+/);
-  // Columns: KB/t tps MB/s us sy id 1m 5m 15m
-  const user = parseFloat(cols[3]);
-  const sys = parseFloat(cols[4]);
+  const user = parseFloat(cols[userIdx]);
+  const sys = parseFloat(cols[sysIdx]);
   if (isNaN(user) || isNaN(sys)) return null;
   return { user: Math.min(user, 100), sys: Math.min(sys, 100) };
 }

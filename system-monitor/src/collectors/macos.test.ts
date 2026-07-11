@@ -11,6 +11,14 @@ const IOSTAT_SAMPLE = `
     9.88 1753 16.91  38 21 42  6.96 6.78 7.05
 `.trim();
 
+// Two-disk variant: iostat adds an extra 3 columns for disk4, shifting cpu cols.
+const IOSTAT_SAMPLE_TWO_DISKS = `
+              disk0               disk4       cpu    load average
+    KB/t  tps  MB/s     KB/t  tps  MB/s  us sy id   1m   5m   15m
+   22.93  896 20.07    29.98    0  0.00  18 10 72  7.09 8.38 8.19
+   25.88   17  0.43     0.00    0  0.00  27 14 60  6.60 8.26 8.15
+`.trim();
+
 describe("parseIostatOutput", () => {
   it("reads user and sys from the last data row", () => {
     const r = parseIostatOutput(IOSTAT_SAMPLE);
@@ -28,6 +36,12 @@ describe("parseIostatOutput", () => {
   it("returns null for empty / unrecognised output", () => {
     expect(parseIostatOutput("")).toBeNull();
     expect(parseIostatOutput("hello world")).toBeNull();
+  });
+
+  it("reads correct cpu columns when multiple disks are present", () => {
+    const r = parseIostatOutput(IOSTAT_SAMPLE_TWO_DISKS);
+    expect(r?.user).toBe(27);
+    expect(r?.sys).toBe(14);
   });
 });
 
