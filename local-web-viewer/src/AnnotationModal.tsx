@@ -80,8 +80,25 @@ export function AnnotationModal({ dataUrl, close }: Props) {
 
   function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
     if (!drawingRef.current || !currentRef.current) return;
-    currentRef.current.points.push(getPos(e));
-    redraw();
+    const stroke = currentRef.current;
+    const prevPoint = stroke.points[stroke.points.length - 1];
+    const point = getPos(e);
+    stroke.points.push(point);
+
+    // Draw just the new segment instead of clearing and replaying every
+    // prior stroke on every mousemove sample — that was O(total points
+    // across all strokes) of work per pixel moved, causing visible lag once
+    // a few strokes had accumulated.
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    ctx.beginPath();
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.moveTo(prevPoint.x, prevPoint.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
   }
 
   function onMouseUp() {

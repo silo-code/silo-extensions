@@ -1,7 +1,7 @@
 /**
- * Pure helpers for the local-web-viewer panel — URL normalization and the
- * hostname-derived fallback title. Kept separate so the logic is
- * unit-testable without mounting a component.
+ * Pure helpers for the local-web-viewer panel — URL normalization and title
+ * fetching. Kept separate so the logic is unit-testable without mounting a
+ * component.
  */
 
 const SCHEME_RE = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
@@ -36,5 +36,34 @@ export function tabTitleFromUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Returns true for URLs that are local to this machine — localhost variants
+ * and file:// paths. We only attempt a server-side title fetch for these;
+ * external sites often return WAF block pages to non-browser user-agents.
+ */
+export function isLocalUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    if (protocol === "file:") return true;
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract the `<title>` text from an HTML string. Returns `null` if absent or
+ * empty — caller falls back to {@link tabTitleFromUrl}.
+ */
+export function parseTitleFromHtml(html: string): string | null {
+  const match = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  return match?.[1]?.trim() || null;
 }
 

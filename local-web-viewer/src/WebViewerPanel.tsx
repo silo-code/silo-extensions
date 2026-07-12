@@ -11,7 +11,7 @@ import {
   ProhibitInset,
   WifiX,
 } from "@phosphor-icons/react";
-import { normalizeUrl, tabTitleFromUrl } from "./local-web-viewer-model";
+import { normalizeUrl, tabTitleFromUrl, isLocalUrl, parseTitleFromHtml } from "./local-web-viewer-model";
 import { AnnotationModal } from "./AnnotationModal";
 
 interface LocalWebViewerParams {
@@ -84,6 +84,14 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const frameRef = useRef<WebFrame | null>(null);
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
+  const marqueeOverlayRef = useRef<HTMLDivElement>(null);
+  // Mirrors `marquee` state for the window-level drag listeners below, which
+  // are only (re)subscribed when marqueeMode flips — reading `marquee`
+  // directly there would close over a stale value.
+  const marqueeRef = useRef<Marquee | null>(null);
+  useEffect(() => {
+    marqueeRef.current = marquee;
+  }, [marquee]);
   // The mount effect (and goToIndex when called from it) closes over the
   // initial state — this ref gives those call sites the current historyState.
   // Note: onNavigate deliberately does NOT read it; nav events can arrive
@@ -113,6 +121,14 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
   // lines for what the user experiences as one navigation. Only log when
   // the URL actually changes from the last one logged.
   const lastLoggedUrlRef = useRef<string | null>(null);
+  // Guards async title work (frame.exec, the delayed re-check, the local-URL
+  // HTML fetch) against firing after the panel has unmounted and its frame
+  // has been disposed.
+  const disposedRef = useRef(false);
+  // Holds the pending setTimeout(applyTitle, 400) id so it can be cleared on
+  // unmount — otherwise a navigation immediately followed by closing the
+  // panel leaves a timer that fires after frame.dispose() has already run.
+  const titleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Persist on every history change — survives workspace switches and app
   // restarts. `url`/`title` kept in sync too for anything still reading them.
@@ -125,20 +141,33 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyState]);
 
+  // Bumped on every loadIntoFrame call; each call captures its own value and
+  // checks it back in after the async reachability check. Back/Forward
+  // clicked twice in quick succession starts two overlapping calls — without
+  // this guard, whichever one's fetchHeaders resolves *last* would win,
+  // regardless of which navigation the user actually landed on: a slow,
+  // already-superseded call could still assign iframe.src (silently
+  // navigating away from where the user is) or flip setUnreachable(true)
+  // over a page that's already loaded and working.
+  const loadTokenRef = useRef(0);
+
   // Reachability pre-check, then point the iframe at `target`. Does not touch
   // historyState — callers (navigateToNew / goToIndex) own that.
   async function loadIntoFrame(target: string) {
+    const token = ++loadTokenRef.current;
     setBlocked(false);
     setUnreachable(false);
     setChecking(true);
     try {
       await ctx.net.fetchHeaders(target, { timeoutMs: 8000 });
     } catch (err) {
+      if (loadTokenRef.current !== token) return; // superseded by a newer navigation
       setChecking(false);
       setUnreachable(true);
       ctx.log.warn(`Cannot reach ${target}`, err instanceof Error ? err.message : String(err));
       return;
     }
+    if (loadTokenRef.current !== token) return; // superseded by a newer navigation
     setChecking(false);
     const iframe = iframeRef.current;
     if (iframe) {
@@ -178,6 +207,7 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
     // command; DEFAULT_TITLE covers everything else (e.g. a saved layout
     // restoring a panel with no title recorded).
     api.setTitle(params?.title || DEFAULT_TITLE);
+    disposedRef.current = false;
 
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -233,14 +263,23 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
         }
 
         // popstate = the page traversed its own session history — mirror the
-        // move within our stack instead of pushing, when the target lines up.
+        // move within our stack instead of pushing, when the target lines
+        // up. Not necessarily adjacent: a page can call history.go(-2) and
+        // report a single pop event several slots away. Search the whole
+        // stack and prefer the occurrence closest to where we are now, in
+        // case the same URL appears more than once.
         if (e.type === "pop") {
-          if (prev.index > 0 && prev.entries[prev.index - 1] === e.url) {
-            return { ...prev, index: prev.index - 1 };
-          }
-          if (prev.index < prev.entries.length - 1 && prev.entries[prev.index + 1] === e.url) {
-            return { ...prev, index: prev.index + 1 };
-          }
+          let matchIndex = -1;
+          let matchDist = Infinity;
+          prev.entries.forEach((entry, i) => {
+            if (entry !== e.url) return;
+            const dist = Math.abs(i - prev.index);
+            if (dist < matchDist) {
+              matchDist = dist;
+              matchIndex = i;
+            }
+          });
+          if (matchIndex >= 0) return { ...prev, index: matchIndex };
         }
 
         // A navigation the user caused inside the page — link click, SPA
@@ -252,6 +291,28 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
       const fallbackTitle = tabTitleFromUrl(e.url);
       api.setTitle(fallbackTitle);
       const token = ++navTokenRef.current;
+
+      // Cross-origin exec failure (or an empty <title>) leaves nothing but
+      // the hostname-derived fallback — for local URLs (localhost, *.local,
+      // file://) try a server-side fetch-and-parse instead. Skipped for
+      // external sites since many return WAF/bot-block pages to non-browser
+      // user-agents, which would show a wrong title.
+      const applyLocalTitleFallback = async () => {
+        if (!isLocalUrl(e.url)) return;
+        try {
+          const { body, headers } = await ctx.net.fetch(e.url, { timeoutMs: 3000 });
+          if (disposedRef.current || navTokenRef.current !== token) return;
+          const contentType = headers["content-type"] ?? "";
+          if (!contentType.includes("text/html")) return;
+          const fetched = parseTitleFromHtml(body);
+          if (!fetched) return;
+          api.setTitle(fetched);
+          api.updateParameters({ title: fetched });
+        } catch {
+          /* ignore — hostname-derived fallback title already set */
+        }
+      };
+
       const applyTitle = () => {
         frame
           .exec<string>("document.title")
@@ -259,13 +320,18 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
             // A newer navigation has since started — this response belongs
             // to a page we've already left; applying it would show that
             // page's (possibly not-yet-updated) title over the current one.
-            if (navTokenRef.current !== token) return;
-            const displayTitle = title?.trim() || fallbackTitle;
-            api.setTitle(displayTitle);
-            api.updateParameters({ title: displayTitle });
+            // Also bail if the panel has since unmounted.
+            if (disposedRef.current || navTokenRef.current !== token) return;
+            const trimmed = title?.trim();
+            if (trimmed) {
+              api.setTitle(trimmed);
+              api.updateParameters({ title: trimmed });
+              return;
+            }
+            void applyLocalTitleFallback();
           })
           .catch(() => {
-            /* cross-origin exec failure — fall back to the hostname title already set */
+            void applyLocalTitleFallback();
           });
       };
       applyTitle();
@@ -276,7 +342,8 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
       // mid-transition. A full reload doesn't need this (the title is
       // already baked into the static HTML by the time "load" fires), but
       // re-checking unconditionally is harmless in that case.
-      setTimeout(applyTitle, 400);
+      if (titleTimeoutRef.current !== null) clearTimeout(titleTimeoutRef.current);
+      titleTimeoutRef.current = setTimeout(applyTitle, 400);
     });
 
     const blockedSub = frame.onBlocked(() => {
@@ -294,6 +361,8 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
     }
 
     return () => {
+      disposedRef.current = true;
+      if (titleTimeoutRef.current !== null) clearTimeout(titleTimeoutRef.current);
       navSub.dispose();
       blockedSub.dispose();
       frame.dispose();
@@ -303,12 +372,15 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
   }, []);
 
   function refresh() {
-    if (unreachable) {
+    if (unreachable || blocked) {
+      // Re-run the full reachability/navigation flow rather than a plain
+      // iframe reload — this also picks up an address bar the user edited
+      // but never pressed Enter for, instead of silently re-loading the
+      // stale blocked/unreachable URL.
       if (addressBar) void loadIntoFrame(addressBar);
       return;
     }
     if (!url) return;
-    setBlocked(false);
     frameRef.current?.reload();
   }
 
@@ -373,44 +445,67 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
     }
   }
 
+  function marqueePoint(clientX: number, clientY: number) {
+    const rect = marqueeOverlayRef.current?.getBoundingClientRect();
+    return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) };
+  }
+
   function onMarqueeDown(e: React.MouseEvent<HTMLDivElement>) {
     if (!marqueeMode) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = marqueePoint(e.clientX, e.clientY);
     setMarquee({ startX: x, startY: y, x, y, width: 0, height: 0 });
   }
 
-  function onMarqueeMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (!marqueeMode || !marquee) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    setMarquee((m) =>
-      m
-        ? {
-            ...m,
-            x: Math.min(m.startX, x),
-            y: Math.min(m.startY, y),
-            width: Math.abs(x - m.startX),
-            height: Math.abs(y - m.startY),
-          }
-        : m,
-    );
-  }
-
-  async function onMarqueeUp() {
-    if (!marqueeMode || !marquee) return;
+  async function finishMarquee() {
+    const m = marqueeRef.current;
     setMarqueeMode(false);
-    if (marquee.width < 4 || marquee.height < 4) {
-      setMarquee(null);
-      return;
-    }
-    const rect = { x: marquee.x, y: marquee.y, width: marquee.width, height: marquee.height };
     setMarquee(null);
+    if (!m || m.width < 4 || m.height < 4) return;
+    const rect = { x: m.x, y: m.y, width: m.width, height: m.height };
     const frame = frameRef.current;
     if (frame) await captureAndAnnotate(() => frame.captureRect(rect));
   }
+
+  // The overlay only covers .lwv-content, so a drag that ends over the
+  // toolbar (or anywhere outside the overlay's bounds) would never reach an
+  // element-scoped mouseup handler, leaving marqueeMode stuck on with no way
+  // to cancel it. Track the drag and allow Escape-to-cancel at the window
+  // level instead, for the lifetime of an active selection.
+  useEffect(() => {
+    if (!marqueeMode) return;
+    function onMove(e: MouseEvent) {
+      const { x, y } = marqueePoint(e.clientX, e.clientY);
+      setMarquee((m) =>
+        m
+          ? {
+              ...m,
+              x: Math.min(m.startX, x),
+              y: Math.min(m.startY, y),
+              width: Math.abs(x - m.startX),
+              height: Math.abs(y - m.startY),
+            }
+          : m,
+      );
+    }
+    function onUp() {
+      void finishMarquee();
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setMarqueeMode(false);
+        setMarquee(null);
+      }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [marqueeMode]);
 
   return (
     <div className="lwv">
@@ -503,10 +598,9 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
         />
         {marqueeMode && (
           <div
+            ref={marqueeOverlayRef}
             className="lwv-marquee-overlay"
             onMouseDown={onMarqueeDown}
-            onMouseMove={onMarqueeMove}
-            onMouseUp={() => void onMarqueeUp()}
           >
             {marquee && (
               <div
