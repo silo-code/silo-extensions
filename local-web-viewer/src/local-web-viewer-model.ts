@@ -66,3 +66,4 @@ export function parseTitleFromHtml(html: string): string | null {
   const match = html.match(/<title[^>]*>([^<]*)<\/title>/i);
   return match?.[1]?.trim() || null;
 }
+

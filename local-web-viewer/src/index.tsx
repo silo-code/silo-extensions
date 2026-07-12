@@ -69,6 +69,7 @@ const STYLES = `
   background: var(--silo-color-bg-hover);
 }
 
+
 .lwv-btn:disabled {
   color: var(--silo-color-toolbar-text-disabled);
   cursor: default;
@@ -85,11 +86,11 @@ const STYLES = `
   color: var(--silo-color-toolbar-text);
   border: 1px solid var(--silo-color-toolbar-input-bg);
   border-radius: var(--silo-radius-sm);
+  /* Suppress the native ring; focus is the shared accent ring from the global
+     input:focus-visible rule in theme.css (higher specificity, so it still
+     wins on focus). Don't also recolor the border on focus here, or the two
+     accent rings stack into a double outline. */
   outline: none;
-}
-
-.lwv-url-input:focus {
-  border-color: var(--silo-color-accent);
 }
 
 .lwv-content {
@@ -172,6 +173,183 @@ const STYLES = `
   border-radius: 50%;
   animation: lwv-spin 0.8s linear infinite;
 }
+
+/* ── Picker button active state ─────────────────────────────────────────── */
+
+.lwv-btn-active {
+  background: color-mix(in srgb, var(--silo-color-accent, #4f8ef7) 15%, transparent) !important;
+  color: var(--silo-color-accent, #4f8ef7) !important;
+}
+
+/* ── Marquee region-select overlay ──────────────────────────────────────── */
+
+.lwv-marquee-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  z-index: 10;
+}
+
+.lwv-marquee {
+  position: absolute;
+  border: 1px solid var(--silo-color-accent, #4f8ef7);
+  background: color-mix(in srgb, var(--silo-color-accent, #4f8ef7) 15%, transparent);
+}
+
+/* ── Annotation modal internals ─────────────────────────────────────────── */
+
+.lwv-ann {
+  display: flex;
+  flex-direction: column;
+  /* The host's .silo-modal card has no max-height of its own — it sizes to
+     content, so a tall full-page capture would push the card past the
+     viewport top/bottom. Cap here and let .lwv-ann-canvas-wrap's existing
+     overflow:auto scroll the image instead. */
+  max-height: 85vh;
+  min-height: 0;
+  font-size: var(--silo-font-size-base, 13px);
+  font-family: var(--silo-font-ui);
+}
+
+.lwv-ann-subtitle {
+  margin: 0 0 10px;
+  color: var(--silo-color-text-lo, rgba(128,128,128,0.7));
+  font-size: var(--silo-font-size-sm, 12px);
+}
+
+.lwv-ann-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+}
+
+.lwv-ann-pen-label {
+  font-size: var(--silo-font-size-base, 13px);
+  color: var(--silo-color-text, currentColor);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  user-select: none;
+}
+
+.lwv-ann-swatches {
+  display: flex;
+  gap: 7px;
+}
+
+.lwv-ann-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(128,128,128,0.4);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.lwv-ann-swatch-active {
+  outline: 2px solid var(--silo-color-text, currentColor);
+  outline-offset: 2px;
+}
+
+.lwv-ann-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--silo-color-border, rgba(128,128,128,0.3));
+  margin: 0 2px;
+}
+
+.lwv-ann-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--silo-color-text, currentColor);
+  border-radius: var(--silo-radius-sm, 4px);
+}
+
+.lwv-ann-action:hover:not(:disabled) {
+  background: var(--silo-color-bg-hover, rgba(128,128,128,0.08));
+}
+
+.lwv-ann-action:disabled {
+  color: var(--silo-color-text-lo, rgba(128,128,128,0.5));
+  cursor: default;
+}
+
+.lwv-ann-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.lwv-ann-canvas-stack {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.lwv-ann-img {
+  display: block;
+  max-width: 100%;
+  user-select: none;
+  pointer-events: none;
+}
+
+.lwv-ann-canvas {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+}
+
+.lwv-ann-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--silo-color-border, rgba(128,128,128,0.2));
+}
+
+.lwv-ann-error {
+  font-size: var(--silo-font-size-base, 13px);
+  color: var(--silo-color-err, #e5484d);
+}
+
+.lwv-ann-btn {
+  padding: 7px 16px;
+  border-radius: var(--silo-radius-sm, 4px);
+  border: 1px solid var(--silo-color-border-strong, rgba(128,128,128,0.35));
+  background: transparent;
+  color: var(--silo-color-text, currentColor);
+  font-size: var(--silo-font-size-base, 13px);
+  font-family: var(--silo-font-ui);
+  cursor: pointer;
+}
+
+.lwv-ann-btn:hover {
+  background: var(--silo-color-bg-hover, rgba(128,128,128,0.08));
+}
+
+.lwv-ann-btn-primary {
+  background: var(--silo-color-accent, #4f8ef7);
+  border-color: var(--silo-color-accent, #4f8ef7);
+  color: #fff;
+}
+
+.lwv-ann-btn-primary:hover {
+  opacity: 0.9;
+  background: var(--silo-color-accent, #4f8ef7);
+}
 `;
 
 export const extension: Extension = {
@@ -202,14 +380,14 @@ export const extension: Extension = {
       addMenuItem: {
         label: "New Local Web Viewer",
         icon: <Globe size={14} weight="regular" />,
-        params: { title: "Local" },
+        params: { title: "Web View" },
       },
     });
 
     ctx.registerCommand({
       id: "silo.local-web-viewer.open",
       label: "Local Web Viewer: Open",
-      run: () => ctx.layout.openPanel("local-web-viewer", { title: "Local" }),
+      run: () => ctx.layout.openPanel("local-web-viewer", { title: "Web View" }),
     });
   },
 };
