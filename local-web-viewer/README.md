@@ -28,6 +28,10 @@ Every capture opens an annotation modal where you can draw over the screenshot (
 - **Remote sites that block iframes** show a blocked overlay. This is expected — the panel probes `X-Frame-Options` and CSP headers via a server-side HEAD request before attempting to embed.
 - **Screenshot capture is still being verified on Windows and Linux.** It's known-working on macOS. On Windows, capturing currently fails with `Screenshot failed — see Output for details.` in the extension's Output panel — this points at the host's `ctx.webview` capture implementation, not this extension's code, and is being investigated. If you hit this, please attach the Output panel error to a bug report.
 
+## Uses `ctx.webview`
+
+This extension is built on the `ctx.webview` bridge. `ctx.webview.attach(iframe)` returns a `WebFrame` that the panel uses for `onNavigate` (drives back/forward history tracking), `onBlocked` (detects embeds the host itself refused to load), `exec` (reads `document.title`), and the screenshot tools — `capture`, `captureRect`, `captureFullPage`, and `pickElement`. Back/forward tracking and screenshots only work because of this bridge; when a capture fails (see Known limitations), the error originates here, not in this extension's own code.
+
 ## Uses `ctx.net`
 
 This extension uses `ctx.net.fetchHeaders()` — a server-side HTTP client exposed by Silo that bypasses browser CORS — to read `X-Frame-Options` and `Content-Security-Policy` response headers before loading a URL. This avoids the poor UX of letting a blocked iframe load silently.
