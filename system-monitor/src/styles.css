@@ -295,6 +295,146 @@
   transition: width 0.3s ease;
 }
 
+/* ─── Processes panel ────────────────────────────────────────────────────── */
+.sm-card-processes {
+  height: auto;
+}
+.sm-proc-rows {
+  display: flex;
+  flex-direction: column;
+}
+.sm-proc-row {
+  display: grid;
+  /* Leader column is a fixed width (not `auto`) so it lines up across rows —
+     each row is its own grid, so an `auto` track sizes to *that row's* text
+     alone and drifts whenever leader name lengths differ between rows. */
+  grid-template-columns: 14px minmax(0, 1fr) 64px 34px 46px 20px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+}
+.sm-proc-row-idle {
+  opacity: 0.55;
+}
+.sm-proc-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--silo-color-text);
+  cursor: pointer;
+}
+.sm-proc-chevron:disabled {
+  cursor: default;
+}
+.sm-proc-chevron-glyph {
+  display: flex;
+  transition: transform 0.12s ease;
+}
+.sm-proc-chevron-open {
+  transform: rotate(90deg);
+}
+.sm-proc-leaf-dot {
+  justify-self: center;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--silo-color-text);
+  opacity: 0.4;
+}
+.sm-proc-title {
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+  color: var(--silo-color-text-hi);
+  font-size: 0.92em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.sm-proc-title:disabled {
+  cursor: default;
+}
+.sm-proc-title:not(:disabled):hover {
+  text-decoration: underline;
+}
+.sm-proc-child-count {
+  color: var(--silo-color-text);
+  font-variant-numeric: tabular-nums;
+}
+.sm-proc-leader {
+  font-size: 0.85em;
+  color: var(--silo-color-text-hi);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sm-proc-stat {
+  font-size: 0.85em;
+  color: var(--silo-color-text-hi);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sm-proc-idle-pill {
+  justify-self: start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--silo-color-input-bg);
+  color: var(--silo-color-text);
+  font-size: 0.7em;
+  line-height: 1.5;
+}
+.sm-proc-kill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--silo-color-text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.sm-proc-row:hover .sm-proc-kill {
+  opacity: 1;
+}
+.sm-proc-kill:hover {
+  color: var(--silo-color-err, #f47067);
+}
+.sm-proc-child-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px 46px 20px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+.sm-proc-child-name {
+  font-size: 0.85em;
+  color: var(--silo-color-text-hi);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sm-proc-empty {
+  padding: 8px 0;
+  color: var(--silo-color-text);
+  font-size: 0.83em;
+}
+.sm-proc-footnote {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--silo-color-border);
+  color: var(--silo-color-text);
+  font-size: 0.75em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 /* ─── Status bar items ───────────────────────────────────────────────────── */
 /* font-size and font-family inherit from .status-bar — don't override. */
 .sm-status-item {
