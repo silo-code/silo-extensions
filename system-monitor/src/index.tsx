@@ -5,6 +5,7 @@ import { SystemMonitorPanel } from "./views/SystemMonitorPanel";
 import { SystemMonitorStatus } from "./views/SystemMonitorStatus";
 import { SystemMonitorSettings } from "./views/SystemMonitorSettings";
 import { sysmonStore } from "./store";
+import { processesController } from "./processes/controller";
 
 const STYLE_ID = "silo-system-monitor-styles";
 
@@ -26,6 +27,9 @@ export const extension: Extension = {
     // never open. Settings are global (not per-workspace), and hydrate()
     // subscribes so a read that races app-state hydration is re-applied.
     sysmonStore.hydrate(ctx.storage.global);
+
+    processesController.init(ctx);
+    ctx.subscriptions.push(processesController);
 
     // Polling runs at the extension level — status bar items need live data even
     // when the side panel is hidden. The poll skips metrics not currently visible.

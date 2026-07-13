@@ -62,6 +62,15 @@ describe("mergeList", () => {
     const result = mergeList(saved, defaults);
     expect(result.find((p) => p.id === "memory")).toBeDefined();
   });
+
+  it("gains a 'processes' entry via mergeList for settings saved before it existed", () => {
+    const saved = DEFAULT_SETTINGS.panels.filter((p) => p.id !== "processes");
+    const result = mergeList(saved, DEFAULT_SETTINGS.panels);
+    expect(result.find((p) => p.id === "processes")).toEqual({
+      id: "processes",
+      enabled: true,
+    });
+  });
 });
 
 describe("mergeSettings", () => {
