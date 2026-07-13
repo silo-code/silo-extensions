@@ -16,7 +16,8 @@ export function DraggableSection({
   onToggle,
   onReorder,
 }: {
-  title: string;
+  /** Omit when the caller already labels this list some other way (e.g. a tab). */
+  title?: string;
   items: DraggableItem[];
   onToggle: (id: PanelId, next: boolean) => void;
   onReorder: (from: number, to: number) => void;
@@ -52,7 +53,7 @@ export function DraggableSection({
 
   return (
     <section className="es-section">
-      <h3 className="es-section-title">{title}</h3>
+      {title && <h3 className="es-section-title">{title}</h3>}
       <div className="es-rows" onDragLeave={() => setDropTarget(null)}>
         {items.map((item, i) => (
           <div

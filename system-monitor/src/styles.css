@@ -218,6 +218,34 @@
   cursor: default;
 }
 
+/* ─── Settings page tabs ─────────────────────────────────────────────────── */
+.sms-tabs {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid var(--silo-color-border);
+  flex-shrink: 0;
+}
+.sms-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 0 8px;
+  font: inherit;
+  font-size: 0.92em;
+  color: var(--silo-color-text);
+  cursor: pointer;
+}
+.sms-tab:hover {
+  color: var(--silo-color-text-hi);
+}
+.sms-tab-active {
+  color: var(--silo-color-text-hi);
+  border-bottom-color: var(--silo-color-accent);
+  font-weight: 600;
+}
+
 /* ─── Drag-and-drop reorder (full settings page) ─────────────────────────── */
 .sms-draggable-row {
   cursor: default;
