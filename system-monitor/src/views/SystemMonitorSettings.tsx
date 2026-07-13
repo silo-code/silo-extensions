@@ -1,9 +1,17 @@
+import { useState } from "react";
 import { useStore } from "../hooks";
 import { sysmonStore } from "../store";
 import type { PanelId, Settings } from "../store";
 import { METRIC_REGISTRY } from "../registry";
 import { DraggableSection } from "./DraggableSection";
 import type { DraggableItem } from "./DraggableSection";
+
+type SettingsTab = "panels" | "statusBar";
+
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: "panels", label: "Side Panels" },
+  { id: "statusBar", label: "Status Bar" },
+];
 
 function reorder<T>(list: T[], from: number, to: number): T[] {
   const next = [...list];
@@ -30,6 +38,7 @@ function toItems(
 export function SystemMonitorSettings() {
   const store = useStore();
   const { settings } = store;
+  const [tab, setTab] = useState<SettingsTab>("panels");
 
   function toggle(
     key: keyof Pick<Settings, "panels" | "statusBar">,
@@ -60,19 +69,34 @@ export function SystemMonitorSettings() {
       <div className="es-header">
         <h2>System Monitor</h2>
       </div>
+      <div className="sms-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={"sms-tab" + (tab === t.id ? " sms-tab-active" : "")}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
       <div className="es-scroll">
-        <DraggableSection
-          title="Side Panels"
-          items={toItems(settings.panels, "panelHint")}
-          onToggle={(id, next) => toggle("panels", id, next)}
-          onReorder={(from, to) => reorderSection("panels", from, to)}
-        />
-        <DraggableSection
-          title="Status Bar"
-          items={toItems(settings.statusBar, "sbHint")}
-          onToggle={(id, next) => toggle("statusBar", id, next)}
-          onReorder={(from, to) => reorderSection("statusBar", from, to)}
-        />
+        {tab === "panels" ? (
+          <DraggableSection
+            items={toItems(settings.panels, "panelHint")}
+            onToggle={(id, next) => toggle("panels", id, next)}
+            onReorder={(from, to) => reorderSection("panels", from, to)}
+          />
+        ) : (
+          <DraggableSection
+            items={toItems(settings.statusBar, "sbHint")}
+            onToggle={(id, next) => toggle("statusBar", id, next)}
+            onReorder={(from, to) => reorderSection("statusBar", from, to)}
+          />
+        )}
       </div>
     </div>
   );
