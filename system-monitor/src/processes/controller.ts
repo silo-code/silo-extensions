@@ -1,11 +1,12 @@
 // Lifecycle singleton for the Processes panel — thin glue over ctx.processes /
 // ctx.workspaces, patterned on `sysmonStore`. Owns the resources that differ
-// from the CPU/memory poll (poll.ts): refcounted stats+trees and panel-active
-// gating, so they only run while a user can actually see them. Stats, trees,
+// from the CPU/memory poll (poll.ts): refcounted stats+trees and the run
+// condition below, so they only run while there's a consumer. Stats, trees,
 // and foreground changes all arrive on the one subscribe channel.
 
 import type { Disposable, ExtensionContext, WorkspaceBadge, WorkspaceStatusRow } from "@silo-code/sdk";
 import { sysmonStore } from "../store";
+import type { Settings } from "../store";
 import {
   buildAggregate,
   buildRows,
@@ -14,6 +15,25 @@ import {
   groupInfosByWorkspace,
 } from "./model";
 import type { ProcessesData, SessionRow } from "./model";
+
+/**
+ * Whether the stats+subscribe resources should be held. "Workspace status"
+ * (badges/status rows across every loaded workspace) is an ambient monitor —
+ * it must run whenever the setting is on, independent of `panelActive`, or a
+ * background workspace's badge would flicker on and off as the user opens
+ * and closes the System Monitor side panel elsewhere. The Processes *panel*
+ * view is the only part actually gated by panel visibility, since nobody can
+ * see it otherwise.
+ */
+export function shouldRunProcesses(
+  settings: Settings,
+  panelActive: boolean,
+): boolean {
+  const processesPanelEnabled = settings.panels.some(
+    (p) => p.id === "processes" && p.enabled,
+  );
+  return (panelActive && processesPanelEnabled) || settings.workspaceStatus;
+}
 
 class ProcessesController {
   private ctx: ExtensionContext | null = null;
@@ -47,6 +67,14 @@ class ProcessesController {
       id: "silo.system-monitor.badges",
       provide: (workspaceId) => this.badgesByWorkspace.get(workspaceId) ?? [],
     });
+
+    // "Workspace status" is an ambient, always-on monitor across every loaded
+    // workspace (see SystemMonitorSettings' "Show CPU and memory warnings in
+    // the workspace status row and badge") — it must not depend on whether the
+    // side panel (this workspace's, specifically) happens to be open, or a
+    // badge would flicker on and off as the user switches workspaces. So run
+    // it as soon as the setting is on, independent of `panelActive` below.
+    this.updateShouldRun();
   }
 
   setPanelActive(active: boolean): void {
@@ -54,15 +82,8 @@ class ProcessesController {
     this.updateShouldRun();
   }
 
-  private isEnabledInSettings(): boolean {
-    return (
-      sysmonStore.settings.panels.find((p) => p.id === "processes")
-        ?.enabled ?? false
-    );
-  }
-
   private updateShouldRun(): void {
-    const shouldRun = this.panelActive && this.isEnabledInSettings();
+    const shouldRun = shouldRunProcesses(sysmonStore.settings, this.panelActive);
     if (shouldRun === this.running) return;
     this.running = shouldRun;
     if (shouldRun) this.acquire();
