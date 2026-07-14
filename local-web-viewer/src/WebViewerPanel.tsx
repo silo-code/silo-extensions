@@ -85,13 +85,11 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
   const frameRef = useRef<WebFrame | null>(null);
   const cameraButtonRef = useRef<HTMLButtonElement>(null);
   const marqueeOverlayRef = useRef<HTMLDivElement>(null);
-  // Mirrors `marquee` state for the window-level drag listeners below, which
-  // are only (re)subscribed when marqueeMode flips — reading `marquee`
-  // directly there would close over a stale value.
+  // Mirrors `marquee` state for the window-level drag listeners. Updated
+  // synchronously alongside every setMarquee call so that finishMarquee
+  // always reads the latest drag position — a useEffect sync would lag by
+  // one render cycle and give captureRect a stale (wrong) rect.
   const marqueeRef = useRef<Marquee | null>(null);
-  useEffect(() => {
-    marqueeRef.current = marquee;
-  }, [marquee]);
   // The mount effect (and goToIndex when called from it) closes over the
   // initial state — this ref gives those call sites the current historyState.
   // Note: onNavigate deliberately does NOT read it; nav events can arrive
@@ -452,12 +450,16 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
 
   function onMarqueeDown(e: React.MouseEvent<HTMLDivElement>) {
     if (!marqueeMode) return;
+    e.preventDefault();
     const { x, y } = marqueePoint(e.clientX, e.clientY);
-    setMarquee({ startX: x, startY: y, x, y, width: 0, height: 0 });
+    const m = { startX: x, startY: y, x, y, width: 0, height: 0 };
+    marqueeRef.current = m;
+    setMarquee(m);
   }
 
   async function finishMarquee() {
     const m = marqueeRef.current;
+    marqueeRef.current = null;
     setMarqueeMode(false);
     setMarquee(null);
     if (!m || m.width < 4 || m.height < 4) return;
@@ -475,23 +477,31 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
     if (!marqueeMode) return;
     function onMove(e: MouseEvent) {
       const { x, y } = marqueePoint(e.clientX, e.clientY);
-      setMarquee((m) =>
-        m
-          ? {
-              ...m,
-              x: Math.min(m.startX, x),
-              y: Math.min(m.startY, y),
-              width: Math.abs(x - m.startX),
-              height: Math.abs(y - m.startY),
-            }
-          : m,
-      );
+      setMarquee((m) => {
+        if (!m) return m;
+        const next = {
+          ...m,
+          x: Math.min(m.startX, x),
+          y: Math.min(m.startY, y),
+          width: Math.abs(x - m.startX),
+          height: Math.abs(y - m.startY),
+        };
+        marqueeRef.current = next;
+        return next;
+      });
     }
     function onUp() {
+      // Window-level, so this also catches the tail of the very click that
+      // armed marquee mode from the camera menu — arriving before any drag
+      // has started. Only a mousedown on the overlay begins a drag (sets
+      // marqueeRef); finishing on any earlier mouseup would instantly
+      // disarm the mode.
+      if (!marqueeRef.current) return;
       void finishMarquee();
     }
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        marqueeRef.current = null;
         setMarqueeMode(false);
         setMarquee(null);
       }
@@ -593,6 +603,7 @@ export function LocalWebViewerPanel({ api, params, ctx }: Props) {
         <iframe
           ref={iframeRef}
           className="lwv-frame"
+          style={marqueeMode ? { pointerEvents: "none" } : undefined}
           onError={handleError}
           title="Local Web Viewer"
         />

@@ -188,6 +188,7 @@ const STYLES = `
   inset: 0;
   cursor: crosshair;
   z-index: 10;
+  user-select: none;
 }
 
 .lwv-marquee {
