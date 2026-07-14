@@ -1,10 +1,18 @@
+import { useEffect } from "react";
+import type { SidePanelProps } from "@silo-code/sdk";
 import { useStore } from "../hooks";
 import { getDescriptor } from "../registry";
+import { processesController } from "../processes/controller";
 
-export function SystemMonitorPanel() {
+export function SystemMonitorPanel({ active }: SidePanelProps) {
   const store = useStore();
   const { settings, live } = store;
   const visiblePanels = settings.panels.filter((p) => p.enabled);
+
+  useEffect(() => {
+    processesController.setPanelActive(active);
+    return () => processesController.setPanelActive(false);
+  }, [active]);
 
   return (
     <div className="sysmon">

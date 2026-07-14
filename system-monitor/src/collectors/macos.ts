@@ -13,6 +13,7 @@ import { MEM_COLORS } from "./palette";
 //    52.27 4076 208.04  41 22 38  6.05 6.89 7.15   ← last 1 s  (use this)
 // ---------------------------------------------------------------------------
 
+/** Parses `iostat -c` output, locating us/sy columns by header rather than fixed index. */
 export function parseIostatOutput(out: string): CpuReading | null {
   const lines = out.trim().split("\n");
 

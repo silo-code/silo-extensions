@@ -30,6 +30,40 @@ export function BackIcon() {
   );
 }
 
+export function ChevronIcon() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path
+        fillRule="evenodd"
+        d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06z"
+      />
+    </svg>
+  );
+}
+
+export function KillIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path
+        fillRule="evenodd"
+        d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"
+      />
+    </svg>
+  );
+}
+
 export function GripIcon() {
   return (
     <svg

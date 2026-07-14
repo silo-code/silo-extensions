@@ -16,7 +16,7 @@ export function SystemMonitorStatus() {
     <div style={{ display: "contents" }}>
       {enabled.map((item) => {
         const descriptor = getDescriptor(item.id);
-        if (!descriptor) return null;
+        if (!descriptor?.StatusComponent) return null;
         const { StatusComponent } = descriptor;
         return <StatusComponent key={item.id} live={live} />;
       })}

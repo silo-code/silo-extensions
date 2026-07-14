@@ -8,6 +8,7 @@ import { MemPanel } from "./metrics/memory/Panel";
 import { MemCompactPanel } from "./metrics/memory/CompactPanel";
 import { MemStatus } from "./metrics/memory/Status";
 import { MemPieStatus } from "./metrics/memory/PieStatus";
+import { ProcessesPanel } from "./metrics/processes/Panel";
 
 export interface MetricDescriptor {
   id: PanelId;
@@ -16,7 +17,8 @@ export interface MetricDescriptor {
   sbHint: string;
   /** Absent for status-bar-only entries — these won't appear in the Side Panels list. */
   PanelComponent?: React.ComponentType<{ live: LiveData }>;
-  StatusComponent: React.ComponentType<{ live: LiveData }>;
+  /** Absent for panel-only entries — these won't appear in the Status Bar list. */
+  StatusComponent?: React.ComponentType<{ live: LiveData }>;
 }
 
 // To add a new metric (e.g. "disk"):
@@ -71,6 +73,14 @@ export const METRIC_REGISTRY: MetricDescriptor[] = [
     panelHint: "",
     sbHint: "Show a mini pie chart of memory usage in the status bar.",
     StatusComponent: MemPieStatus,
+  },
+  {
+    id: "processes",
+    label: "Processes",
+    panelHint:
+      "What's running in each terminal of this workspace, with CPU/memory and a kill switch.",
+    sbHint: "",
+    PanelComponent: ProcessesPanel,
   },
 ];
 

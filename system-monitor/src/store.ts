@@ -1,5 +1,6 @@
 import type { ExtensionStorage } from "@silo-code/sdk";
 import type { CpuSample } from "./metrics";
+import type { ProcessesData } from "./processes/model";
 
 // ─── Settings types ────────────────────────────────────────────────────────────
 
@@ -9,7 +10,8 @@ export type PanelId =
   | "cpu-compact"
   | "memory-compact"
   | "cpu-bar"
-  | "memory-pie";
+  | "memory-pie"
+  | "processes";
 
 export interface PanelEntry {
   id: PanelId;
@@ -27,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "cpu", enabled: true },
     { id: "memory-compact", enabled: false },
     { id: "cpu-compact", enabled: false },
+    { id: "processes", enabled: true },
   ],
   statusBar: [
     { id: "cpu", enabled: true },
@@ -67,6 +70,7 @@ export interface MemData {
 export interface LiveData {
   cpu: CpuData | null;
   memory: MemData | null;
+  processes: ProcessesData | null;
   error: string | null;
 }
 
@@ -103,7 +107,12 @@ type Listener = () => void;
 
 class SysMonStore {
   private _settings: Settings = mergeSettings({});
-  private _live: LiveData = { cpu: null, memory: null, error: null };
+  private _live: LiveData = {
+    cpu: null,
+    memory: null,
+    processes: null,
+    error: null,
+  };
   private _storage: ExtensionStorage | null = null;
   private _listeners = new Set<Listener>();
 
