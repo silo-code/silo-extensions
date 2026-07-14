@@ -5,11 +5,12 @@ import type {
   WorkspaceStatusRow,
 } from "@silo-code/sdk";
 import { createTerminalTracker } from "./terminal-tracker";
-import { deriveStatusRow, deriveTabBadge, stripStatusMarker, staleSuffix } from "./agent-status";
+import { deriveStatusRow, deriveTabBadge, stripStatusMarker, staleSuffix, isSuppressedByFocus } from "./agent-status";
 import {
   initSettings,
   clearSettingsListeners,
   AgentMonitorSettingsPage,
+  settingsService,
 } from "./settings";
 import styles from "./styles.css";
 
@@ -28,9 +29,11 @@ function activate(ctx: ExtensionContext) {
         const ws = ctx.workspaces.get(workspaceId);
         if (!ws) return [];
         const rows: WorkspaceStatusRow[] = [];
+        const hideFocusedRow = settingsService.getState().focusBehavior === "hide";
         for (const t of ws.terminals) {
           const s = tracker.states.get(t.id);
           if (!s) continue;
+          if (isSuppressedByFocus(hideFocusedRow, t.id, tracker.activeTerminalId)) continue;
           const row = deriveStatusRow(s);
           if (!row) continue;
           const label = t.customName ?? stripStatusMarker(t.title);
@@ -66,9 +69,9 @@ function activate(ctx: ExtensionContext) {
             };
           case "attention":
             return {
-              icon: <AttentionIcon />,
-              color: "warn",
-              tooltip: `Needs attention${tooltipSuffix}`,
+              icon: <FinishedIcon />,
+              color: "ok",
+              tooltip: `Finished${tooltipSuffix}`,
             };
           case "waiting":
             return {
@@ -76,8 +79,6 @@ function activate(ctx: ExtensionContext) {
               color: "muted",
               tooltip: "Waiting for input",
             };
-          case "done":
-            return { icon: <DoneIcon />, color: "ok", tooltip: "Done" };
           case "error":
             return { icon: <ErrorIcon />, color: "error", tooltip: "Error" };
           default:
@@ -115,20 +116,6 @@ function injectStyles() {
 function SpinnerIcon() {
   return <div className="am-spinner" aria-hidden="true" />;
 }
-function AttentionIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M6 1a3.2 3.2 0 0 0-3.2 3.2v2.1L1.7 8.3a.5.5 0 0 0 .42.77h7.76a.5.5 0 0 0 .42-.77L9.2 6.3V4.2A3.2 3.2 0 0 0 6 1z" />
-      <path d="M4.8 9.9a1.2 1.2 0 0 0 2.4 0z" />
-    </svg>
-  );
-}
 function WaitingIcon() {
   return (
     <div className="am-waiting-icon" aria-hidden="true">
@@ -137,7 +124,7 @@ function WaitingIcon() {
     </div>
   );
 }
-function DoneIcon() {
+function FinishedIcon() {
   return (
     <svg
       width="12"

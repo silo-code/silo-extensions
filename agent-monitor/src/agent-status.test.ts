@@ -222,13 +222,15 @@ describe("needs attention", () => {
     expect(s.needsAttention).toBe(true);
   });
 
-  it("is suppressed when the terminal is the active tab", () => {
+  it("is suppressed when the terminal is the active tab, landing on done", () => {
+    // The user watched it finish — acknowledged on the spot, no green phase.
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
       detected("waiting", "agent", { active: true }),
     );
     expect(s.needsAttention).toBe(false);
+    expect(s.activity).toBe("done");
   });
 
   it("is not set without a preceding working phase", () => {
@@ -259,7 +261,7 @@ describe("needs attention", () => {
     expect(s.attentionSince).toBe(T1);
   });
 
-  it("is cleared by activation, along with attentionSince", () => {
+  it("is cleared by activation, along with attentionSince, and transitions waiting → done", () => {
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
@@ -268,11 +270,38 @@ describe("needs attention", () => {
     );
     expect(s.needsAttention).toBe(false);
     expect(s.attentionSince).toBeNull();
+    expect(s.activity).toBe("done");
   });
 
   it("activation is a no-op (by identity) when nothing is pending", () => {
     const s1 = run(initialState("claude"), detected("waiting", "agent"));
     expect(reduce(s1, { type: "activated" })).toBe(s1);
+  });
+
+  it("done is sticky against the agent's recurring idle signal", () => {
+    // Claude re-emits ✳ while sitting at its prompt; that must not flip an
+    // acknowledged done back to waiting (which would resurrect the dots badge).
+    const done = run(
+      initialState("claude"),
+      detected("working", "agent"),
+      detected("waiting", "agent"),
+      { type: "activated" },
+    );
+    expect(done.activity).toBe("done");
+    const afterIdle = reduce(done, detected("waiting", "agent", { now: T1 }));
+    expect(afterIdle).toBe(done); // identity — no change, no invalidation
+  });
+
+  it("done ends on the next working signal", () => {
+    const s = run(
+      initialState("claude"),
+      detected("working", "agent"),
+      detected("waiting", "agent"),
+      { type: "activated" },
+      detected("working", "agent", { now: T1 }),
+    );
+    expect(s.activity).toBe("working");
+    expect(s.workingSince).toBe(T1);
   });
 
   it("is set by the idle-timer fallback ending a working phase", () => {
@@ -292,24 +321,40 @@ describe("deriveStatusRow", () => {
     expect(deriveStatusRow(s)).toEqual({ status: "busy", startedAt: T0 });
   });
 
-  it("returns a warn row with startedAt while attention is pending", () => {
+  it("returns an ok row with startedAt when waiting and attention is pending", () => {
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
       detected("waiting", "agent", { now: T1 }),
     );
-    expect(deriveStatusRow(s)).toEqual({ status: "warn", startedAt: T1 });
+    expect(deriveStatusRow(s)).toEqual({ status: "ok", startedAt: T1 });
   });
 
-  it("returns null for idle agents", () => {
-    expect(deriveStatusRow(initialState("claude"))).toBeNull();
-    const viewed = run(
+  it("returns a status-less (grey) row once a finished run is acknowledged", () => {
+    const s = run(
       initialState("claude"),
       detected("working", "agent"),
-      detected("waiting", "agent"),
+      detected("waiting", "agent", { now: T1 }),
       { type: "activated" },
     );
-    expect(deriveStatusRow(viewed)).toBeNull();
+    expect(s.activity).toBe("done");
+    expect(deriveStatusRow(s)).toEqual({});
+  });
+
+  it("returns a status-less (grey) row when work finished while focused", () => {
+    const s = run(
+      initialState("claude"),
+      detected("working", "agent"),
+      detected("waiting", "agent", { active: true }),
+    );
+    expect(deriveStatusRow(s)).toEqual({});
+  });
+
+  it("returns null for agents that have not signaled or never worked", () => {
+    expect(deriveStatusRow(initialState("claude"))).toBeNull();
+    // A fresh agent sitting at its prompt (waiting, no prior work) — no row.
+    const atPrompt = run(initialState("claude"), detected("waiting", "agent"));
+    expect(deriveStatusRow(atPrompt)).toBeNull();
   });
 
   it("returns null for shells, even busy ones", () => {
@@ -327,7 +372,7 @@ describe("deriveTabBadge", () => {
     expect(deriveTabBadge(attention)).toBe("attention");
 
     const viewed = reduce(attention, { type: "activated" });
-    expect(deriveTabBadge(viewed)).toBe("waiting");
+    expect(deriveTabBadge(viewed)).toBeNull(); // done → no icon
 
     expect(deriveTabBadge(initialState("claude"))).toBeNull();
   });
@@ -437,12 +482,12 @@ describe("toPersisted / restoreState (app-restart persistence)", () => {
   });
 
   it("does not mark stale when not showing a duration, however long the gap", () => {
-    // "waiting" with no pending attention derives no row — nothing for
-    // staleness to qualify, regardless of the gap.
+    // A watched finish lands on "done" — a grey row with no duration, so
+    // there is nothing for staleness to qualify, regardless of the gap.
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
-      detected("waiting", "agent", { active: true }), // suppresses needsAttention
+      detected("waiting", "agent", { active: true }), // watched finish → done
     );
     expect(restoreState("claude", toPersisted(s), LONG_GAP).stale).toBe(false);
   });

@@ -11,7 +11,6 @@ import { AGENT_DETECTORS } from "./osc-detectors";
 import {
   reduce,
   isLiveSignal,
-  isSuppressedByFocus,
   restoreState,
   toPersisted,
   type Activity,
@@ -61,6 +60,8 @@ export interface TerminalTracker {
   /** Per-terminal agent state, keyed by terminal record id — the single
    * source of truth the status-row and tab-decoration providers read from. */
   states: Map<string, TerminalAgentState>;
+  /** The currently active terminal id, updated on every subscribeActive event. */
+  activeTerminalId: string | null;
   dispose(): void;
 }
 
@@ -135,11 +136,13 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
       type: "detected",
       status,
       source,
-      isActiveTerminal: isSuppressedByFocus(
-        settingsService.getState().hideStatusWhenFocused,
-        terminalId,
-        activeTerminalId,
-      ),
+      // With focusBehavior "none", focus must never affect status — including
+      // the watched-finish shortcut to "done" — so report not-active. For
+      // "clear"/"hide" this is a plain focus check; the extra row hiding that
+      // distinguishes "hide" lives in index.tsx's provider, not here.
+      isActiveTerminal:
+        settingsService.getState().focusBehavior !== "none" &&
+        terminalId === activeTerminalId,
       now: new Date().toISOString(),
     };
   }
@@ -287,12 +290,16 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     }),
     ctx.terminals.subscribeActive((terminalId) => {
       activeTerminalId = terminalId;
-      // Viewing a terminal clears its "needs attention" flag — unless the
-      // user has disabled hiding status on focus, in which case it stays
-      // visible until the underlying activity actually changes.
-      if (terminalId && settingsService.getState().hideStatusWhenFocused) {
+      // Viewing a terminal acknowledges a pending finished status (green →
+      // grey "done") — unless the user chose focusBehavior "none", where
+      // focus never touches status.
+      if (terminalId && settingsService.getState().focusBehavior !== "none") {
         dispatch(terminalId, { type: "activated" });
       }
+      // Re-render rows on every focus change so the provider's focus
+      // suppression (focusBehavior "hide") tracks the active terminal even
+      // when the dispatch above was a no-op.
+      ctx.workspaces.invalidateStatus();
     }),
   ];
 
@@ -301,6 +308,9 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
 
   return {
     states,
+    get activeTerminalId() {
+      return activeTerminalId;
+    },
     dispose() {
       for (const d of disposables) d.dispose();
       // Bulk cleanup at deactivation for whatever per-terminal resources are
