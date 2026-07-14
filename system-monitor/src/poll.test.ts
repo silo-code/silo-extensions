@@ -11,6 +11,7 @@ const allEnabled: Settings = {
     { id: "cpu", enabled: true },
     { id: "memory", enabled: true },
   ],
+  workspaceStatus: true,
 };
 
 describe("neededMetrics", () => {
@@ -24,6 +25,7 @@ describe("neededMetrics", () => {
     const s: Settings = {
       panels: [{ id: "cpu", enabled: true }],
       statusBar: [{ id: "cpu", enabled: false }],
+      workspaceStatus: true,
     };
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
@@ -32,6 +34,7 @@ describe("neededMetrics", () => {
     const s: Settings = {
       panels: [{ id: "cpu", enabled: false }],
       statusBar: [{ id: "cpu", enabled: true }],
+      workspaceStatus: true,
     };
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
@@ -46,6 +49,7 @@ describe("neededMetrics", () => {
         { id: "cpu", enabled: false },
         { id: "memory", enabled: false },
       ],
+      workspaceStatus: true,
     };
     const needed = neededMetrics(s);
     expect(needed.has("cpu")).toBe(false);
@@ -62,12 +66,13 @@ describe("neededMetrics", () => {
         { id: "cpu", enabled: false },
         { id: "memory", enabled: false },
       ],
+      workspaceStatus: true,
     };
     expect(neededMetrics(s).size).toBe(0);
   });
 
   it("returns empty set for empty settings", () => {
-    const s: Settings = { panels: [], statusBar: [] };
+    const s: Settings = { panels: [], statusBar: [], workspaceStatus: true };
     expect(neededMetrics(s).size).toBe(0);
   });
 });

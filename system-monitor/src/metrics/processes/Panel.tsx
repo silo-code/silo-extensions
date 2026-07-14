@@ -6,6 +6,20 @@ import { flattenTree } from "../../processes/tree";
 import { processesController } from "../../processes/controller";
 import { ChevronIcon, KillIcon } from "../../icons";
 
+function cpuClass(pct: number | null): string {
+  if (pct == null) return "sm-proc-stat";
+  if (pct >= 75) return "sm-proc-stat sm-proc-stat-danger";
+  if (pct >= 25) return "sm-proc-stat sm-proc-stat-warn";
+  return "sm-proc-stat";
+}
+
+function memClass(mb: number | null): string {
+  if (mb == null) return "sm-proc-stat";
+  if (mb >= 2000) return "sm-proc-stat sm-proc-stat-danger";
+  if (mb >= 500) return "sm-proc-stat sm-proc-stat-warn";
+  return "sm-proc-stat";
+}
+
 function SessionRowView({
   row,
   expanded,
@@ -18,22 +32,18 @@ function SessionRowView({
   const hasChildren = row.childCount > 0;
   const flat = expanded && row.tree ? flattenTree(row.tree) : [];
   const leaderName = displayName(row.leader);
-  // The leader is often exactly the tab title (an un-renamed "node"/"npm"
-  // terminal, or — while idle — the shell itself), so repeat it only when it
-  // adds information beyond the title.
   const showLeader = leaderName !== row.title;
 
   return (
     <>
       <div
-        className={
-          "sm-proc-row" + (row.atPrompt ? " sm-proc-row-idle" : "")
-        }
+        className={"sm-proc-row" + (row.terminalId ? " sm-proc-row-clickable" : "")}
+        onClick={() => row.terminalId && processesController.focusTerminal(row.terminalId)}
       >
         {hasChildren ? (
           <button
             className="sm-proc-chevron"
-            onClick={onToggle}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
             aria-label={expanded ? "Collapse" : "Expand"}
           >
             <span
@@ -46,42 +56,26 @@ function SessionRowView({
             </span>
           </button>
         ) : (
-          // Placeholder where the chevron would go, so leaf rows still line
-          // up with expandable ones instead of leaving a blank gap.
           <span className="sm-proc-leaf-dot" aria-hidden />
         )}
+        <span className="sm-proc-title">
+          <span className="sm-proc-title-text">
+            {row.title}
+            {hasChildren && (
+              <span className="sm-proc-child-count"> ({row.childCount})</span>
+            )}
+          </span>
+          {row.atPrompt && <span className="sm-proc-idle-pill">idle</span>}
+        </span>
+        <span className="sm-proc-leader">{showLeader && !row.atPrompt ? leaderName : ""}</span>
+        <span className={cpuClass(row.totalCpuPercent)}>{formatCpu(row.totalCpuPercent)}</span>
+        <span className={memClass(row.totalMemoryMb)}>{formatMem(row.totalMemoryMb)}</span>
         <button
-          className="sm-proc-title"
-          onClick={() =>
-            row.terminalId && processesController.focusTerminal(row.terminalId)
-          }
-          disabled={!row.terminalId}
-          title={row.cwd || undefined}
+          className="sm-proc-kill"
+          onClick={(e) => { e.stopPropagation(); void processesController.killSession(row); }}
         >
-          {row.title}
-          {hasChildren && (
-            <span className="sm-proc-child-count"> ({row.childCount})</span>
-          )}
+          <KillIcon />
         </button>
-        {row.atPrompt ? (
-          // The leader is always the shell while idle — same as the title,
-          // so showing it again would just repeat "zsh … zsh". Show the
-          // idle pill in its place instead.
-          <span className="sm-proc-idle-pill">idle</span>
-        ) : (
-          <>
-            <span className="sm-proc-leader">{showLeader ? leaderName : ""}</span>
-            <span className="sm-proc-stat">{formatCpu(row.totalCpuPercent)}</span>
-            <span className="sm-proc-stat">{formatMem(row.totalMemoryMb)}</span>
-            <button
-              className="sm-proc-kill"
-              title="Kill process group"
-              onClick={() => void processesController.killSession(row)}
-            >
-              <KillIcon />
-            </button>
-          </>
-        )}
       </div>
       {flat.map(({ node, depth }) => (
         <div
@@ -90,8 +84,8 @@ function SessionRowView({
           style={{ paddingLeft: 26 + depth * 14 }}
         >
           <span className="sm-proc-child-name">{displayName(node.command)}</span>
-          <span className="sm-proc-stat">{formatCpu(node.cpuPercent)}</span>
-          <span className="sm-proc-stat">{formatMem(node.memoryMb)}</span>
+          <span className={cpuClass(node.cpuPercent)}>{formatCpu(node.cpuPercent)}</span>
+          <span className={memClass(node.memoryMb)}>{formatMem(node.memoryMb)}</span>
         </div>
       ))}
     </>
