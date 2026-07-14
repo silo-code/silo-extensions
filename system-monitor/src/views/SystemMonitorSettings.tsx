@@ -5,12 +5,14 @@ import type { PanelId, Settings } from "../store";
 import { METRIC_REGISTRY } from "../registry";
 import { DraggableSection } from "./DraggableSection";
 import type { DraggableItem } from "./DraggableSection";
+import { Toggle } from "./Toggle";
 
-type SettingsTab = "panels" | "statusBar";
+type SettingsTab = "panels" | "statusBar" | "options";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "panels", label: "Side Panels" },
   { id: "statusBar", label: "Status Bar" },
+  { id: "options", label: "Options" },
 ];
 
 function reorder<T>(list: T[], from: number, to: number): T[] {
@@ -84,18 +86,40 @@ export function SystemMonitorSettings() {
         ))}
       </div>
       <div className="es-scroll">
-        {tab === "panels" ? (
+        {tab === "panels" && (
           <DraggableSection
             items={toItems(settings.panels, "panelHint")}
             onToggle={(id, next) => toggle("panels", id, next)}
             onReorder={(from, to) => reorderSection("panels", from, to)}
           />
-        ) : (
+        )}
+        {tab === "statusBar" && (
           <DraggableSection
             items={toItems(settings.statusBar, "sbHint")}
             onToggle={(id, next) => toggle("statusBar", id, next)}
             onReorder={(from, to) => reorderSection("statusBar", from, to)}
           />
+        )}
+        {tab === "options" && (
+          <section className="es-section">
+            <div className="es-rows">
+              <div className="es-row">
+                <div className="es-row-text">
+                  <span className="es-label">Workspace status</span>
+                  <span className="es-hint">Show CPU and memory warnings in the workspace status row and badge.</span>
+                </div>
+                <div className="es-control">
+                  <Toggle
+                    label="Workspace status"
+                    checked={settings.workspaceStatus}
+                    onChange={(next) =>
+                      sysmonStore.updateSettings({ ...settings, workspaceStatus: next })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </div>

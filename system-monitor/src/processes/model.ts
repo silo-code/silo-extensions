@@ -50,6 +50,7 @@ export interface ProcessesData {
 export function buildRows(
   infos: ProcessInfo[],
   ps: PsProcess[] | null,
+  terminalTitles?: Map<string, string>,
 ): SessionRow[] {
   const rows: SessionRow[] = infos.map((info) => {
     let cpuPercent: number | null = null;
@@ -82,7 +83,7 @@ export function buildRows(
     return {
       sessionId: info.sessionId,
       terminalId: info.terminalId,
-      title: info.terminalTitle ?? info.leader,
+      title: (info.terminalId && terminalTitles?.get(info.terminalId)) ?? info.terminalTitle ?? info.leader,
       leader: info.leader,
       pgid: info.pgid,
       cwd: info.cwd,

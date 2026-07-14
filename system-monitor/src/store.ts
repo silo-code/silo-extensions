@@ -21,6 +21,7 @@ export interface PanelEntry {
 export interface Settings {
   panels: PanelEntry[];
   statusBar: PanelEntry[];
+  workspaceStatus: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "cpu-bar", enabled: false },
     { id: "memory-pie", enabled: false },
   ],
+  workspaceStatus: true,
 };
 
 // ─── Live data types ───────────────────────────────────────────────────────────
@@ -98,6 +100,7 @@ export function mergeSettings(saved: Partial<Settings>): Settings {
   return {
     panels: mergeList(saved.panels, DEFAULT_SETTINGS.panels),
     statusBar: mergeList(saved.statusBar, DEFAULT_SETTINGS.statusBar),
+    workspaceStatus: saved.workspaceStatus ?? DEFAULT_SETTINGS.workspaceStatus,
   };
 }
 
