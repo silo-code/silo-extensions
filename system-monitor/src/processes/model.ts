@@ -1,9 +1,7 @@
 // Pure row/aggregate/format model for the Processes panel — no ctx, no I/O.
 
-import type { ProcessInfo } from "@silo-code/sdk";
-import type { PsProcess } from "./ps";
-import { buildSessionTree, flattenTree } from "./tree";
-import type { ProcNode } from "./tree";
+import type { ProcessInfo, ProcessTreeNode } from "@silo-code/sdk";
+import { flattenTree } from "./tree";
 
 export interface SessionRow {
   sessionId: string;
@@ -24,9 +22,10 @@ export interface SessionRow {
    */
   totalCpuPercent: number | null;
   totalMemoryMb: number | null;
-  /** Process tree rooted at this session's leader. Always `null` while
-   * `atPrompt` (the leader is the shell itself — nothing to expand or kill). */
-  tree: ProcNode | null;
+  /** Process tree rooted at this session's leader, from ProcessInfo.tree.
+   * Always `null` while `atPrompt` (the leader is the shell itself — nothing
+   * to expand or kill), and `null` on hosts too old to provide trees. */
+  tree: ProcessTreeNode | null;
   /** Total flattened descendant count (all depths); 0 when `tree` is null. */
   childCount: number;
 }
@@ -41,32 +40,20 @@ export interface ProcessesAggregate {
 export interface ProcessesData {
   rows: SessionRow[];
   agg: ProcessesAggregate;
-  treesSupported: boolean;
-  error: string | null;
 }
 
-/** One row per session. `ps` is `null` in degraded mode (parse failure, or
- * Windows where trees aren't supported) — leaders still render from `infos`. */
+/** One row per session. Trees and stats both come from the host's stats poll
+ * (`enableStats({ trees: true })`); rows render leaders-only until the first
+ * tick arrives or when the host doesn't support trees. */
 export function buildRows(
   infos: ProcessInfo[],
-  ps: PsProcess[] | null,
   terminalTitles?: Map<string, string>,
 ): SessionRow[] {
   const rows: SessionRow[] = infos.map((info) => {
-    let cpuPercent: number | null = null;
-    let memoryMb: number | null = null;
-    if (info.stats) {
-      cpuPercent = info.stats.cpuPercent;
-      memoryMb = info.stats.memoryMb;
-    } else if (ps) {
-      const leaderPs = ps.find((p) => p.pid === info.pgid);
-      if (leaderPs) {
-        cpuPercent = leaderPs.cpuPercent;
-        memoryMb = leaderPs.rssKb / 1024;
-      }
-    }
+    const cpuPercent = info.stats?.cpuPercent ?? null;
+    const memoryMb = info.stats?.memoryMb ?? null;
 
-    const tree = !info.atPrompt && ps ? buildSessionTree(ps, info.pgid) : null;
+    const tree = !info.atPrompt && info.tree ? info.tree : null;
     const descendants = tree ? flattenTree(tree) : [];
 
     let totalCpuPercent = cpuPercent;

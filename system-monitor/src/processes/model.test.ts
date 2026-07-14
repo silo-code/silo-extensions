@@ -6,8 +6,7 @@ import {
   formatMem,
   displayName,
 } from "./model";
-import type { ProcessInfo } from "@silo-code/sdk";
-import type { PsProcess } from "./ps";
+import type { ProcessInfo, ProcessTreeNode } from "@silo-code/sdk";
 
 function info(p: Partial<ProcessInfo> & { sessionId: string; pgid: number }): ProcessInfo {
   return {
@@ -20,18 +19,17 @@ function info(p: Partial<ProcessInfo> & { sessionId: string; pgid: number }): Pr
   };
 }
 
-function ps(p: Partial<PsProcess> & { pid: number; ppid: number }): PsProcess {
-  return {
-    pgid: p.pid,
-    rssKb: 1024,
-    cpuPercent: 0,
-    command: `cmd${p.pid}`,
-    ...p,
-  };
+function node(
+  pid: number,
+  cpuPercent = 0,
+  memoryMb = 1,
+  children: ProcessTreeNode[] = [],
+): ProcessTreeNode {
+  return { pid, command: `cmd${pid}`, cpuPercent, memoryMb, children };
 }
 
 describe("buildRows", () => {
-  it("prefers ProcessInfo.stats over ps for leader cpu/mem", () => {
+  it("takes leader cpu/mem from ProcessInfo.stats", () => {
     const infos = [
       info({
         sessionId: "a",
@@ -39,23 +37,14 @@ describe("buildRows", () => {
         stats: { pid: 100, cpuPercent: 42, memoryMb: 256 },
       }),
     ];
-    const psRows = [ps({ pid: 100, ppid: 1, cpuPercent: 5, rssKb: 4096 })];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     expect(rows[0].cpuPercent).toBe(42);
     expect(rows[0].memoryMb).toBe(256);
   });
 
-  it("falls back to the leader's ps row when stats are absent", () => {
+  it("is null cpu/mem before the first stats tick", () => {
     const infos = [info({ sessionId: "a", pgid: 100 })];
-    const psRows = [ps({ pid: 100, ppid: 1, cpuPercent: 7, rssKb: 2048 })];
-    const rows = buildRows(infos, psRows);
-    expect(rows[0].cpuPercent).toBe(7);
-    expect(rows[0].memoryMb).toBe(2);
-  });
-
-  it("is null cpu/mem when neither stats nor ps (Windows) are available", () => {
-    const infos = [info({ sessionId: "a", pgid: 100 })];
-    const rows = buildRows(infos, null);
+    const rows = buildRows(infos);
     expect(rows[0].cpuPercent).toBeNull();
     expect(rows[0].memoryMb).toBeNull();
     expect(rows[0].totalCpuPercent).toBeNull();
@@ -64,25 +53,31 @@ describe("buildRows", () => {
     expect(rows[0].childCount).toBe(0);
   });
 
-  it("builds a tree for a busy session when ps is available", () => {
-    const infos = [info({ sessionId: "a", pgid: 100, atPrompt: false })];
-    const psRows = [
-      ps({ pid: 100, ppid: 1 }),
-      ps({ pid: 101, ppid: 100 }),
+  it("exposes the host-built tree for a busy session", () => {
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        tree: node(100, 0, 1, [node(101)]),
+      }),
     ];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     expect(rows[0].tree?.children).toHaveLength(1);
     expect(rows[0].childCount).toBe(1);
   });
 
   it("rolls up leader + descendant cpu/mem into totalCpuPercent/totalMemoryMb", () => {
-    const infos = [info({ sessionId: "a", pgid: 100, atPrompt: false })];
-    const psRows = [
-      ps({ pid: 100, ppid: 1, cpuPercent: 5, rssKb: 2048 }), // leader: 5%, 2 MB
-      ps({ pid: 101, ppid: 100, cpuPercent: 40, rssKb: 1024 }), // child: 40%, 1 MB
-      ps({ pid: 102, ppid: 101, cpuPercent: 30, rssKb: 512 }), // grandchild: 30%, 0.5 MB
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 5, memoryMb: 2 },
+        tree: node(100, 5, 2, [node(101, 40, 1, [node(102, 30, 0.5)])]),
+      }),
     ];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     // Leader-only fields are unaffected — used by buildAggregate to avoid
     // double-counting descendants.
     expect(rows[0].cpuPercent).toBe(5);
@@ -92,22 +87,48 @@ describe("buildRows", () => {
   });
 
   it("equals the leader-only stat when there are no descendants", () => {
-    const infos = [info({ sessionId: "a", pgid: 100, atPrompt: false })];
-    const psRows = [ps({ pid: 100, ppid: 1, cpuPercent: 7, rssKb: 2048 })];
-    const rows = buildRows(infos, psRows);
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 7, memoryMb: 2 },
+        tree: node(100, 7, 2),
+      }),
+    ];
+    const rows = buildRows(infos);
     expect(rows[0].totalCpuPercent).toBe(rows[0].cpuPercent);
     expect(rows[0].totalMemoryMb).toBe(rows[0].memoryMb);
   });
 
-  it("suppresses the tree for atPrompt rows even when ps has children", () => {
-    const infos = [info({ sessionId: "a", pgid: 100, atPrompt: true, leader: "-zsh" })];
-    const psRows = [
-      ps({ pid: 100, ppid: 1 }),
-      ps({ pid: 101, ppid: 100 }),
+  it("suppresses the tree for atPrompt rows even when the host provides one", () => {
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: true,
+        leader: "-zsh",
+        tree: node(100, 0, 1, [node(101)]),
+      }),
     ];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     expect(rows[0].tree).toBeNull();
     expect(rows[0].childCount).toBe(0);
+  });
+
+  it("renders leaders-only when the host doesn't provide trees", () => {
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 7, memoryMb: 2 },
+      }),
+    ];
+    const rows = buildRows(infos);
+    expect(rows[0].tree).toBeNull();
+    expect(rows[0].childCount).toBe(0);
+    expect(rows[0].totalCpuPercent).toBe(7);
   });
 
   it("sorts busy sessions before idle sessions, then by title", () => {
@@ -116,19 +137,29 @@ describe("buildRows", () => {
       info({ sessionId: "a", pgid: 100, atPrompt: false, terminalTitle: "Z" }),
       info({ sessionId: "c", pgid: 300, atPrompt: false, terminalTitle: "A" }),
     ];
-    const rows = buildRows(infos, null);
+    const rows = buildRows(infos);
     expect(rows.map((r) => r.title)).toEqual(["A", "Z", "B"]);
+  });
+
+  it("prefers the live terminal title over ProcessInfo.terminalTitle", () => {
+    const infos = [info({ sessionId: "a", pgid: 100 })];
+    const rows = buildRows(infos, new Map([["term_a", "Live Title"]]));
+    expect(rows[0].title).toBe("Live Title");
   });
 });
 
 describe("buildAggregate", () => {
   it("sums sessions, procs, cpu, and mem across leaders and children", () => {
-    const infos = [info({ sessionId: "a", pgid: 100, atPrompt: false })];
-    const psRows = [
-      ps({ pid: 100, ppid: 1, cpuPercent: 10, rssKb: 1024 }),
-      ps({ pid: 101, ppid: 100, cpuPercent: 5, rssKb: 2048 }),
+    const infos = [
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 10, memoryMb: 1 },
+        tree: node(100, 10, 1, [node(101, 5, 2)]),
+      }),
     ];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     const agg = buildAggregate(rows);
     expect(agg.sessions).toBe(1);
     expect(agg.procs).toBe(2);
@@ -136,22 +167,26 @@ describe("buildAggregate", () => {
     expect(agg.memoryMb).toBe(3);
   });
 
-  it("dedupes a child pid unioned into more than one session's tree", () => {
+  it("dedupes a child pid appearing in more than one session's tree", () => {
     const infos = [
-      info({ sessionId: "a", pgid: 100, atPrompt: false }),
-      info({ sessionId: "b", pgid: 200, atPrompt: false }),
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        tree: node(100, 0, 0, [node(999, 5, 1)]),
+      }),
+      info({
+        sessionId: "b",
+        pgid: 200,
+        atPrompt: false,
+        tree: node(200, 0, 0, [node(999, 5, 1)]),
+      }),
     ];
-    // pid 999 shares pgid with neither leader via ppid, but both leaders'
-    // trees would union it in if both pgids matched — force via same pgid.
-    const psRows = [
-      ps({ pid: 100, ppid: 1 }),
-      ps({ pid: 200, ppid: 1 }),
-      ps({ pid: 999, ppid: 5000, pgid: 100 }),
-    ];
-    const rows = buildRows(infos, psRows);
+    const rows = buildRows(infos);
     const agg = buildAggregate(rows);
-    // pid 999 only unions into session a's tree (pgid 100), not b's.
+    // 2 leaders + pid 999 counted once.
     expect(agg.procs).toBe(3);
+    expect(agg.cpuPercent).toBe(5);
   });
 });
 

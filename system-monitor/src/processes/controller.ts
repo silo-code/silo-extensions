@@ -1,13 +1,11 @@
 // Lifecycle singleton for the Processes panel — thin glue over ctx.processes /
-// ctx.process, patterned on `sysmonStore`. Owns the resources that differ from
-// the CPU/memory poll (poll.ts): a push subscription, refcounted stats, and
-// panel-active gating, so they only run while a user can actually see them.
+// ctx.workspaces, patterned on `sysmonStore`. Owns the resources that differ
+// from the CPU/memory poll (poll.ts): refcounted stats+trees and panel-active
+// gating, so they only run while a user can actually see them. Stats, trees,
+// and foreground changes all arrive on the one subscribe channel.
 
 import type { Disposable, ExtensionContext, WorkspaceBadge, WorkspaceStatusRow } from "@silo-code/sdk";
-import { POLL_MS } from "../metrics";
 import { sysmonStore } from "../store";
-import { PS_ARGS, parsePsOutput } from "./ps";
-import type { PsProcess } from "./ps";
 import { buildAggregate, buildRows, formatCpu, formatMem, displayName } from "./model";
 import type { ProcessesAggregate, SessionRow } from "./model";
 
@@ -16,7 +14,6 @@ const DANGER_COLOR = "#f47067";
 
 class ProcessesController {
   private ctx: ExtensionContext | null = null;
-  private treesSupported = true;
   private panelActive = false;
   private running = false;
 
@@ -24,10 +21,6 @@ class ProcessesController {
   private subscribeDisposable: Disposable | null = null;
   private statusDisposable: Disposable | null = null;
   private badgeDisposable: Disposable | null = null;
-  private psTimer: ReturnType<typeof setInterval> | undefined;
-  private psInFlight = false;
-  private lastPs: PsProcess[] | null = null;
-  private psError: string | null = null;
   private storeUnsubscribe: (() => void) | null = null;
 
   private activeWorkspaceId: string | null = null;
@@ -38,10 +31,6 @@ class ProcessesController {
 
   init(ctx: ExtensionContext): void {
     this.ctx = ctx;
-    void ctx.system.getInfo().then(({ os }) => {
-      this.treesSupported = os !== "windows";
-      this.updateShouldRun();
-    });
     this.storeUnsubscribe = sysmonStore.subscribe(() => this.updateShouldRun());
 
     this.statusDisposable = ctx.workspaces.registerStatus({
@@ -84,12 +73,8 @@ class ProcessesController {
   private acquire(): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    this.statsDisposable = ctx.processes.enableStats();
+    this.statsDisposable = ctx.processes.enableStats({ trees: true });
     this.subscribeDisposable = ctx.processes.subscribe(() => this.recompute());
-    if (this.treesSupported) {
-      void this.pollPs();
-      this.psTimer = setInterval(() => void this.pollPs(), POLL_MS);
-    }
     this.recompute();
   }
 
@@ -100,24 +85,6 @@ class ProcessesController {
     this.statsDisposable = null;
     this.subscribeDisposable?.dispose();
     this.subscribeDisposable = null;
-    if (this.psTimer) clearInterval(this.psTimer);
-    this.psTimer = undefined;
-  }
-
-  private async pollPs(): Promise<void> {
-    const ctx = this.ctx;
-    if (!ctx || this.psInFlight) return;
-    this.psInFlight = true;
-    try {
-      const { stdout } = await ctx.process.exec("ps", PS_ARGS);
-      this.lastPs = parsePsOutput(stdout);
-      this.psError = null;
-    } catch (e) {
-      this.psError = `System Monitor couldn't read process details.\n${String(e)}`;
-    } finally {
-      this.psInFlight = false;
-      this.recompute();
-    }
   }
 
   private recompute(): void {
@@ -132,16 +99,9 @@ class ProcessesController {
     const terminalTitles = new Map(
       (activeWs?.terminals ?? []).map((t) => [t.id, t.title]),
     );
-    const rows = buildRows(ctx.processes.getState(), this.lastPs, terminalTitles);
+    const rows = buildRows(ctx.processes.getState(), terminalTitles);
     const agg = buildAggregate(rows);
-    sysmonStore.updateLive({
-      processes: {
-        rows,
-        agg,
-        treesSupported: this.treesSupported,
-        error: this.psError,
-      },
-    });
+    sysmonStore.updateLive({ processes: { rows, agg } });
     this.updateWorkspaceProviders(ctx, rows, agg);
   }
 

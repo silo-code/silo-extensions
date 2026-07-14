@@ -131,7 +131,6 @@ export function ProcessesPanel({ live }: { live: LiveData }) {
           ))}
         </div>
       )}
-      {data?.error && <div className="sm-proc-footnote">{data.error}</div>}
     </div>
   );
 }
