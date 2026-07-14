@@ -75,7 +75,10 @@ No manual version bumping or tagging needed.
 
 1. Create a top-level folder for the extension (use an existing one as a template).
 2. Add a build + typecheck job to `.github/workflows/ci.yml`.
-3. Add a release job to `.github/workflows/release.yml`.
+3. Append one entry to the `EXTENSIONS` array near the top of `.github/workflows/release.yml`:
+   ```
+   "your-extension-name:false"   # set to true if the extension has an npm test script
+   ```
 
 ## Requirements
 

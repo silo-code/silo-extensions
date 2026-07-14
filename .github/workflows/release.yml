@@ -1,12 +1,18 @@
 name: Release
 
 # Runs after a PR is merged into main. Detects which extensions changed,
-# bumps their versions, builds, packs, and creates a GitHub Release.
+# bumps their versions, builds, packs, and creates GitHub Releases.
+#
+# All work happens in a single job so there is only one push to main —
+# eliminating the race condition that occurred when parallel jobs each tried
+# to push their own version-bump commit.
 #
 # Bump type is controlled by PR labels:
 #   major  →  breaking change
 #   minor  →  new feature
 #   (none) →  patch (default)
+#
+# To add a new extension, append a "name:run-tests" entry to EXTENSIONS.
 
 on:
   pull_request:
@@ -14,39 +20,34 @@ on:
     branches: [main]
 
 permissions:
-  contents: write  # push version commit + tag, create release
+  contents: write
 
 jobs:
-  # ── docs-panel ──────────────────────────────────────────────────────────────
-  docs-panel:
-    name: Release docs-panel
-    # Only run when the PR was actually merged, and source files changed
-    # (excludes bare version-bump commits from re-triggering a release).
+  release:
+    name: Release extensions
     if: |
       github.event.pull_request.merged == true &&
       !contains(github.event.pull_request.labels.*.name, 'skip-release')
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history so git log / npm version can commit cleanly
           fetch-depth: 0
-          # Use a token with push rights (default GITHUB_TOKEN works if
-          # branch protection does not require PRs for bot pushes)
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check for source changes in docs-panel
-        id: changed
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
-            docs-panel/src/ \
-            docs-panel/build.mjs)
-          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: Determine bump type from PR labels
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine bump type
         id: bump
-        if: steps.changed.outputs.any == 'true'
         run: |
           LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
           if echo "$LABELS" | grep -qw major; then
@@ -57,423 +58,90 @@ jobs:
             echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
-        if: steps.changed.outputs.any == 'true'
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: docs-panel/package-lock.json
-
-      - name: Bump version, build, and pack
-        if: steps.changed.outputs.any == 'true'
-        id: pack
-        working-directory: docs-panel
-        run: |
-          npm ci
-
-          # Configure git for the version commit
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Capture old version before bumping — used as release notes start tag
-          OLD_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-
-          # Bump package.json only (no auto-tag yet — we want a scoped tag name)
-          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-
-          # Commit the version bump
-          git add package.json package-lock.json
-          git commit -m "chore(release): docs-panel v$NEW_VERSION [skip ci]"
-
-          # Create a scoped tag so multi-extension releases don't collide
-          git tag "docs-panel@v$NEW_VERSION"
-
-          # Build then pack into the repo root (files: ["dist/"] ensures dist is included).
-          # Output just the filename — the Create Release step runs from the repo root
-          # where the tarball lands, so no path prefix needed.
-          npm run build
-          TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
-      - name: Push commit and tag
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          git push origin HEAD:main
-          git push origin "refs/tags/docs-panel@v${{ steps.pack.outputs.version }}"
-
-      - name: Create GitHub Release
-        if: steps.changed.outputs.any == 'true'
+      - name: Build and version changed extensions
+        id: build
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP: ${{ steps.bump.outputs.type }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          VERSION=${{ steps.pack.outputs.version }}
-          OLD_VERSION=${{ steps.pack.outputs.old_version }}
-          TARBALL=${{ steps.pack.outputs.tarball }}
-          # If a previous release tag exists, scope the generated notes to
-          # commits since that tag. On the first release the tag won't exist,
-          # so omit the flag and let GitHub include all commits.
-          START_TAG="docs-panel@v$OLD_VERSION"
-          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
-            NOTES_FLAG="--notes-start-tag $START_TAG"
-          else
-            NOTES_FLAG=""
-          fi
-          gh release create "docs-panel@v$VERSION" "$TARBALL" \
-            --title "docs-panel v$VERSION" \
-            --generate-notes \
-            $NOTES_FLAG
+          set -euo pipefail
 
-  # ── local-web-viewer ────────────────────────────────────────────────────────
-  local-web-viewer:
-    name: Release local-web-viewer
-    if: |
-      github.event.pull_request.merged == true &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # "extension-dir:run-tests"  — add new extensions here
+          EXTENSIONS=(
+            "agent-monitor:true"
+            "docs-panel:false"
+            "github-actions:false"
+            "local-web-viewer:false"
+            "system-monitor:true"
+          )
 
-      - name: Check for source changes in local-web-viewer
-        id: changed
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
-            local-web-viewer/src/ \
-            local-web-viewer/build.mjs)
-          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          RELEASE_LOG=/tmp/releases.tsv   # columns: ext  old_ver  new_ver  tarball
 
-      - name: Determine bump type from PR labels
-        id: bump
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
-          if echo "$LABELS" | grep -qw major; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          elif echo "$LABELS" | grep -qw minor; then
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=patch" >> "$GITHUB_OUTPUT"
+          for entry in "${EXTENSIONS[@]}"; do
+            EXT="${entry%%:*}"
+            HAS_TESTS="${entry##*:}"
+
+            CHANGED=$(git diff --name-only "$BASE" HEAD -- "$EXT/src/" "$EXT/build.mjs")
+            if [ -z "$CHANGED" ]; then
+              echo "[$EXT] no source changes — skipping"
+              continue
+            fi
+
+            echo "[$EXT] source changed — releasing"
+            pushd "$EXT" > /dev/null
+
+            npm ci
+            OLD=$(node -p "require('./package.json').version")
+            npm version "$BUMP" --no-git-tag-version
+            NEW=$(node -p "require('./package.json').version")
+
+            [ "$HAS_TESTS" = "true" ] && npm test
+            npm run build
+            TARBALL=$(basename "$(npm pack --pack-destination ../)")
+
+            popd > /dev/null
+            git add "$EXT/package.json" "$EXT/package-lock.json"
+            printf '%s\t%s\t%s\t%s\n' "$EXT" "$OLD" "$NEW" "$TARBALL" >> "$RELEASE_LOG"
+            echo "[$EXT] $OLD → $NEW  ($TARBALL)"
+          done
+
+          if [ ! -f "$RELEASE_LOG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-node@v4
-        if: steps.changed.outputs.any == 'true'
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: local-web-viewer/package-lock.json
-
-      - name: Bump version, build, and pack
-        if: steps.changed.outputs.any == 'true'
-        id: pack
-        working-directory: local-web-viewer
+      - name: Commit, push, and tag
+        if: steps.build.outputs.skip != 'true'
         run: |
-          npm ci
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          OLD_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          git add package.json package-lock.json
-          git commit -m "chore(release): local-web-viewer v$NEW_VERSION [skip ci]"
-          git tag "local-web-viewer@v$NEW_VERSION"
-          npm run build
-          TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          RELEASE_LOG=/tmp/releases.tsv
 
-      - name: Push commit and tag
-        if: steps.changed.outputs.any == 'true'
-        run: |
+          SUMMARY=$(awk -F'\t' '{printf "%s v%s, ", $1, $3}' "$RELEASE_LOG" | sed 's/, $//')
+          git commit -m "chore(release): $SUMMARY [skip ci]"
+
+          # Absorb any commits that landed on main between checkout and now
+          git pull --rebase origin main
           git push origin HEAD:main
-          git push origin "refs/tags/local-web-viewer@v${{ steps.pack.outputs.version }}"
 
-      - name: Create GitHub Release
-        if: steps.changed.outputs.any == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          while IFS=$'\t' read -r EXT OLD NEW TARBALL; do
+            git tag "$EXT@v$NEW"
+            git push origin "refs/tags/$EXT@v$NEW"
+          done < "$RELEASE_LOG"
+
+      - name: Create GitHub Releases
+        if: steps.build.outputs.skip != 'true'
         run: |
-          VERSION=${{ steps.pack.outputs.version }}
-          OLD_VERSION=${{ steps.pack.outputs.old_version }}
-          TARBALL=${{ steps.pack.outputs.tarball }}
-          START_TAG="local-web-viewer@v$OLD_VERSION"
-          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
-            NOTES_FLAG="--notes-start-tag $START_TAG"
-          else
+          set -euo pipefail
+          RELEASE_LOG=/tmp/releases.tsv
+
+          while IFS=$'\t' read -r EXT OLD NEW TARBALL; do
+            TAG="$EXT@v$NEW"
+            OLD_TAG="$EXT@v$OLD"
             NOTES_FLAG=""
-          fi
-          gh release create "local-web-viewer@v$VERSION" "$TARBALL" \
-            --title "local-web-viewer v$VERSION" \
-            --generate-notes \
-            $NOTES_FLAG
+            git rev-parse "$OLD_TAG" >/dev/null 2>&1 && NOTES_FLAG="--notes-start-tag $OLD_TAG"
 
-  # ── system-monitor ──────────────────────────────────────────────────────────
-  system-monitor:
-    name: Release system-monitor
-    if: |
-      github.event.pull_request.merged == true &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check for source changes in system-monitor
-        id: changed
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
-            system-monitor/src/ \
-            system-monitor/build.mjs)
-          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - name: Determine bump type from PR labels
-        id: bump
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
-          if echo "$LABELS" | grep -qw major; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          elif echo "$LABELS" | grep -qw minor; then
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=patch" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/setup-node@v4
-        if: steps.changed.outputs.any == 'true'
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: system-monitor/package-lock.json
-
-      - name: Bump version, build, and pack
-        if: steps.changed.outputs.any == 'true'
-        id: pack
-        working-directory: system-monitor
-        run: |
-          npm ci
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          OLD_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          git add package.json package-lock.json
-          git commit -m "chore(release): system-monitor v$NEW_VERSION [skip ci]"
-          git tag "system-monitor@v$NEW_VERSION"
-          npm test
-          npm run build
-          TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
-      - name: Push commit and tag
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          git push origin HEAD:main
-          git push origin "refs/tags/system-monitor@v${{ steps.pack.outputs.version }}"
-
-      - name: Create GitHub Release
-        if: steps.changed.outputs.any == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=${{ steps.pack.outputs.version }}
-          OLD_VERSION=${{ steps.pack.outputs.old_version }}
-          TARBALL=${{ steps.pack.outputs.tarball }}
-          START_TAG="system-monitor@v$OLD_VERSION"
-          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
-            NOTES_FLAG="--notes-start-tag $START_TAG"
-          else
-            NOTES_FLAG=""
-          fi
-          gh release create "system-monitor@v$VERSION" "$TARBALL" \
-            --title "system-monitor v$VERSION" \
-            --generate-notes \
-            $NOTES_FLAG
-
-  # ── github-actions ──────────────────────────────────────────────────────────
-  github-actions:
-    name: Release github-actions
-    if: |
-      github.event.pull_request.merged == true &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check for source changes in github-actions
-        id: changed
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
-            github-actions/src/ \
-            github-actions/build.mjs)
-          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - name: Determine bump type from PR labels
-        id: bump
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
-          if echo "$LABELS" | grep -qw major; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          elif echo "$LABELS" | grep -qw minor; then
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=patch" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/setup-node@v4
-        if: steps.changed.outputs.any == 'true'
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: github-actions/package-lock.json
-
-      - name: Bump version, build, and pack
-        if: steps.changed.outputs.any == 'true'
-        id: pack
-        working-directory: github-actions
-        run: |
-          npm ci
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          OLD_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          git add package.json package-lock.json
-          git commit -m "chore(release): github-actions v$NEW_VERSION [skip ci]"
-          git tag "github-actions@v$NEW_VERSION"
-          npm run build
-          TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
-      - name: Push commit and tag
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          git push origin HEAD:main
-          git push origin "refs/tags/github-actions@v${{ steps.pack.outputs.version }}"
-
-      - name: Create GitHub Release
-        if: steps.changed.outputs.any == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=${{ steps.pack.outputs.version }}
-          OLD_VERSION=${{ steps.pack.outputs.old_version }}
-          TARBALL=${{ steps.pack.outputs.tarball }}
-          START_TAG="github-actions@v$OLD_VERSION"
-          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
-            NOTES_FLAG="--notes-start-tag $START_TAG"
-          else
-            NOTES_FLAG=""
-          fi
-          gh release create "github-actions@v$VERSION" "$TARBALL" \
-            --title "github-actions v$VERSION" \
-            --generate-notes \
-            $NOTES_FLAG
-
-  # ── agent-monitor ───────────────────────────────────────────────────────────
-  agent-monitor:
-    name: Release agent-monitor
-    if: |
-      github.event.pull_request.merged == true &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check for source changes in agent-monitor
-        id: changed
-        run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          CHANGED=$(git diff --name-only "$BASE" HEAD -- \
-            agent-monitor/src/ \
-            agent-monitor/build.mjs)
-          echo "any=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-      - name: Determine bump type from PR labels
-        id: bump
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          LABELS='${{ join(github.event.pull_request.labels.*.name, ' ') }}'
-          if echo "$LABELS" | grep -qw major; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          elif echo "$LABELS" | grep -qw minor; then
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=patch" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/setup-node@v4
-        if: steps.changed.outputs.any == 'true'
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: agent-monitor/package-lock.json
-
-      - name: Bump version, build, and pack
-        if: steps.changed.outputs.any == 'true'
-        id: pack
-        working-directory: agent-monitor
-        run: |
-          npm ci
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          OLD_VERSION=$(node -p "require('./package.json').version")
-          echo "old_version=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-          npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
-          NEW_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          git add package.json package-lock.json
-          git commit -m "chore(release): agent-monitor v$NEW_VERSION [skip ci]"
-          git tag "agent-monitor@v$NEW_VERSION"
-          npm test
-          npm run build
-          TARBALL=$(npm pack --pack-destination ../)
-          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
-      - name: Push commit and tag
-        if: steps.changed.outputs.any == 'true'
-        run: |
-          git push origin HEAD:main
-          git push origin "refs/tags/agent-monitor@v${{ steps.pack.outputs.version }}"
-
-      - name: Create GitHub Release
-        if: steps.changed.outputs.any == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=${{ steps.pack.outputs.version }}
-          OLD_VERSION=${{ steps.pack.outputs.old_version }}
-          TARBALL=${{ steps.pack.outputs.tarball }}
-          START_TAG="agent-monitor@v$OLD_VERSION"
-          if git rev-parse "$START_TAG" >/dev/null 2>&1; then
-            NOTES_FLAG="--notes-start-tag $START_TAG"
-          else
-            NOTES_FLAG=""
-          fi
-          gh release create "agent-monitor@v$VERSION" "$TARBALL" \
-            --title "agent-monitor v$VERSION" \
-            --generate-notes \
-            $NOTES_FLAG
-
-  # Add a job block here for each new extension, following the same pattern.
+            # shellcheck disable=SC2086
+            gh release create "$TAG" "$TARBALL" \
+              --title "$EXT v$NEW" \
+              --generate-notes \
+              $NOTES_FLAG
+          done < "$RELEASE_LOG"
