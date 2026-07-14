@@ -1,6 +1,11 @@
 // Pure row/aggregate/format model for the Processes panel — no ctx, no I/O.
 
-import type { ProcessInfo, ProcessTreeNode } from "@silo-code/sdk";
+import type {
+  ProcessInfo,
+  ProcessTreeNode,
+  WorkspaceBadge,
+  WorkspaceStatusRow,
+} from "@silo-code/sdk";
 import { flattenTree } from "./tree";
 
 export interface SessionRow {
@@ -40,6 +45,21 @@ export interface ProcessesAggregate {
 export interface ProcessesData {
   rows: SessionRow[];
   agg: ProcessesAggregate;
+}
+
+/** Splits a flat, cross-workspace {@link ProcessInfo} list (from
+ * `ctx.processes.getState({ allWorkspaces: true })`) by {@link ProcessInfo.workspaceId},
+ * so each workspace's badges/status can be computed independently. */
+export function groupInfosByWorkspace(
+  infos: ProcessInfo[],
+): Map<string, ProcessInfo[]> {
+  const map = new Map<string, ProcessInfo[]>();
+  for (const info of infos) {
+    const list = map.get(info.workspaceId);
+    if (list) list.push(info);
+    else map.set(info.workspaceId, [info]);
+  }
+  return map;
 }
 
 /** One row per session. Trees and stats both come from the host's stats poll
@@ -132,4 +152,59 @@ export function formatMem(mb: number | null): string {
 export function displayName(command: string): string {
   const base = command.slice(command.lastIndexOf("/") + 1);
   return base.startsWith("-") ? base.slice(1) : base;
+}
+
+// ─── Workspace status/badge thresholds ─────────────────────────────────────────
+// Shared by any workspace's rows/aggregate — a session or workspace crosses
+// "warn" then "error" at the same CPU/memory levels regardless of which
+// workspace it lives in.
+
+const CPU_WARN_PERCENT = 25;
+const CPU_DANGER_PERCENT = 75;
+const MEM_WARN_MB = 500;
+const MEM_DANGER_MB = 2000;
+const WARN_COLOR = "#e3b341";
+const DANGER_COLOR = "#f47067";
+
+/** Per-session warn/error rows for a workspace's Workspaces-panel status list. */
+export function computeStatusRows(rows: SessionRow[]): WorkspaceStatusRow[] {
+  const result: WorkspaceStatusRow[] = [];
+  for (const row of rows) {
+    const cpu = row.totalCpuPercent ?? 0;
+    const mem = row.totalMemoryMb ?? 0;
+    const cpuWarn = cpu >= CPU_WARN_PERCENT;
+    const memWarn = mem >= MEM_WARN_MB;
+    if (!cpuWarn && !memWarn) continue;
+
+    const status = cpu >= CPU_DANGER_PERCENT || mem >= MEM_DANGER_MB ? "error" : "warn";
+    const parts: string[] = [];
+    if (cpuWarn) parts.push(`${formatCpu(row.totalCpuPercent)} CPU`);
+    if (memWarn) parts.push(formatMem(row.totalMemoryMb));
+    result.push({
+      id: row.sessionId,
+      status,
+      label: `${displayName(row.leader)}: ${parts.join(" · ")}`,
+    });
+  }
+  return result;
+}
+
+/** CPU/MEM badges for a workspace's aggregate resource usage. */
+export function computeBadges(agg: ProcessesAggregate): WorkspaceBadge[] {
+  const result: WorkspaceBadge[] = [];
+  if (agg.cpuPercent >= CPU_WARN_PERCENT) {
+    result.push({
+      id: "cpu",
+      text: "CPU",
+      color: agg.cpuPercent >= CPU_DANGER_PERCENT ? DANGER_COLOR : WARN_COLOR,
+    });
+  }
+  if (agg.memoryMb >= MEM_WARN_MB) {
+    result.push({
+      id: "mem",
+      text: "MEM",
+      color: agg.memoryMb >= MEM_DANGER_MB ? DANGER_COLOR : WARN_COLOR,
+    });
+  }
+  return result;
 }

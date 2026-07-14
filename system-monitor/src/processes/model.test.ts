@@ -2,14 +2,19 @@ import { describe, it, expect } from "vitest";
 import {
   buildRows,
   buildAggregate,
+  computeBadges,
+  computeStatusRows,
   formatCpu,
   formatMem,
   displayName,
+  groupInfosByWorkspace,
 } from "./model";
+import type { ProcessesAggregate } from "./model";
 import type { ProcessInfo, ProcessTreeNode } from "@silo-code/sdk";
 
 function info(p: Partial<ProcessInfo> & { sessionId: string; pgid: number }): ProcessInfo {
   return {
+    workspaceId: "ws1",
     terminalId: `term_${p.sessionId}`,
     terminalTitle: `Terminal ${p.sessionId}`,
     leader: "node",
@@ -209,4 +214,101 @@ describe("displayName", () => {
     expect(displayName("-zsh")).toBe("zsh"));
   it("passes through a bare command unchanged", () =>
     expect(displayName("node")).toBe("node"));
+});
+
+describe("groupInfosByWorkspace", () => {
+  it("splits a cross-workspace list by workspaceId", () => {
+    const infos = [
+      info({ sessionId: "a", pgid: 100, workspaceId: "ws1" }),
+      info({ sessionId: "b", pgid: 200, workspaceId: "ws2" }),
+      info({ sessionId: "c", pgid: 300, workspaceId: "ws1" }),
+    ];
+    const grouped = groupInfosByWorkspace(infos);
+    expect([...grouped.keys()].sort()).toEqual(["ws1", "ws2"]);
+    expect(grouped.get("ws1")?.map((i) => i.sessionId)).toEqual(["a", "c"]);
+    expect(grouped.get("ws2")?.map((i) => i.sessionId)).toEqual(["b"]);
+  });
+
+  it("returns an empty map for an empty list", () => {
+    expect(groupInfosByWorkspace([]).size).toBe(0);
+  });
+});
+
+describe("computeStatusRows", () => {
+  it("omits rows below both thresholds", () => {
+    const rows = buildRows([
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 10, memoryMb: 100 },
+      }),
+    ]);
+    expect(computeStatusRows(rows)).toEqual([]);
+  });
+
+  it("flags a warn row between the warn and danger thresholds", () => {
+    const rows = buildRows([
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        leader: "node",
+        stats: { pid: 100, cpuPercent: 40, memoryMb: 100 },
+      }),
+    ]);
+    const [row] = computeStatusRows(rows);
+    expect(row.status).toBe("warn");
+    expect(row.label).toBe("node: 40% CPU");
+  });
+
+  it("flags an error row at or above the danger threshold", () => {
+    const rows = buildRows([
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 80, memoryMb: 100 },
+      }),
+    ]);
+    expect(computeStatusRows(rows)[0].status).toBe("error");
+  });
+
+  it("includes both CPU and memory in the label when both warn", () => {
+    const rows = buildRows([
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        leader: "node",
+        stats: { pid: 100, cpuPercent: 40, memoryMb: 600 },
+      }),
+    ]);
+    expect(computeStatusRows(rows)[0].label).toBe("node: 40% CPU · 600 MB");
+  });
+});
+
+describe("computeBadges", () => {
+  function agg(cpuPercent: number, memoryMb: number): ProcessesAggregate {
+    return { sessions: 1, procs: 1, cpuPercent, memoryMb };
+  }
+
+  it("returns no badges below both thresholds", () => {
+    expect(computeBadges(agg(10, 100))).toEqual([]);
+  });
+
+  it("adds a warn-colored CPU badge between thresholds", () => {
+    const [badge] = computeBadges(agg(40, 0));
+    expect(badge).toMatchObject({ id: "cpu", text: "CPU", color: "#e3b341" });
+  });
+
+  it("adds a danger-colored CPU badge at or above the danger threshold", () => {
+    const [badge] = computeBadges(agg(80, 0));
+    expect(badge.color).toBe("#f47067");
+  });
+
+  it("adds both CPU and MEM badges when both cross their thresholds", () => {
+    const badges = computeBadges(agg(40, 600));
+    expect(badges.map((b) => b.id)).toEqual(["cpu", "mem"]);
+  });
 });
