@@ -538,16 +538,6 @@
   font-size: 0.83em;
 }
 
-.sm-proc-footnote {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--silo-color-border);
-  color: var(--silo-color-text);
-  font-size: 0.75em;
-  line-height: 1.5;
-  white-space: pre-wrap;
-}
-
 /* ─── Status bar items ───────────────────────────────────────────────────── */
 /* font-size and font-family inherit from .status-bar — don't override. */
 .sm-status-item {
