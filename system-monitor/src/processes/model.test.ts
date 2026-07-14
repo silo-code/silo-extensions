@@ -9,8 +9,15 @@ import {
   displayName,
   groupInfosByWorkspace,
 } from "./model";
-import type { ProcessesAggregate } from "./model";
+import type { ProcessesAggregate, ProcessThresholds } from "./model";
 import type { ProcessInfo, ProcessTreeNode } from "@silo-code/sdk";
+
+const THRESHOLDS: ProcessThresholds = {
+  cpuWarnPercent: 25,
+  cpuDangerPercent: 75,
+  memWarnMb: 500,
+  memDangerMb: 2000,
+};
 
 function info(p: Partial<ProcessInfo> & { sessionId: string; pgid: number }): ProcessInfo {
   return {
@@ -244,7 +251,7 @@ describe("computeStatusRows", () => {
         stats: { pid: 100, cpuPercent: 10, memoryMb: 100 },
       }),
     ]);
-    expect(computeStatusRows(rows)).toEqual([]);
+    expect(computeStatusRows(rows, THRESHOLDS)).toEqual([]);
   });
 
   it("flags a warn row between the warn and danger thresholds", () => {
@@ -257,7 +264,7 @@ describe("computeStatusRows", () => {
         stats: { pid: 100, cpuPercent: 40, memoryMb: 100 },
       }),
     ]);
-    const [row] = computeStatusRows(rows);
+    const [row] = computeStatusRows(rows, THRESHOLDS);
     expect(row.status).toBe("warn");
     expect(row.label).toBe("node: 40% CPU");
   });
@@ -271,7 +278,7 @@ describe("computeStatusRows", () => {
         stats: { pid: 100, cpuPercent: 80, memoryMb: 100 },
       }),
     ]);
-    expect(computeStatusRows(rows)[0].status).toBe("error");
+    expect(computeStatusRows(rows, THRESHOLDS)[0].status).toBe("error");
   });
 
   it("includes both CPU and memory in the label when both warn", () => {
@@ -284,7 +291,28 @@ describe("computeStatusRows", () => {
         stats: { pid: 100, cpuPercent: 40, memoryMb: 600 },
       }),
     ]);
-    expect(computeStatusRows(rows)[0].label).toBe("node: 40% CPU · 600 MB");
+    expect(computeStatusRows(rows, THRESHOLDS)[0].label).toBe(
+      "node: 40% CPU · 600 MB",
+    );
+  });
+
+  it("respects custom thresholds", () => {
+    // 40% CPU crosses THRESHOLDS' 25% warn but not a more lenient 50%.
+    const rows = buildRows([
+      info({
+        sessionId: "a",
+        pgid: 100,
+        atPrompt: false,
+        stats: { pid: 100, cpuPercent: 40, memoryMb: 100 },
+      }),
+    ]);
+    const lenient: ProcessThresholds = {
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 90,
+      memWarnMb: 1000,
+      memDangerMb: 2000,
+    };
+    expect(computeStatusRows(rows, lenient)).toEqual([]);
   });
 });
 
@@ -294,21 +322,31 @@ describe("computeBadges", () => {
   }
 
   it("returns no badges below both thresholds", () => {
-    expect(computeBadges(agg(10, 100))).toEqual([]);
+    expect(computeBadges(agg(10, 100), THRESHOLDS)).toEqual([]);
   });
 
   it("adds a warn-colored CPU badge between thresholds", () => {
-    const [badge] = computeBadges(agg(40, 0));
+    const [badge] = computeBadges(agg(40, 0), THRESHOLDS);
     expect(badge).toMatchObject({ id: "cpu", text: "CPU", color: "#e3b341" });
   });
 
   it("adds a danger-colored CPU badge at or above the danger threshold", () => {
-    const [badge] = computeBadges(agg(80, 0));
+    const [badge] = computeBadges(agg(80, 0), THRESHOLDS);
     expect(badge.color).toBe("#f47067");
   });
 
   it("adds both CPU and MEM badges when both cross their thresholds", () => {
-    const badges = computeBadges(agg(40, 600));
+    const badges = computeBadges(agg(40, 600), THRESHOLDS);
     expect(badges.map((b) => b.id)).toEqual(["cpu", "mem"]);
+  });
+
+  it("respects custom thresholds", () => {
+    const lenient: ProcessThresholds = {
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 90,
+      memWarnMb: 1000,
+      memDangerMb: 2000,
+    };
+    expect(computeBadges(agg(40, 100), lenient)).toEqual([]);
   });
 });

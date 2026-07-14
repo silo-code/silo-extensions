@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   mergeList,
   mergeSettings,
+  mergeThreshold,
   DEFAULT_SETTINGS,
   sysmonStore,
 } from "./store";
@@ -73,11 +74,39 @@ describe("mergeList", () => {
   });
 });
 
+describe("mergeThreshold", () => {
+  it("keeps a valid positive number", () => {
+    expect(mergeThreshold(42, 100)).toBe(42);
+  });
+
+  it("falls back for undefined", () => {
+    expect(mergeThreshold(undefined, 100)).toBe(100);
+  });
+
+  it("falls back for zero or negative values", () => {
+    expect(mergeThreshold(0, 100)).toBe(100);
+    expect(mergeThreshold(-5, 100)).toBe(100);
+  });
+
+  it("falls back for NaN/Infinity", () => {
+    expect(mergeThreshold(NaN, 100)).toBe(100);
+    expect(mergeThreshold(Infinity, 100)).toBe(100);
+  });
+
+  it("falls back for a non-number", () => {
+    expect(mergeThreshold("50", 100)).toBe(100);
+  });
+});
+
 describe("mergeSettings", () => {
   it("returns valid Settings from an empty partial", () => {
     const result = mergeSettings({});
     expect(result.panels).toEqual(DEFAULT_SETTINGS.panels);
     expect(result.statusBar).toEqual(DEFAULT_SETTINGS.statusBar);
+    expect(result.cpuWarnPercent).toBe(DEFAULT_SETTINGS.cpuWarnPercent);
+    expect(result.cpuDangerPercent).toBe(DEFAULT_SETTINGS.cpuDangerPercent);
+    expect(result.memWarnMb).toBe(DEFAULT_SETTINGS.memWarnMb);
+    expect(result.memDangerMb).toBe(DEFAULT_SETTINGS.memDangerMb);
   });
 
   it("merges panels and statusBar independently", () => {
@@ -91,6 +120,24 @@ describe("mergeSettings", () => {
     expect(result.panels.find((p) => p.id === "cpu")?.enabled).toBe(false);
     // statusBar falls back to defaults
     expect(result.statusBar).toEqual(DEFAULT_SETTINGS.statusBar);
+  });
+
+  it("preserves saved threshold overrides", () => {
+    const result = mergeSettings({
+      cpuWarnPercent: 30,
+      cpuDangerPercent: 90,
+      memWarnMb: 750,
+      memDangerMb: 3000,
+    });
+    expect(result.cpuWarnPercent).toBe(30);
+    expect(result.cpuDangerPercent).toBe(90);
+    expect(result.memWarnMb).toBe(750);
+    expect(result.memDangerMb).toBe(3000);
+  });
+
+  it("falls back to defaults for an invalid saved threshold", () => {
+    const result = mergeSettings({ cpuWarnPercent: -1 });
+    expect(result.cpuWarnPercent).toBe(DEFAULT_SETTINGS.cpuWarnPercent);
   });
 });
 

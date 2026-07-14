@@ -37,6 +37,12 @@ function toItems(
   });
 }
 
+type ThresholdKey =
+  | "cpuWarnPercent"
+  | "cpuDangerPercent"
+  | "memWarnMb"
+  | "memDangerMb";
+
 export function SystemMonitorSettings() {
   const store = useStore();
   const { settings } = store;
@@ -53,6 +59,11 @@ export function SystemMonitorSettings() {
         p.id === id ? { ...p, enabled: next } : p,
       ),
     });
+  }
+
+  function setThreshold(key: ThresholdKey, next: number) {
+    if (!Number.isFinite(next) || next <= 0) return;
+    sysmonStore.updateSettings({ ...settings, [key]: next });
   }
 
   function reorderSection(
@@ -114,6 +125,84 @@ export function SystemMonitorSettings() {
                     checked={settings.workspaceStatus}
                     onChange={(next) =>
                       sysmonStore.updateSettings({ ...settings, workspaceStatus: next })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="es-row">
+                <div className="es-row-text">
+                  <span className="es-label">CPU warning threshold</span>
+                  <span className="es-hint">
+                    Percent (per-core; summed across a workspace's sessions
+                    and their child processes for the badge).
+                  </span>
+                </div>
+                <div className="es-control">
+                  <input
+                    className="es-number"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.cpuWarnPercent}
+                    onChange={(e) =>
+                      setThreshold("cpuWarnPercent", Number(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="es-row">
+                <div className="es-row-text">
+                  <span className="es-label">CPU danger threshold</span>
+                  <span className="es-hint">Percent — at or above this, the warning turns red.</span>
+                </div>
+                <div className="es-control">
+                  <input
+                    className="es-number"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.cpuDangerPercent}
+                    onChange={(e) =>
+                      setThreshold("cpuDangerPercent", Number(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="es-row">
+                <div className="es-row-text">
+                  <span className="es-label">Memory warning threshold</span>
+                  <span className="es-hint">
+                    MB, summed across a workspace's sessions and their child
+                    processes for the badge.
+                  </span>
+                </div>
+                <div className="es-control">
+                  <input
+                    className="es-number"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.memWarnMb}
+                    onChange={(e) =>
+                      setThreshold("memWarnMb", Number(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="es-row">
+                <div className="es-row-text">
+                  <span className="es-label">Memory danger threshold</span>
+                  <span className="es-hint">MB — at or above this, the warning turns red.</span>
+                </div>
+                <div className="es-control">
+                  <input
+                    className="es-number"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={settings.memDangerMb}
+                    onChange={(e) =>
+                      setThreshold("memDangerMb", Number(e.target.value))
                     }
                   />
                 </div>

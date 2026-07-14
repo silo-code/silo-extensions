@@ -7,6 +7,10 @@ function settings(overrides: Partial<Settings> = {}): Settings {
     panels: [{ id: "processes", enabled: true }],
     statusBar: [],
     workspaceStatus: true,
+    cpuWarnPercent: 50,
+    cpuDangerPercent: 150,
+    memWarnMb: 1024,
+    memDangerMb: 4096,
     ...overrides,
   };
 }

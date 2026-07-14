@@ -14,7 +14,7 @@ import {
   computeStatusRows,
   groupInfosByWorkspace,
 } from "./model";
-import type { ProcessesData, SessionRow } from "./model";
+import type { ProcessesData, ProcessThresholds, SessionRow } from "./model";
 
 /**
  * Whether the stats+subscribe resources should be held. "Workspace status"
@@ -150,14 +150,26 @@ class ProcessesController {
     ctx: ExtensionContext,
     dataByWorkspace: Map<string, ProcessesData>,
   ): void {
-    const enabled = sysmonStore.settings.workspaceStatus;
+    const settings = sysmonStore.settings;
 
     const nextStatusByWorkspace = new Map<string, WorkspaceStatusRow[]>();
     const nextBadgesByWorkspace = new Map<string, WorkspaceBadge[]>();
-    if (enabled) {
+    if (settings.workspaceStatus) {
+      const thresholds: ProcessThresholds = {
+        cpuWarnPercent: settings.cpuWarnPercent,
+        cpuDangerPercent: settings.cpuDangerPercent,
+        memWarnMb: settings.memWarnMb,
+        memDangerMb: settings.memDangerMb,
+      };
       for (const [workspaceId, data] of dataByWorkspace) {
-        nextStatusByWorkspace.set(workspaceId, computeStatusRows(data.rows));
-        nextBadgesByWorkspace.set(workspaceId, computeBadges(data.agg));
+        nextStatusByWorkspace.set(
+          workspaceId,
+          computeStatusRows(data.rows, thresholds),
+        );
+        nextBadgesByWorkspace.set(
+          workspaceId,
+          computeBadges(data.agg, thresholds),
+        );
       }
     }
 

@@ -155,28 +155,37 @@ export function displayName(command: string): string {
 }
 
 // ─── Workspace status/badge thresholds ─────────────────────────────────────────
-// Shared by any workspace's rows/aggregate — a session or workspace crosses
-// "warn" then "error" at the same CPU/memory levels regardless of which
-// workspace it lives in.
+// User-configurable (Settings.cpuWarnPercent etc., System Monitor's Options
+// settings tab) — shared by both a session's own row and a workspace's
+// aggregate, at whatever levels the user has set.
 
-const CPU_WARN_PERCENT = 25;
-const CPU_DANGER_PERCENT = 75;
-const MEM_WARN_MB = 500;
-const MEM_DANGER_MB = 2000;
+export interface ProcessThresholds {
+  cpuWarnPercent: number;
+  cpuDangerPercent: number;
+  memWarnMb: number;
+  memDangerMb: number;
+}
+
 const WARN_COLOR = "#e3b341";
 const DANGER_COLOR = "#f47067";
 
 /** Per-session warn/error rows for a workspace's Workspaces-panel status list. */
-export function computeStatusRows(rows: SessionRow[]): WorkspaceStatusRow[] {
+export function computeStatusRows(
+  rows: SessionRow[],
+  thresholds: ProcessThresholds,
+): WorkspaceStatusRow[] {
   const result: WorkspaceStatusRow[] = [];
   for (const row of rows) {
     const cpu = row.totalCpuPercent ?? 0;
     const mem = row.totalMemoryMb ?? 0;
-    const cpuWarn = cpu >= CPU_WARN_PERCENT;
-    const memWarn = mem >= MEM_WARN_MB;
+    const cpuWarn = cpu >= thresholds.cpuWarnPercent;
+    const memWarn = mem >= thresholds.memWarnMb;
     if (!cpuWarn && !memWarn) continue;
 
-    const status = cpu >= CPU_DANGER_PERCENT || mem >= MEM_DANGER_MB ? "error" : "warn";
+    const status =
+      cpu >= thresholds.cpuDangerPercent || mem >= thresholds.memDangerMb
+        ? "error"
+        : "warn";
     const parts: string[] = [];
     if (cpuWarn) parts.push(`${formatCpu(row.totalCpuPercent)} CPU`);
     if (memWarn) parts.push(formatMem(row.totalMemoryMb));
@@ -190,20 +199,27 @@ export function computeStatusRows(rows: SessionRow[]): WorkspaceStatusRow[] {
 }
 
 /** CPU/MEM badges for a workspace's aggregate resource usage. */
-export function computeBadges(agg: ProcessesAggregate): WorkspaceBadge[] {
+export function computeBadges(
+  agg: ProcessesAggregate,
+  thresholds: ProcessThresholds,
+): WorkspaceBadge[] {
   const result: WorkspaceBadge[] = [];
-  if (agg.cpuPercent >= CPU_WARN_PERCENT) {
+  if (agg.cpuPercent >= thresholds.cpuWarnPercent) {
     result.push({
       id: "cpu",
       text: "CPU",
-      color: agg.cpuPercent >= CPU_DANGER_PERCENT ? DANGER_COLOR : WARN_COLOR,
+      color:
+        agg.cpuPercent >= thresholds.cpuDangerPercent
+          ? DANGER_COLOR
+          : WARN_COLOR,
     });
   }
-  if (agg.memoryMb >= MEM_WARN_MB) {
+  if (agg.memoryMb >= thresholds.memWarnMb) {
     result.push({
       id: "mem",
       text: "MEM",
-      color: agg.memoryMb >= MEM_DANGER_MB ? DANGER_COLOR : WARN_COLOR,
+      color:
+        agg.memoryMb >= thresholds.memDangerMb ? DANGER_COLOR : WARN_COLOR,
     });
   }
   return result;
