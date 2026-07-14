@@ -4,6 +4,7 @@ import {
   settingsService,
   initSettings,
   clearSettingsListeners,
+  type FocusBehavior,
 } from "./settings-store";
 
 /** In-memory ExtensionStorage stand-in, mirroring the host's real contract. */
@@ -32,48 +33,57 @@ function fakeStorage(
   };
 }
 
-// settings.ts holds its state in a module-level singleton (mirrors the host's
-// own ReactiveService pattern), so each test pins a known starting value via
-// a throwaway storage before exercising the behavior under test.
-function resetTo(hideStatusWhenFocused: boolean) {
+// settings-store.ts holds its state in a module-level singleton (mirrors the
+// host's own ReactiveService pattern), so each test pins a known starting
+// value via a throwaway storage before exercising the behavior under test.
+function resetTo(focusBehavior: FocusBehavior) {
   clearSettingsListeners();
-  initSettings(fakeStorage({ hideStatusWhenFocused })).dispose();
+  initSettings(fakeStorage({ focusBehavior })).dispose();
 }
 
 describe("agent-monitor settings persistence", () => {
   beforeEach(() => {
-    resetTo(false);
+    resetTo("none");
   });
 
-  it("defaults to false with empty storage", () => {
+  it("defaults to \"clear\" with empty storage", () => {
+    resetTo("clear"); // restore module to compiled default before testing empty storage
     const storage = fakeStorage();
     const sub = initSettings(storage);
-    expect(settingsService.getState().hideStatusWhenFocused).toBe(false);
+    expect(settingsService.getState().focusBehavior).toBe("clear");
     sub.dispose();
   });
 
   it("hydrates from a value already persisted (restart case)", () => {
-    const storage = fakeStorage({ hideStatusWhenFocused: true });
+    const storage = fakeStorage({ focusBehavior: "hide" });
     const sub = initSettings(storage);
-    expect(settingsService.getState().hideStatusWhenFocused).toBe(true);
+    expect(settingsService.getState().focusBehavior).toBe("hide");
+    sub.dispose();
+  });
+
+  it("coerces an invalid stored value to the default", () => {
+    // e.g. a boolean left over from an older settings shape, or garbage.
+    const storage = fakeStorage({ focusBehavior: true });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().focusBehavior).toBe("clear");
     sub.dispose();
   });
 
   it("persists a change through settingsService.set", () => {
     const storage = fakeStorage();
     const sub = initSettings(storage);
-    settingsService.set({ hideStatusWhenFocused: true });
-    expect(storage.get<boolean>("hideStatusWhenFocused")).toBe(true);
+    settingsService.set({ focusBehavior: "hide" });
+    expect(storage.get<string>("focusBehavior")).toBe("hide");
     sub.dispose();
   });
 
   it("picks up a value that arrives after activation (async hydration)", () => {
     const storage = fakeStorage();
     const sub = initSettings(storage);
-    expect(settingsService.getState().hideStatusWhenFocused).toBe(false);
-    storage.set("hideStatusWhenFocused", true);
+    expect(settingsService.getState().focusBehavior).toBe("none");
+    storage.set("focusBehavior", "hide");
     storage.emit();
-    expect(settingsService.getState().hideStatusWhenFocused).toBe(true);
+    expect(settingsService.getState().focusBehavior).toBe("hide");
     sub.dispose();
   });
 
@@ -81,8 +91,8 @@ describe("agent-monitor settings persistence", () => {
     const storage = fakeStorage();
     const sub = initSettings(storage);
     sub.dispose();
-    storage.set("hideStatusWhenFocused", true);
+    storage.set("focusBehavior", "hide");
     storage.emit();
-    expect(settingsService.getState().hideStatusWhenFocused).toBe(false);
+    expect(settingsService.getState().focusBehavior).toBe("none");
   });
 });

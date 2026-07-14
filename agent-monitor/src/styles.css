@@ -44,24 +44,14 @@
   font-size: 1.1em;
   color: var(--silo-color-text-hi);
 }
-.am-list {
+.am-section {
   display: flex;
   flex-direction: column;
-  margin-left: calc(var(--settings-pane-pad) * -1);
+  gap: 4px;
+  max-width: 560px;
 }
-.am-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 7px 8px 7px var(--settings-pane-pad);
-  border-bottom: 1px solid var(--silo-color-border);
-}
-.am-row-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+.am-section-title {
+  color: var(--silo-color-text-hi);
 }
 .am-label {
   color: var(--silo-color-text-hi);
@@ -71,46 +61,56 @@
   color: var(--silo-color-text-lo);
   line-height: 1.35;
 }
-.am-switch {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-  flex: 0 0 auto;
+.am-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
 }
-.am-switch input {
+.am-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--silo-color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+}
+.am-option:hover {
+  background: var(--silo-color-bg-active);
+}
+.am-option:has(input:checked) {
+  border-color: var(--silo-color-accent);
+}
+.am-option input {
   position: absolute;
   opacity: 0;
   width: 0;
   height: 0;
 }
-.am-switch-track {
-  width: 34px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--silo-color-bg-active);
-  border: 1px solid var(--silo-color-border-strong);
-  transition: background 0.15s ease;
+.am-option-dot {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1.5px solid var(--silo-color-border-strong);
   position: relative;
 }
-.am-switch-track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--silo-color-text-lo);
-  transition:
-    transform 0.15s ease,
-    background 0.15s ease;
-}
-.am-switch input:checked + .am-switch-track {
-  background: var(--silo-color-accent);
+.am-option input:checked ~ .am-option-dot {
   border-color: var(--silo-color-accent);
 }
-.am-switch input:checked + .am-switch-track::after {
-  transform: translateX(16px);
-  background: var(--silo-button-primary-text, #fff);
+.am-option input:checked ~ .am-option-dot::after {
+  content: "";
+  position: absolute;
+  inset: 2.5px;
+  border-radius: 50%;
+  background: var(--silo-color-accent);
+}
+.am-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }

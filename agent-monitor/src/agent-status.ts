@@ -11,9 +11,13 @@
  *   terminal demotes it again once the agent process is gone.
  * - While an agent is **working** it shows a busy row (with a start timestamp
  *   so the host renders elapsed time).
- * - When work stops (working → waiting/done) the terminal **needs attention**
- *   — sticky until the user views it — unless it was already the active tab.
- * - **Activation** (the user views the terminal) clears needs-attention.
+ * - When work stops (working → waiting) the terminal is **finished, unseen**
+ *   (green "ok" row + attention badge) — sticky until the user views it.
+ *   If the user was already viewing it, it skips straight to done.
+ * - **Activation** (the user views the terminal) acknowledges a finished run:
+ *   waiting → **done**, which keeps its row (status-less → grey dot) but drops
+ *   the tab badge. Done is sticky against the agent's recurring idle signal;
+ *   only a new working/error signal moves it.
  *
  * Non-agent terminals derive no row and no badge, whatever their activity.
  */
@@ -87,16 +91,16 @@ export function isLiveSignal(
 }
 
 /**
- * Whether focus should suppress this terminal's row/badge right now — gated
- * by the "hide status when focused" setting; when disabled, focus never
- * suppresses anything.
+ * Whether the focused terminal's row should be hidden right now. `hideFocusedRow`
+ * is `focusBehavior === "hide"` — the only behavior that removes rows; with
+ * "clear"/"none", focus never suppresses anything here.
  */
 export function isSuppressedByFocus(
-  hideStatusWhenFocused: boolean,
+  hideFocusedRow: boolean,
   terminalId: string,
   activeTerminalId: string | null,
 ): boolean {
-  return hideStatusWhenFocused && terminalId === activeTerminalId;
+  return hideFocusedRow && terminalId === activeTerminalId;
 }
 
 export function initialState(kind: TerminalKind): TerminalAgentState {
@@ -169,9 +173,12 @@ export function reduce(
   ev: AgentEvent,
 ): TerminalAgentState {
   if (ev.type === "activated") {
-    return prev.needsAttention
-      ? { ...prev, needsAttention: false, attentionSince: null }
-      : prev;
+    if (!prev.needsAttention) return prev;
+    // Viewing a waiting terminal acknowledges it — transition to "done" so the
+    // tab badge clears entirely. Agents never emit "done" themselves; this is
+    // the only path into that state.
+    const activity = prev.activity === "waiting" ? ("done" as const) : prev.activity;
+    return { ...prev, needsAttention: false, attentionSince: null, activity };
   }
 
   // Promotion first: an agent-specific detector marks this terminal as an
@@ -212,13 +219,20 @@ export function reduce(
       ev.status !== "working" &&
       ((ev.source === "shell" && prev.kind !== "shell") ||
         (ev.source === "timer" && prev.workingSource === "agent"));
-    if (!blockDemotion) {
+    // "done" means the user already acknowledged a finished run. The agent's
+    // recurring idle signal (Claude re-emits ✳ while sitting at its prompt)
+    // carries no new information, so it must not flip done back to "waiting"
+    // — done is sticky until the next working/error signal.
+    const redundantIdle = activity === "done" && ev.status === "waiting";
+    if (!blockDemotion && !redundantIdle) {
       if (ev.status === "working") {
         workingSince = ev.now;
         workingSource = ev.source === "agent" ? "agent" : "shell";
         needsAttention = false;
         attentionSince = null;
+        activity = ev.status;
       } else {
+        let nextActivity: Activity = ev.status;
         if (
           activity === "working" &&
           (ev.status === "waiting" || ev.status === "done")
@@ -228,11 +242,14 @@ export function reduce(
           // show how long it's been waiting, same as the busy row's elapsed time.
           needsAttention = isAgent && !ev.isActiveTerminal;
           attentionSince = needsAttention ? ev.now : null;
+          // The user watched it finish — acknowledged on the spot, same as
+          // activating a green terminal, so land on "done" not "waiting".
+          if (isAgent && ev.isActiveTerminal) nextActivity = "done";
         }
         workingSince = null;
         workingSource = null;
+        activity = nextActivity;
       }
-      activity = ev.status;
     }
   }
 
@@ -285,17 +302,23 @@ export function stripStatusMarker(title: string): string {
 
 /**
  * The Workspaces-panel row for a terminal, or `null` for no row.
- * Only agents get rows, and only while working or needing attention.
+ * Working → busy (blue); finished-unseen → "ok" (green); done (acknowledged)
+ * → a row with **no status**, which the host renders as a neutral/grey dot.
+ * The row itself never disappears once an agent has finished — only the
+ * focus-suppression setting (applied by the provider, not here) hides it.
  */
 export function deriveStatusRow(
   s: TerminalAgentState,
-): { status: "busy" | "warn"; startedAt?: string } | null {
+): { status?: "ok" | "busy"; startedAt?: string } | null {
   if (!s.isAgent) return null;
   if (s.activity === "working") {
     return { status: "busy", startedAt: s.workingSince ?? undefined };
   }
   if (s.needsAttention) {
-    return { status: "warn", startedAt: s.attentionSince ?? undefined };
+    return { status: "ok", startedAt: s.attentionSince ?? undefined };
+  }
+  if (s.activity === "done") {
+    return {};
   }
   return null;
 }
@@ -314,9 +337,10 @@ export function staleSuffix(
   return variant === "label" ? " (unconfirmed)" : " (unconfirmed since restart)";
 }
 
-export type TabBadge = "working" | "attention" | "waiting" | "done" | "error";
+export type TabBadge = "working" | "attention" | "waiting" | "error";
 
-/** The terminal-tab badge for a terminal, or `null` for none. Agents only. */
+/** The terminal-tab badge for a terminal, or `null` for none ("done" and
+ * idle agents show no badge). Agents only. */
 export function deriveTabBadge(s: TerminalAgentState): TabBadge | null {
   if (!s.isAgent) return null;
   if (s.activity === "working") return "working";
@@ -324,8 +348,6 @@ export function deriveTabBadge(s: TerminalAgentState): TabBadge | null {
   switch (s.activity) {
     case "waiting":
       return "waiting";
-    case "done":
-      return "done";
     case "error":
       return "error";
     default:
