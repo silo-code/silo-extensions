@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/agent-monitor",
   "displayName": "Agent Monitor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "At-a-glance agent status in the Workspaces panel: rows for coding agents that are working or finished and need attention, cleared when you view the terminal.",
   "type": "module",
   "files": [
