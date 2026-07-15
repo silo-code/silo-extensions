@@ -139,7 +139,7 @@ export function SystemMonitorSettings() {
                 </div>
                 <div className="es-control">
                   <input
-                    className="es-number"
+                    className="es-number sm-threshold-input"
                     type="number"
                     min={1}
                     step={1}
@@ -157,7 +157,7 @@ export function SystemMonitorSettings() {
                 </div>
                 <div className="es-control">
                   <input
-                    className="es-number"
+                    className="es-number sm-threshold-input"
                     type="number"
                     min={1}
                     step={1}
@@ -178,7 +178,7 @@ export function SystemMonitorSettings() {
                 </div>
                 <div className="es-control">
                   <input
-                    className="es-number"
+                    className="es-number sm-threshold-input"
                     type="number"
                     min={1}
                     step={1}
@@ -196,7 +196,7 @@ export function SystemMonitorSettings() {
                 </div>
                 <div className="es-control">
                   <input
-                    className="es-number"
+                    className="es-number sm-threshold-input"
                     type="number"
                     min={1}
                     step={1}
