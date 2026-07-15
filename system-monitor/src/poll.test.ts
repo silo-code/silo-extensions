@@ -12,6 +12,10 @@ const allEnabled: Settings = {
     { id: "memory", enabled: true },
   ],
   workspaceStatus: true,
+  cpuWarnPercent: 50,
+  cpuDangerPercent: 150,
+  memWarnMb: 1024,
+  memDangerMb: 4096,
 };
 
 describe("neededMetrics", () => {
@@ -26,6 +30,10 @@ describe("neededMetrics", () => {
       panels: [{ id: "cpu", enabled: true }],
       statusBar: [{ id: "cpu", enabled: false }],
       workspaceStatus: true,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
     };
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
@@ -35,6 +43,10 @@ describe("neededMetrics", () => {
       panels: [{ id: "cpu", enabled: false }],
       statusBar: [{ id: "cpu", enabled: true }],
       workspaceStatus: true,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
     };
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
@@ -50,6 +62,10 @@ describe("neededMetrics", () => {
         { id: "memory", enabled: false },
       ],
       workspaceStatus: true,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
     };
     const needed = neededMetrics(s);
     expect(needed.has("cpu")).toBe(false);
@@ -67,12 +83,24 @@ describe("neededMetrics", () => {
         { id: "memory", enabled: false },
       ],
       workspaceStatus: true,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
     };
     expect(neededMetrics(s).size).toBe(0);
   });
 
   it("returns empty set for empty settings", () => {
-    const s: Settings = { panels: [], statusBar: [], workspaceStatus: true };
+    const s: Settings = {
+      panels: [],
+      statusBar: [],
+      workspaceStatus: true,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
+    };
     expect(neededMetrics(s).size).toBe(0);
   });
 });

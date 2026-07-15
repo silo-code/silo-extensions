@@ -1,16 +1,39 @@
 // Lifecycle singleton for the Processes panel — thin glue over ctx.processes /
 // ctx.workspaces, patterned on `sysmonStore`. Owns the resources that differ
-// from the CPU/memory poll (poll.ts): refcounted stats+trees and panel-active
-// gating, so they only run while a user can actually see them. Stats, trees,
+// from the CPU/memory poll (poll.ts): refcounted stats+trees and the run
+// condition below, so they only run while there's a consumer. Stats, trees,
 // and foreground changes all arrive on the one subscribe channel.
 
 import type { Disposable, ExtensionContext, WorkspaceBadge, WorkspaceStatusRow } from "@silo-code/sdk";
 import { sysmonStore } from "../store";
-import { buildAggregate, buildRows, formatCpu, formatMem, displayName } from "./model";
-import type { ProcessesAggregate, SessionRow } from "./model";
+import type { Settings } from "../store";
+import {
+  buildAggregate,
+  buildRows,
+  computeBadges,
+  computeStatusRows,
+  groupInfosByWorkspace,
+} from "./model";
+import type { ProcessesData, ProcessThresholds, SessionRow } from "./model";
 
-const WARN_COLOR = "#e3b341";
-const DANGER_COLOR = "#f47067";
+/**
+ * Whether the stats+subscribe resources should be held. "Workspace status"
+ * (badges/status rows across every loaded workspace) is an ambient monitor —
+ * it must run whenever the setting is on, independent of `panelActive`, or a
+ * background workspace's badge would flicker on and off as the user opens
+ * and closes the System Monitor side panel elsewhere. The Processes *panel*
+ * view is the only part actually gated by panel visibility, since nobody can
+ * see it otherwise.
+ */
+export function shouldRunProcesses(
+  settings: Settings,
+  panelActive: boolean,
+): boolean {
+  const processesPanelEnabled = settings.panels.some(
+    (p) => p.id === "processes" && p.enabled,
+  );
+  return (panelActive && processesPanelEnabled) || settings.workspaceStatus;
+}
 
 class ProcessesController {
   private ctx: ExtensionContext | null = null;
@@ -23,9 +46,11 @@ class ProcessesController {
   private badgeDisposable: Disposable | null = null;
   private storeUnsubscribe: (() => void) | null = null;
 
-  private activeWorkspaceId: string | null = null;
-  private statusRows: WorkspaceStatusRow[] = [];
-  private badges: WorkspaceBadge[] = [];
+  // Keyed by workspaceId — `provide(workspaceId)` is called once per row the
+  // Workspaces panel renders, for every loaded workspace, not just the active
+  // one.
+  private statusByWorkspace = new Map<string, WorkspaceStatusRow[]>();
+  private badgesByWorkspace = new Map<string, WorkspaceBadge[]>();
   private lastStatusJson = "[]";
   private lastBadgeJson = "[]";
 
@@ -35,19 +60,21 @@ class ProcessesController {
 
     this.statusDisposable = ctx.workspaces.registerStatus({
       id: "silo.system-monitor.status",
-      provide: (workspaceId) => {
-        if (workspaceId !== this.activeWorkspaceId) return [];
-        return this.statusRows;
-      },
+      provide: (workspaceId) => this.statusByWorkspace.get(workspaceId) ?? [],
     });
 
     this.badgeDisposable = ctx.workspaces.registerBadge({
       id: "silo.system-monitor.badges",
-      provide: (workspaceId) => {
-        if (workspaceId !== this.activeWorkspaceId) return [];
-        return this.badges;
-      },
+      provide: (workspaceId) => this.badgesByWorkspace.get(workspaceId) ?? [],
     });
+
+    // "Workspace status" is an ambient, always-on monitor across every loaded
+    // workspace (see SystemMonitorSettings' "Show CPU and memory warnings in
+    // the workspace status row and badge") — it must not depend on whether the
+    // side panel (this workspace's, specifically) happens to be open, or a
+    // badge would flicker on and off as the user switches workspaces. So run
+    // it as soon as the setting is on, independent of `panelActive` below.
+    this.updateShouldRun();
   }
 
   setPanelActive(active: boolean): void {
@@ -55,15 +82,8 @@ class ProcessesController {
     this.updateShouldRun();
   }
 
-  private isEnabledInSettings(): boolean {
-    return (
-      sysmonStore.settings.panels.find((p) => p.id === "processes")
-        ?.enabled ?? false
-    );
-  }
-
   private updateShouldRun(): void {
-    const shouldRun = this.panelActive && this.isEnabledInSettings();
+    const shouldRun = shouldRunProcesses(sysmonStore.settings, this.panelActive);
     if (shouldRun === this.running) return;
     this.running = shouldRun;
     if (shouldRun) this.acquire();
@@ -74,7 +94,9 @@ class ProcessesController {
     const ctx = this.ctx;
     if (!ctx) return;
     this.statsDisposable = ctx.processes.enableStats({ trees: true });
-    this.subscribeDisposable = ctx.processes.subscribe(() => this.recompute());
+    this.subscribeDisposable = ctx.processes.subscribe(() => this.recompute(), {
+      allWorkspaces: true,
+    });
     this.recompute();
   }
 
@@ -90,86 +112,80 @@ class ProcessesController {
   private recompute(): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    // Use TerminalRecord.title (the live PTY-derived title) so the panel matches
-    // what the tab shows, rather than ProcessInfo.terminalTitle which prefers
-    // customName over the current process title.
     const wsState = ctx.workspaces.getState();
-    this.activeWorkspaceId = wsState.activeId;
-    const activeWs = wsState.all.find((ws) => ws.id === wsState.activeId);
-    const terminalTitles = new Map(
-      (activeWs?.terminals ?? []).map((t) => [t.id, t.title]),
+
+    // Use TerminalRecord.title (the live PTY-derived title) so each workspace's
+    // rows match what its tabs show, rather than ProcessInfo.terminalTitle
+    // which prefers customName over the current process title.
+    const terminalTitlesByWorkspace = new Map(
+      wsState.all.map((ws) => [
+        ws.id,
+        new Map(ws.terminals.map((t) => [t.id, t.title])),
+      ]),
     );
-    const rows = buildRows(ctx.processes.getState(), terminalTitles);
-    const agg = buildAggregate(rows);
-    sysmonStore.updateLive({ processes: { rows, agg } });
-    this.updateWorkspaceProviders(ctx, rows, agg);
+
+    const infosByWorkspace = groupInfosByWorkspace(
+      ctx.processes.getState({ allWorkspaces: true }),
+    );
+
+    const dataByWorkspace = new Map<string, ProcessesData>();
+    for (const ws of wsState.all) {
+      const rows = buildRows(
+        infosByWorkspace.get(ws.id) ?? [],
+        terminalTitlesByWorkspace.get(ws.id),
+      );
+      dataByWorkspace.set(ws.id, { rows, agg: buildAggregate(rows) });
+    }
+
+    const activeData = (wsState.activeId ? dataByWorkspace.get(wsState.activeId) : undefined) ?? {
+      rows: [],
+      agg: buildAggregate([]),
+    };
+    sysmonStore.updateLive({ processes: activeData });
+
+    this.updateWorkspaceProviders(ctx, dataByWorkspace);
   }
 
   private updateWorkspaceProviders(
     ctx: ExtensionContext,
-    rows: SessionRow[],
-    agg: ProcessesAggregate,
+    dataByWorkspace: Map<string, ProcessesData>,
   ): void {
-    const enabled = sysmonStore.settings.workspaceStatus;
+    const settings = sysmonStore.settings;
 
-    const nextStatus = enabled ? this.computeStatusRows(rows) : [];
-    const nextStatusJson = JSON.stringify(nextStatus);
+    const nextStatusByWorkspace = new Map<string, WorkspaceStatusRow[]>();
+    const nextBadgesByWorkspace = new Map<string, WorkspaceBadge[]>();
+    if (settings.workspaceStatus) {
+      const thresholds: ProcessThresholds = {
+        cpuWarnPercent: settings.cpuWarnPercent,
+        cpuDangerPercent: settings.cpuDangerPercent,
+        memWarnMb: settings.memWarnMb,
+        memDangerMb: settings.memDangerMb,
+      };
+      for (const [workspaceId, data] of dataByWorkspace) {
+        nextStatusByWorkspace.set(
+          workspaceId,
+          computeStatusRows(data.rows, thresholds),
+        );
+        nextBadgesByWorkspace.set(
+          workspaceId,
+          computeBadges(data.agg, thresholds),
+        );
+      }
+    }
+
+    const nextStatusJson = JSON.stringify([...nextStatusByWorkspace]);
     if (nextStatusJson !== this.lastStatusJson) {
       this.lastStatusJson = nextStatusJson;
-      this.statusRows = nextStatus;
+      this.statusByWorkspace = nextStatusByWorkspace;
       ctx.workspaces.invalidateStatus();
     }
 
-    const nextBadges = enabled ? this.computeBadges(agg) : [];
-    const nextBadgeJson = JSON.stringify(nextBadges);
+    const nextBadgeJson = JSON.stringify([...nextBadgesByWorkspace]);
     if (nextBadgeJson !== this.lastBadgeJson) {
       this.lastBadgeJson = nextBadgeJson;
-      this.badges = nextBadges;
+      this.badgesByWorkspace = nextBadgesByWorkspace;
       ctx.workspaces.invalidateBadges();
     }
-  }
-
-  private computeStatusRows(rows: SessionRow[]): WorkspaceStatusRow[] {
-    const result: WorkspaceStatusRow[] = [];
-    for (const row of rows) {
-      const cpu = row.totalCpuPercent ?? 0;
-      const mem = row.totalMemoryMb ?? 0;
-      const cpuWarn = cpu >= 25;
-      const memWarn = mem >= 500;
-      if (!cpuWarn && !memWarn) continue;
-
-      const status = cpu >= 75 || mem >= 2000 ? "error" : "warn";
-      const parts: string[] = [];
-      if (cpuWarn) parts.push(`${formatCpu(row.totalCpuPercent)} CPU`);
-      if (memWarn) parts.push(formatMem(row.totalMemoryMb));
-      result.push({
-        id: row.sessionId,
-        status,
-        label: `${displayName(row.leader)}: ${parts.join(" · ")}`,
-      });
-    }
-    return result;
-  }
-
-  private computeBadges(agg: ProcessesAggregate): WorkspaceBadge[] {
-    const result: WorkspaceBadge[] = [];
-    const cpu = agg.cpuPercent;
-    const mem = agg.memoryMb;
-    if (cpu >= 25) {
-      result.push({
-        id: "cpu",
-        text: "CPU",
-        color: cpu >= 75 ? DANGER_COLOR : WARN_COLOR,
-      });
-    }
-    if (mem >= 500) {
-      result.push({
-        id: "mem",
-        text: "MEM",
-        color: mem >= 2000 ? DANGER_COLOR : WARN_COLOR,
-      });
-    }
-    return result;
   }
 
   async killSession(row: SessionRow): Promise<void> {

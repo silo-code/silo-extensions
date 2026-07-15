@@ -22,6 +22,18 @@ export interface Settings {
   panels: PanelEntry[];
   statusBar: PanelEntry[];
   workspaceStatus: boolean;
+  /**
+   * CPU/memory levels that turn a session's status row and a workspace's
+   * badge warn (yellow) or danger (red). CPU is per-core (see
+   * {@link ProcessStats.cpuPercent} in the SDK) and, for the workspace badge,
+   * summed across every session and descendant process in that workspace —
+   * so a handful of concurrently busy terminals routinely clears 100%.
+   * Memory is summed the same way, in MB.
+   */
+  cpuWarnPercent: number;
+  cpuDangerPercent: number;
+  memWarnMb: number;
+  memDangerMb: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,6 +51,17 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "memory-pie", enabled: false },
   ],
   workspaceStatus: true,
+  // Higher than the original 25/75/500/2000 — those were tuned as if a
+  // session's own CPU% were the only input, but the workspace badge sums CPU
+  // and memory across every session (and its descendants) in the workspace,
+  // so a few ordinarily-busy terminals (an agent, a dev server, a watcher)
+  // cleared the old "danger" level constantly. These aim for "this workspace
+  // is doing something notable" (warn) and "this workspace is under serious,
+  // sustained load" (danger).
+  cpuWarnPercent: 50,
+  cpuDangerPercent: 150,
+  memWarnMb: 1024,
+  memDangerMb: 4096,
 };
 
 // ─── Live data types ───────────────────────────────────────────────────────────
@@ -96,11 +119,30 @@ export function mergeList(
   return merged;
 }
 
+/** Falls back to `fallback` unless `saved` is a positive, finite number —
+ * guards against corrupted storage rather than propagating a NaN/0/negative
+ * threshold that would never (or always) trigger. */
+export function mergeThreshold(saved: unknown, fallback: number): number {
+  return typeof saved === "number" && Number.isFinite(saved) && saved > 0
+    ? saved
+    : fallback;
+}
+
 export function mergeSettings(saved: Partial<Settings>): Settings {
   return {
     panels: mergeList(saved.panels, DEFAULT_SETTINGS.panels),
     statusBar: mergeList(saved.statusBar, DEFAULT_SETTINGS.statusBar),
     workspaceStatus: saved.workspaceStatus ?? DEFAULT_SETTINGS.workspaceStatus,
+    cpuWarnPercent: mergeThreshold(
+      saved.cpuWarnPercent,
+      DEFAULT_SETTINGS.cpuWarnPercent,
+    ),
+    cpuDangerPercent: mergeThreshold(
+      saved.cpuDangerPercent,
+      DEFAULT_SETTINGS.cpuDangerPercent,
+    ),
+    memWarnMb: mergeThreshold(saved.memWarnMb, DEFAULT_SETTINGS.memWarnMb),
+    memDangerMb: mergeThreshold(saved.memDangerMb, DEFAULT_SETTINGS.memDangerMb),
   };
 }
 

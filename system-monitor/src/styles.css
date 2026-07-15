@@ -552,6 +552,13 @@
   color: var(--silo-color-text);
 }
 
+/* ─── Settings: Options tab ──────────────────────────────────────────────── */
+/* Widen the shared .es-number beyond its 56px default — these hold 4-digit
+   memory thresholds (e.g. 4096) that get clipped at the host's default width. */
+.sm-threshold-input {
+  width: 88px;
+}
+
 .sm-status-val {
   font-weight: 500;
   color: var(--silo-color-text-hi);
