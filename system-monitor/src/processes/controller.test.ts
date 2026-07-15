@@ -54,4 +54,22 @@ describe("shouldRunProcesses", () => {
     });
     expect(shouldRunProcesses(s, false)).toBe(false);
   });
+
+  // The all-workspaces modal must get live data even when everything else that
+  // would hold the stats subscription is off.
+  it("runs while the modal is open, even with the panel inactive, the processes panel disabled, and workspaceStatus off", () => {
+    const s = settings({
+      panels: [{ id: "processes", enabled: false }],
+      workspaceStatus: false,
+    });
+    expect(shouldRunProcesses(s, false, true)).toBe(true);
+  });
+
+  it("stops running when the modal closes and nothing else wants it", () => {
+    const s = settings({
+      panels: [{ id: "processes", enabled: false }],
+      workspaceStatus: false,
+    });
+    expect(shouldRunProcesses(s, false, false)).toBe(false);
+  });
 });

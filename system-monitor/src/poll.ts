@@ -1,5 +1,5 @@
 import type { ExtensionContext, SystemInfo } from "@silo-code/sdk";
-import { POLL_MS, pushCpuSample } from "./metrics";
+import { POLL_MS, pushCpuSample, pushSample } from "./metrics";
 import { selectCollector } from "./collectors";
 import type { Collector } from "./collectors";
 import { sysmonStore } from "./store";
@@ -7,10 +7,19 @@ import type { LiveData, PanelId, Settings } from "./store";
 
 // Returns the set of metric ids that are currently visible (enabled in panel
 // or status bar). The poll skips fetching a metric when it is not in this set.
-export function neededMetrics(settings: Settings): Set<PanelId> {
+// The all-processes modal's mini graphs need both CPU and memory regardless of
+// what's enabled elsewhere, so an open modal forces both on.
+export function neededMetrics(
+  settings: Settings,
+  modalActive = false,
+): Set<PanelId> {
   const needed = new Set<PanelId>();
   for (const item of [...settings.panels, ...settings.statusBar]) {
     if (item.enabled) needed.add(item.id);
+  }
+  if (modalActive) {
+    needed.add("cpu");
+    needed.add("memory");
   }
   return needed;
 }
@@ -41,7 +50,7 @@ export function startPolling(ctx: ExtensionContext): () => void {
 
   async function poll(): Promise<void> {
     if (!collector) return;
-    const needed = neededMetrics(sysmonStore.settings);
+    const needed = neededMetrics(sysmonStore.settings, sysmonStore.modalActive);
     if (needed.size === 0) return;
 
     try {
@@ -63,7 +72,13 @@ export function startPolling(ctx: ExtensionContext): () => void {
           ),
         };
       }
-      if (memory) patch.memory = memory;
+      if (memory) {
+        patch.memory = memory;
+        patch.memHistory = pushSample(
+          sysmonStore.live.memHistory ?? [],
+          (memory.usedBytes / memory.totalBytes) * 100,
+        );
+      }
       sysmonStore.updateLive(patch);
     } catch (e) {
       if (cancelled) return;

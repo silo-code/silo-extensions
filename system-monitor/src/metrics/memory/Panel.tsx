@@ -16,7 +16,7 @@ function DonutRing({
   size: number;
   center: React.ReactNode;
 }) {
-  const sw = Math.round(size / 8);
+  const sw = Math.round(size / 7);
   const r = (size - sw) / 2;
   const cx = size / 2;
   const C = 2 * Math.PI * r;
@@ -111,7 +111,7 @@ export function MemPanel({ live }: { live: LiveData }) {
       </div>
       <div className="sm-mem-body">
         <DonutRing
-          size={78}
+          size={92}
           segments={segments}
           center={
             data && (

@@ -1,96 +1,8 @@
 import { useState } from "react";
 import type { LiveData } from "../../store";
-import type { SessionRow } from "../../processes/model";
-import { formatCpu, formatMem, displayName } from "../../processes/model";
-import { flattenTree } from "../../processes/tree";
+import { formatCpu, formatMem } from "../../processes/model";
 import { processesController } from "../../processes/controller";
-import { ChevronIcon, KillIcon } from "../../icons";
-
-function cpuClass(pct: number | null): string {
-  if (pct == null) return "sm-proc-stat";
-  if (pct >= 75) return "sm-proc-stat sm-proc-stat-danger";
-  if (pct >= 25) return "sm-proc-stat sm-proc-stat-warn";
-  return "sm-proc-stat";
-}
-
-function memClass(mb: number | null): string {
-  if (mb == null) return "sm-proc-stat";
-  if (mb >= 2000) return "sm-proc-stat sm-proc-stat-danger";
-  if (mb >= 500) return "sm-proc-stat sm-proc-stat-warn";
-  return "sm-proc-stat";
-}
-
-function SessionRowView({
-  row,
-  expanded,
-  onToggle,
-}: {
-  row: SessionRow;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const hasChildren = row.childCount > 0;
-  const flat = expanded && row.tree ? flattenTree(row.tree) : [];
-  const leaderName = displayName(row.leader);
-  const showLeader = leaderName !== row.title;
-
-  return (
-    <>
-      <div
-        className={"sm-proc-row" + (row.terminalId ? " sm-proc-row-clickable" : "")}
-        onClick={() => row.terminalId && processesController.focusTerminal(row.terminalId)}
-      >
-        {hasChildren ? (
-          <button
-            className="sm-proc-chevron"
-            onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            aria-label={expanded ? "Collapse" : "Expand"}
-          >
-            <span
-              className={
-                "sm-proc-chevron-glyph" +
-                (expanded ? " sm-proc-chevron-open" : "")
-              }
-            >
-              <ChevronIcon />
-            </span>
-          </button>
-        ) : (
-          <span className="sm-proc-leaf-dot" aria-hidden />
-        )}
-        <span className="sm-proc-title">
-          <span className="sm-proc-title-text">
-            {row.title}
-            {hasChildren && (
-              <span className="sm-proc-child-count"> ({row.childCount})</span>
-            )}
-          </span>
-          {row.atPrompt && <span className="sm-proc-idle-pill">idle</span>}
-        </span>
-        <span className="sm-proc-leader">{showLeader && !row.atPrompt ? leaderName : ""}</span>
-        <span className={cpuClass(row.totalCpuPercent)}>{formatCpu(row.totalCpuPercent)}</span>
-        <span className={memClass(row.totalMemoryMb)}>{formatMem(row.totalMemoryMb)}</span>
-        <button
-          className="sm-proc-kill"
-          onClick={(e) => { e.stopPropagation(); void processesController.killSession(row); }}
-        >
-          <KillIcon />
-        </button>
-      </div>
-      {flat.map(({ node, depth }) => (
-        <div
-          key={node.pid}
-          className="sm-proc-child-row"
-          style={{ paddingLeft: 26 + depth * 14 }}
-        >
-          <span className="sm-proc-child-name">{displayName(node.command)}</span>
-          <span className={cpuClass(node.cpuPercent)}>{formatCpu(node.cpuPercent)}</span>
-          <span className={memClass(node.memoryMb)}>{formatMem(node.memoryMb)}</span>
-        </div>
-      ))}
-    </>
-  );
-}
+import { SessionRowView } from "./SessionRowView";
 
 export function ProcessesPanel({ live }: { live: LiveData }) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -127,6 +39,8 @@ export function ProcessesPanel({ live }: { live: LiveData }) {
               row={row}
               expanded={expandedIds.has(row.sessionId)}
               onToggle={() => toggle(row.sessionId)}
+              onFocus={(r) => r.terminalId && processesController.focusTerminal(r.terminalId)}
+              onKill={(r) => void processesController.killSession(r)}
             />
           ))}
         </div>

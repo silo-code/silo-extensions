@@ -20,14 +20,20 @@ function ghostBarH(i: number, maxH: number): number {
   return Math.max(2, Math.round(Math.max(0, wave) * maxH * 0.65));
 }
 
-function CpuBarChart({
+/** Also reused by the all-processes modal's mini graphs (with the memory
+ * palette color swapped in), so every history chart looks the same. */
+export function CpuBarChart({
   data,
   w,
   h,
+  userColor = CPU_USER,
+  sysColor = CPU_SYS,
 }: {
   data: { user: number; sys: number }[];
   w: number;
   h: number;
+  userColor?: string;
+  sysColor?: string;
 }) {
   if (w === 0 || h === 0) return null;
   const capacity = Math.max(Math.floor(w / STEP), 2);
@@ -79,7 +85,7 @@ function CpuBarChart({
                   y={h - userH}
                   width={BAR_W}
                   height={userH}
-                  fill={CPU_USER}
+                  fill={userColor}
                   fillOpacity={0.88}
                 />
               )}
@@ -89,7 +95,7 @@ function CpuBarChart({
                   y={h - userH - sysH}
                   width={BAR_W}
                   height={sysH}
-                  fill={CPU_SYS}
+                  fill={sysColor}
                   fillOpacity={0.88}
                 />
               )}

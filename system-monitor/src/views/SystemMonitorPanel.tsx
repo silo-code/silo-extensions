@@ -3,6 +3,7 @@ import type { SidePanelProps } from "@silo-code/sdk";
 import { useStore } from "../hooks";
 import { getDescriptor } from "../registry";
 import { processesController } from "../processes/controller";
+import { openAllProcessesModal } from "./AllProcessesModal";
 
 export function SystemMonitorPanel({ active }: SidePanelProps) {
   const store = useStore();
@@ -38,6 +39,12 @@ export function SystemMonitorPanel({ active }: SidePanelProps) {
           })
         )}
       </div>
+      <button
+        className="sm-footer-link"
+        onClick={() => void openAllProcessesModal()}
+      >
+        All processes…
+      </button>
     </div>
   );
 }

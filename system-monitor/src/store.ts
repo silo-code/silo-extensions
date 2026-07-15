@@ -92,10 +92,24 @@ export interface MemData {
   segments: MemSegment[];
 }
 
+/** One open workspace's process data, for the all-workspaces modal. */
+export interface WorkspaceProcessesData {
+  workspaceId: string;
+  name: string;
+  active: boolean;
+  data: ProcessesData;
+}
+
 export interface LiveData {
   cpu: CpuData | null;
   memory: MemData | null;
+  /** Rolling used-memory percentages (0–100), same cadence/window as the CPU
+   * history — memory collectors only report a snapshot, so the poll keeps
+   * this buffer for the modal's mini history graph. */
+  memHistory: number[] | null;
   processes: ProcessesData | null;
+  /** Every open workspace's rows/aggregate — null until the first stats tick. */
+  allProcesses: WorkspaceProcessesData[] | null;
   error: string | null;
 }
 
@@ -155,11 +169,14 @@ class SysMonStore {
   private _live: LiveData = {
     cpu: null,
     memory: null,
+    memHistory: null,
     processes: null,
+    allProcesses: null,
     error: null,
   };
   private _storage: ExtensionStorage | null = null;
   private _listeners = new Set<Listener>();
+  private _modalActive = false;
 
   get settings(): Settings {
     return this._settings;
@@ -167,6 +184,19 @@ class SysMonStore {
 
   get live(): LiveData {
     return this._live;
+  }
+
+  /** True while the all-processes modal is showing. Both the metric poll
+   * (CPU/memory for the mini graphs) and the processes controller (stats +
+   * trees) treat an open modal as a consumer that needs live data. */
+  get modalActive(): boolean {
+    return this._modalActive;
+  }
+
+  setModalActive(active: boolean): void {
+    if (active === this._modalActive) return;
+    this._modalActive = active;
+    this._notify();
   }
 
   hydrate(storage: ExtensionStorage): void {

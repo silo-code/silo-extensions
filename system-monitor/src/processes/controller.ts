@@ -23,16 +23,22 @@ import type { ProcessesData, ProcessThresholds, SessionRow } from "./model";
  * background workspace's badge would flicker on and off as the user opens
  * and closes the System Monitor side panel elsewhere. The Processes *panel*
  * view is the only part actually gated by panel visibility, since nobody can
- * see it otherwise.
+ * see it otherwise — and the all-workspaces modal holds the resources for as
+ * long as it's open, so it gets live data even with both of those off.
  */
 export function shouldRunProcesses(
   settings: Settings,
   panelActive: boolean,
+  modalActive = false,
 ): boolean {
   const processesPanelEnabled = settings.panels.some(
     (p) => p.id === "processes" && p.enabled,
   );
-  return (panelActive && processesPanelEnabled) || settings.workspaceStatus;
+  return (
+    (panelActive && processesPanelEnabled) ||
+    settings.workspaceStatus ||
+    modalActive
+  );
 }
 
 class ProcessesController {
@@ -77,13 +83,24 @@ class ProcessesController {
     this.updateShouldRun();
   }
 
+  /** The context, for collaborators that drive host UI (the processes modal). */
+  get context(): ExtensionContext | null {
+    return this.ctx;
+  }
+
   setPanelActive(active: boolean): void {
     this.panelActive = active;
     this.updateShouldRun();
   }
 
   private updateShouldRun(): void {
-    const shouldRun = shouldRunProcesses(sysmonStore.settings, this.panelActive);
+    // modalActive lives on the store (the metric poll reads it too); the store
+    // subscription from init() re-runs this whenever it flips.
+    const shouldRun = shouldRunProcesses(
+      sysmonStore.settings,
+      this.panelActive,
+      sysmonStore.modalActive,
+    );
     if (shouldRun === this.running) return;
     this.running = shouldRun;
     if (shouldRun) this.acquire();
@@ -141,7 +158,17 @@ class ProcessesController {
       rows: [],
       agg: buildAggregate([]),
     };
-    sysmonStore.updateLive({ processes: activeData });
+
+    // Open workspaces only — a closed workspace has no sessions to show, and
+    // the all-workspaces modal mirrors what the Workspaces panel lists.
+    const allProcesses = wsState.open.map((ws) => ({
+      workspaceId: ws.id,
+      name: ws.name,
+      active: ws.id === wsState.activeId,
+      data: dataByWorkspace.get(ws.id) ?? { rows: [], agg: buildAggregate([]) },
+    }));
+
+    sysmonStore.updateLive({ processes: activeData, allProcesses });
 
     this.updateWorkspaceProviders(ctx, dataByWorkspace);
   }
@@ -209,6 +236,17 @@ class ProcessesController {
 
   focusTerminal(terminalId: string): void {
     this.ctx?.terminals.focus(terminalId);
+  }
+
+  /** Jump to a session that may live in another workspace: activate that
+   * workspace first, then focus the terminal. */
+  focusSession(workspaceId: string, terminalId: string): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (ctx.workspaces.getState().activeId !== workspaceId) {
+      ctx.workspaces.activate(workspaceId);
+    }
+    ctx.terminals.focus(terminalId);
   }
 
   dispose(): void {

@@ -103,6 +103,23 @@ describe("neededMetrics", () => {
     };
     expect(neededMetrics(s).size).toBe(0);
   });
+
+  // The all-processes modal's mini graphs need CPU and memory regardless of
+  // which panels/status chips are enabled.
+  it("forces cpu and memory while the modal is open, even with everything disabled", () => {
+    const s: Settings = {
+      panels: [],
+      statusBar: [],
+      workspaceStatus: false,
+      cpuWarnPercent: 50,
+      cpuDangerPercent: 150,
+      memWarnMb: 1024,
+      memDangerMb: 4096,
+    };
+    const needed = neededMetrics(s, true);
+    expect(needed.has("cpu")).toBe(true);
+    expect(needed.has("memory")).toBe(true);
+  });
 });
 
 describe("wants", () => {

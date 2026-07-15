@@ -22,6 +22,12 @@ export function pushCpuSample(
   return [...trimmed, { user, sys }];
 }
 
+/** Ring-buffer push for scalar sample histories (used-memory %). */
+export function pushSample(history: number[], value: number): number[] {
+  const trimmed = history.length >= MAX_SAMPLES ? history.slice(1) : history;
+  return [...trimmed, value];
+}
+
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------

@@ -540,6 +540,7 @@
 
 /* ─── Status bar items ───────────────────────────────────────────────────── */
 /* font-size and font-family inherit from .status-bar — don't override. */
+/* Pointer cursor: every chip opens the all-processes modal on click. */
 .sm-status-item {
   display: flex;
   align-items: center;
@@ -547,9 +548,13 @@
   padding: 0 6px;
   height: 100%;
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
   font-variant-numeric: tabular-nums;
   color: var(--silo-color-text);
+}
+
+.sm-status-item:hover {
+  color: var(--silo-color-text-hi);
 }
 
 /* ─── Settings: Options tab ──────────────────────────────────────────────── */
@@ -562,4 +567,319 @@
 .sm-status-val {
   font-weight: 500;
   color: var(--silo-color-text-hi);
+}
+
+/* ─── Side panel footer link ─────────────────────────────────────────────── */
+.sm-footer-link {
+  flex-shrink: 0;
+  appearance: none;
+  border: none;
+  border-top: 1px solid var(--silo-color-border);
+  background: transparent;
+  padding: 7px 13px;
+  text-align: right;
+  font: inherit;
+  font-size: 0.8em;
+  color: var(--silo-color-text);
+  cursor: pointer;
+}
+
+.sm-footer-link:hover {
+  color: var(--silo-color-text-hi);
+  background: var(--silo-color-input-bg);
+}
+
+/* ─── All-processes modal ────────────────────────────────────────────────── */
+.sm-procmodal {
+  --sm-pm-stat-w: 104px;
+  display: flex;
+  flex-direction: column;
+  /* Fixed height — the table body scrolls, the chrome around it never moves. */
+  height: min(72vh, 680px);
+  font-family: var(--silo-font-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      system-ui,
+      sans-serif);
+  -webkit-font-smoothing: antialiased;
+  font-size: 1em;
+  color: var(--silo-color-text-hi);
+}
+
+/* Mini history graphs — shrunken versions of the side panel's chart cards,
+   reusing .sm-title / .sm-headline / .sm-chart-wrap so they match exactly. */
+.sm-pm-graphs {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+.sm-pm-graph {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sm-pm-graph-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sm-pm-graph-chart {
+  flex: none;
+  height: 72px;
+}
+
+/* Filter box */
+.sm-pm-search {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  margin-bottom: 10px;
+  padding: 7px 11px;
+  border: 1px solid var(--silo-color-border);
+  border-radius: 6px;
+  background: var(--silo-color-input-bg);
+  color: var(--silo-color-text-hi);
+  font: inherit;
+  font-size: 0.95em;
+  /* Suppress both the UA outline and any host focus ring — we use border-color. */
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.sm-pm-search:focus {
+  border-color: var(--silo-color-accent, #4493f8);
+}
+
+.sm-pm-search::placeholder {
+  color: var(--silo-color-text);
+}
+
+/* Column header row: grand totals over the column labels, click to sort */
+.sm-pm-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sm-pm-stat-w) var(--sm-pm-stat-w);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--silo-color-border);
+}
+
+.sm-pm-head-cell {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 10px 7px;
+  border: none;
+  border-left: 1px solid var(--silo-color-border);
+  background: transparent;
+  font: inherit;
+  color: var(--silo-color-text);
+  cursor: pointer;
+}
+
+.sm-pm-head-cell:hover {
+  color: var(--silo-color-text-hi);
+}
+
+.sm-pm-head-name {
+  align-items: flex-start;
+  justify-content: flex-end;
+  border-left: none;
+}
+
+.sm-pm-head-total {
+  font-size: 0.98em;
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+  font-variant-numeric: tabular-nums;
+  min-height: 1.2em;
+}
+
+.sm-pm-head-label {
+  font-size: 0.74em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+
+/* Table body */
+.sm-pm-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sm-pm-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sm-pm-stat-w) var(--sm-pm-stat-w);
+  align-items: stretch;
+  border-bottom: 1px solid color-mix(in srgb, var(--silo-color-border) 40%, transparent);
+  cursor: default;
+}
+
+.sm-pm-row:hover {
+  background: color-mix(in srgb, var(--silo-color-text) 6%, transparent);
+}
+
+.sm-pm-row-selected,
+.sm-pm-row-selected:hover {
+  background: color-mix(in srgb, var(--silo-color-accent, #4493f8) 22%, transparent);
+}
+
+.sm-pm-group-row {
+  cursor: pointer;
+}
+
+.sm-pm-group-row .sm-pm-cell-name,
+.sm-pm-group-row .sm-pm-cell-stat {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.sm-pm-group-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sm-pm-cell-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 10px;
+}
+
+.sm-pm-indent-1 {
+  padding-left: 28px;
+}
+
+/* Alignment spacer where tree-less rows have no chevron. */
+.sm-pm-leaf-spacer {
+  flex-shrink: 0;
+  width: 11px;
+}
+
+.sm-pm-name-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sm-pm-name-idle {
+  color: var(--silo-color-text);
+}
+
+.sm-pm-child-name {
+  font-size: 0.9em;
+  color: var(--silo-color-text-hi);
+}
+
+.sm-pm-leader {
+  flex-shrink: 0;
+  font-size: 0.85em;
+  color: var(--silo-color-text);
+  white-space: nowrap;
+}
+
+.sm-pm-cell-stat {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 7px 10px;
+  border-left: 1px solid color-mix(in srgb, var(--silo-color-border) 40%, transparent);
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sm-pm-row-child .sm-pm-cell-name {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.sm-pm-row-child .sm-pm-cell-stat {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 0.88em;
+  color: var(--silo-color-text);
+}
+
+.sm-pm-empty {
+  padding: 28px 10px;
+  color: var(--silo-color-text);
+  font-size: 0.92em;
+}
+
+.sm-procmodal-active-pill {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--silo-color-accent, #4493f8) 18%, transparent);
+  color: var(--silo-color-accent, #4493f8);
+  font-size: 0.78em;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* Footer: counts + selection actions */
+.sm-pm-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--silo-color-border);
+}
+
+.sm-pm-footer-info {
+  flex: 1;
+  font-size: 0.88em;
+  color: var(--silo-color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Matches the host's .silo-button exactly (tokens confirmed from DevTools). */
+.sm-pm-btn {
+  appearance: none;
+  padding: 6px 16px;
+  border: 1px solid var(--silo-button-border, var(--silo-color-border));
+  border-radius: 6px;
+  background: var(--silo-button-bg, var(--silo-color-input-bg));
+  color: var(--silo-button-text, var(--silo-color-text-hi));
+  font: inherit;
+  font-size: 0.92em;
+  cursor: pointer;
+}
+
+.sm-pm-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--silo-button-bg, var(--silo-color-input-bg)) 85%, #000);
+}
+
+.sm-pm-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sm-pm-btn-danger:not(:disabled) {
+  border-color: var(--silo-color-err, #f47067);
+  background: var(--silo-color-err, #f47067);
+  color: #fff;
+}
+
+.sm-pm-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--silo-color-err, #f47067) 82%, #000);
+  border-color: color-mix(in srgb, var(--silo-color-err, #f47067) 82%, #000);
 }
