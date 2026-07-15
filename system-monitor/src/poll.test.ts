@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { neededMetrics, wants } from "./poll";
+import { PathDeniedError } from "@silo-code/sdk";
+import { isNoWorkspaceError, neededMetrics, wants } from "./poll";
 import type { PanelId, Settings } from "./store";
 
 const allEnabled: Settings = {
@@ -140,5 +141,28 @@ describe("wants", () => {
     expect(wants(set("memory-pie"), "cpu")).toBe(false);
     expect(wants(set("cpu-bar"), "memory")).toBe(false);
     expect(wants(new Set<PanelId>(), "cpu")).toBe(false);
+  });
+});
+
+describe("isNoWorkspaceError", () => {
+  it("matches PathDeniedError when no workspace is open", () => {
+    expect(
+      isNoWorkspaceError(new PathDeniedError("", "No workspace is open")),
+    ).toBe(true);
+  });
+
+  it("does not match other PathDeniedErrors", () => {
+    expect(
+      isNoWorkspaceError(
+        new PathDeniedError("/tmp", "Path is outside the workspace: /tmp"),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isNoWorkspaceError(new Error("Could not parse iostat output"))).toBe(
+      false,
+    );
+    expect(isNoWorkspaceError("string")).toBe(false);
   });
 });

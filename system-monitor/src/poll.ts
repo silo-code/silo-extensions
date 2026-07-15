@@ -1,4 +1,4 @@
-import type { ExtensionContext, SystemInfo } from "@silo-code/sdk";
+import { PathDeniedError, type ExtensionContext, type SystemInfo } from "@silo-code/sdk";
 import { POLL_MS, pushCpuSample, pushSample } from "./metrics";
 import { selectCollector } from "./collectors";
 import type { Collector } from "./collectors";
@@ -31,6 +31,18 @@ export function wants(needed: Set<PanelId>, kind: "cpu" | "memory"): boolean {
   return false;
 }
 
+/**
+ * `ctx.process.exec` defaults cwd to the active workspace folder, and the host
+ * throws PathDeniedError with this message when none is open. Metrics need that
+ * cwd, so we treat the condition as an empty state rather than a hard failure.
+ */
+export function isNoWorkspaceError(e: unknown): boolean {
+  if (e instanceof PathDeniedError) {
+    return /no workspace/i.test(e.message);
+  }
+  return e instanceof Error && /no workspace/i.test(e.message);
+}
+
 const OS_LABEL: Record<SystemInfo["os"], string> = {
   macos: "macOS",
   linux: "Linux",
@@ -52,6 +64,13 @@ export function startPolling(ctx: ExtensionContext): () => void {
     if (!collector) return;
     const needed = neededMetrics(sysmonStore.settings, sysmonStore.modalActive);
     if (needed.size === 0) return;
+
+    // No open workspace → collectors can't exec (cwd is undefined). Don't
+    // surface PathDeniedError as a red failure; the panel shows an empty state.
+    if (ctx.workspaces.getState().open.length === 0) {
+      if (sysmonStore.live.error) sysmonStore.updateLive({ error: null });
+      return;
+    }
 
     try {
       const [cpu, memory] = await Promise.all([
@@ -82,6 +101,10 @@ export function startPolling(ctx: ExtensionContext): () => void {
       sysmonStore.updateLive(patch);
     } catch (e) {
       if (cancelled) return;
+      if (isNoWorkspaceError(e)) {
+        sysmonStore.updateLive({ error: null });
+        return;
+      }
       const os = collector.os;
       sysmonStore.updateLive({
         error: `System Monitor couldn't read ${OS_LABEL[os]} metrics.\n${String(e)}`,

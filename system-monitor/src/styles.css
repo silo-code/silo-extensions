@@ -164,6 +164,13 @@
   letter-spacing: 0.05em;
 }
 
+/* Quiet empty state (e.g. no active workspace) — top-left like the Git panel. */
+.sm-empty {
+  padding: 16px 12px;
+  color: var(--silo-color-text);
+  font-size: 0.9em;
+}
+
 .sm-error {
   padding: 14px;
   color: var(--silo-color-err, #f47067);
