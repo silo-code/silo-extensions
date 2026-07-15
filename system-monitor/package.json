@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/system-monitor",
   "displayName": "System Monitor",
-  "version": "0.2.8",
+  "version": "0.3.0",
   "description": "Live CPU, memory, and per-terminal process monitoring in a side panel and status bar — cross-platform (macOS, Linux, Windows).",
   "type": "module",
   "files": [
