@@ -1,19 +1,37 @@
 import { useEffect } from "react";
-import type { SidePanelProps } from "@silo-code/sdk";
+import {
+  useServiceState,
+  type ExtensionContext,
+  type SidePanelProps,
+} from "@silo-code/sdk";
 import { useStore } from "../hooks";
 import { getDescriptor } from "../registry";
 import { processesController } from "../processes/controller";
 import { openAllProcessesModal } from "./AllProcessesModal";
 
-export function SystemMonitorPanel({ active }: SidePanelProps) {
+export function SystemMonitorPanel({
+  active,
+  ctx,
+}: SidePanelProps & { ctx: ExtensionContext }) {
   const store = useStore();
   const { settings, live } = store;
   const visiblePanels = settings.panels.filter((p) => p.enabled);
+  const wsState = useServiceState(ctx.workspaces);
 
   useEffect(() => {
     processesController.setPanelActive(active);
     return () => processesController.setPanelActive(false);
   }, [active]);
+
+  // Match the core Git panel empty state when nothing is open — collectors
+  // can't run without a workspace cwd, so don't show the PathDeniedError.
+  if (!wsState.activeId) {
+    return (
+      <div className="sysmon">
+        <div className="sm-empty">No active workspace.</div>
+      </div>
+    );
+  }
 
   return (
     <div className="sysmon">

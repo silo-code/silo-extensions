@@ -1,4 +1,4 @@
-import type { Extension } from "@silo-code/sdk";
+import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import STYLES from "./styles.css";
 import { startPolling } from "./poll";
 import { SystemMonitorPanel } from "./views/SystemMonitorPanel";
@@ -40,7 +40,9 @@ export const extension: Extension = {
       id: "system-monitor",
       location: "right",
       title: "System",
-      component: SystemMonitorPanel,
+      component: (props: SidePanelProps) => (
+        <SystemMonitorPanel ctx={ctx} {...props} />
+      ),
       order: 20,
       lazyMount: true,
     });
