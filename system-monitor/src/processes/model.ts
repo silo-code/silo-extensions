@@ -47,6 +47,17 @@ export interface ProcessesData {
   agg: ProcessesAggregate;
 }
 
+/** One workspace's process data for the all-workspaces modal. Soft-closed
+ * workspaces are included — their PTYs keep running until hard-delete. */
+export interface WorkspaceProcessesEntry {
+  workspaceId: string;
+  name: string;
+  active: boolean;
+  /** True when the workspace is soft-closed (`closedAt` set). */
+  closed: boolean;
+  data: ProcessesData;
+}
+
 /** Splits a flat, cross-workspace {@link ProcessInfo} list (from
  * `ctx.processes.getState({ allWorkspaces: true })`) by {@link ProcessInfo.workspaceId},
  * so each workspace's badges/status can be computed independently. */
@@ -60,6 +71,30 @@ export function groupInfosByWorkspace(
     else map.set(info.workspaceId, [info]);
   }
   return map;
+}
+
+/**
+ * Build the all-workspaces modal list from every loaded workspace (open and
+ * soft-closed). Soft-close keeps terminal records and live PTY sessions, so
+ * closed workspaces with running agents must appear here — filtering to open
+ * only would hide them. The modal UI drops groups with zero sessions.
+ */
+export function buildAllProcessesEntries(
+  workspaces: readonly {
+    id: string;
+    name: string;
+    closedAt?: string | null;
+  }[],
+  activeId: string | null,
+  dataByWorkspace: Map<string, ProcessesData>,
+): WorkspaceProcessesEntry[] {
+  return workspaces.map((ws) => ({
+    workspaceId: ws.id,
+    name: ws.name,
+    active: ws.id === activeId,
+    closed: ws.closedAt != null,
+    data: dataByWorkspace.get(ws.id) ?? { rows: [], agg: buildAggregate([]) },
+  }));
 }
 
 /** One row per session. Trees and stats both come from the host's stats poll

@@ -1,18 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { shouldRunProcesses } from "./controller";
+import { mergeSettings } from "../store";
 import type { Settings } from "../store";
 
 function settings(overrides: Partial<Settings> = {}): Settings {
-  return {
+  return mergeSettings({
     panels: [{ id: "processes", enabled: true }],
-    statusBar: [],
-    workspaceStatus: true,
-    cpuWarnPercent: 50,
-    cpuDangerPercent: 150,
-    memWarnMb: 1024,
-    memDangerMb: 4096,
     ...overrides,
-  };
+  });
 }
 
 describe("shouldRunProcesses", () => {

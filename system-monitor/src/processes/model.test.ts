@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildRows,
   buildAggregate,
+  buildAllProcessesEntries,
   computeBadges,
   computeStatusRows,
   formatCpu,
@@ -238,6 +239,77 @@ describe("groupInfosByWorkspace", () => {
 
   it("returns an empty map for an empty list", () => {
     expect(groupInfosByWorkspace([]).size).toBe(0);
+  });
+});
+
+describe("buildAllProcessesEntries", () => {
+  const empty = { rows: [], agg: buildAggregate([]) };
+
+  it("includes soft-closed workspaces (PTYs survive close)", () => {
+    const closedRows = [
+      {
+        sessionId: "s1",
+        title: "agent",
+        leader: "node",
+        pgid: 1,
+        cwd: "/",
+        atPrompt: false,
+        cpuPercent: 10,
+        memoryMb: 100,
+        totalCpuPercent: 10,
+        totalMemoryMb: 100,
+        tree: null,
+        childCount: 0,
+      },
+    ];
+    const dataByWorkspace = new Map([
+      ["open", empty],
+      ["closed", { rows: closedRows, agg: buildAggregate(closedRows) }],
+    ]);
+
+    const entries = buildAllProcessesEntries(
+      [
+        { id: "open", name: "Open WS", closedAt: null },
+        {
+          id: "closed",
+          name: "Closed WS",
+          closedAt: "2026-07-16T12:00:00.000Z",
+        },
+      ],
+      "open",
+      dataByWorkspace,
+    );
+
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({
+      workspaceId: "open",
+      active: true,
+      closed: false,
+    });
+    expect(entries[1]).toMatchObject({
+      workspaceId: "closed",
+      name: "Closed WS",
+      active: false,
+      closed: true,
+    });
+    expect(entries[1].data.rows).toHaveLength(1);
+  });
+
+  it("fills missing workspace data with an empty aggregate", () => {
+    const entries = buildAllProcessesEntries(
+      [{ id: "ws1", name: "Empty", closedAt: null }],
+      null,
+      new Map(),
+    );
+    expect(entries).toEqual([
+      {
+        workspaceId: "ws1",
+        name: "Empty",
+        active: false,
+        closed: false,
+        data: empty,
+      },
+    ]);
   });
 });
 

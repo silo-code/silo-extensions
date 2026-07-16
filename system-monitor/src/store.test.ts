@@ -103,6 +103,7 @@ describe("mergeSettings", () => {
     const result = mergeSettings({});
     expect(result.panels).toEqual(DEFAULT_SETTINGS.panels);
     expect(result.statusBar).toEqual(DEFAULT_SETTINGS.statusBar);
+    expect(result.hideClosedWorkspaces).toBe(false);
     expect(result.cpuWarnPercent).toBe(DEFAULT_SETTINGS.cpuWarnPercent);
     expect(result.cpuDangerPercent).toBe(DEFAULT_SETTINGS.cpuDangerPercent);
     expect(result.memWarnMb).toBe(DEFAULT_SETTINGS.memWarnMb);
@@ -133,6 +134,18 @@ describe("mergeSettings", () => {
     expect(result.cpuDangerPercent).toBe(90);
     expect(result.memWarnMb).toBe(750);
     expect(result.memDangerMb).toBe(3000);
+  });
+
+  it("preserves hideClosedWorkspaces when saved", () => {
+    expect(mergeSettings({ hideClosedWorkspaces: true }).hideClosedWorkspaces).toBe(
+      true,
+    );
+  });
+
+  it("defaults hideClosedWorkspaces to false for settings saved before it existed", () => {
+    expect(mergeSettings({ workspaceStatus: true }).hideClosedWorkspaces).toBe(
+      false,
+    );
   });
 
   it("falls back to defaults for an invalid saved threshold", () => {

@@ -1,6 +1,6 @@
 import type { ExtensionStorage } from "@silo-code/sdk";
 import type { CpuSample } from "./metrics";
-import type { ProcessesData } from "./processes/model";
+import type { ProcessesData, WorkspaceProcessesEntry } from "./processes/model";
 
 // ─── Settings types ────────────────────────────────────────────────────────────
 
@@ -22,6 +22,13 @@ export interface Settings {
   panels: PanelEntry[];
   statusBar: PanelEntry[];
   workspaceStatus: boolean;
+  /**
+   * When true, the all-workspaces process modal omits soft-closed workspaces.
+   * Off by default — closing a workspace keeps its PTYs running, so those
+   * sessions stay visible unless the user opts out. Persisted with the rest
+   * of settings.
+   */
+  hideClosedWorkspaces: boolean;
   /**
    * CPU/memory levels that turn a session's status row and a workspace's
    * badge warn (yellow) or danger (red). CPU is per-core (see
@@ -51,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "memory-pie", enabled: false },
   ],
   workspaceStatus: true,
+  hideClosedWorkspaces: false,
   // Higher than the original 25/75/500/2000 — those were tuned as if a
   // session's own CPU% were the only input, but the workspace badge sums CPU
   // and memory across every session (and its descendants) in the workspace,
@@ -92,13 +100,8 @@ export interface MemData {
   segments: MemSegment[];
 }
 
-/** One open workspace's process data, for the all-workspaces modal. */
-export interface WorkspaceProcessesData {
-  workspaceId: string;
-  name: string;
-  active: boolean;
-  data: ProcessesData;
-}
+/** One workspace's process data for the all-workspaces modal (open or closed). */
+export type WorkspaceProcessesData = WorkspaceProcessesEntry;
 
 export interface LiveData {
   cpu: CpuData | null;
@@ -108,7 +111,8 @@ export interface LiveData {
    * this buffer for the modal's mini history graph. */
   memHistory: number[] | null;
   processes: ProcessesData | null;
-  /** Every open workspace's rows/aggregate — null until the first stats tick. */
+  /** Every loaded workspace's rows/aggregate (incl. soft-closed) — null until
+   * the first stats tick. */
   allProcesses: WorkspaceProcessesData[] | null;
   error: string | null;
 }
@@ -147,6 +151,8 @@ export function mergeSettings(saved: Partial<Settings>): Settings {
     panels: mergeList(saved.panels, DEFAULT_SETTINGS.panels),
     statusBar: mergeList(saved.statusBar, DEFAULT_SETTINGS.statusBar),
     workspaceStatus: saved.workspaceStatus ?? DEFAULT_SETTINGS.workspaceStatus,
+    hideClosedWorkspaces:
+      saved.hideClosedWorkspaces ?? DEFAULT_SETTINGS.hideClosedWorkspaces,
     cpuWarnPercent: mergeThreshold(
       saved.cpuWarnPercent,
       DEFAULT_SETTINGS.cpuWarnPercent,
