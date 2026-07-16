@@ -412,6 +412,16 @@ describe("stripStatusMarker", () => {
       "note about ✳ something",
     );
   });
+
+  it("strips Cursor Agent trailing status suffixes", () => {
+    expect(stripStatusMarker("Cursor Agent - ⏳ Working ...")).toBe(
+      "Cursor Agent",
+    );
+    expect(stripStatusMarker("my-chat - ✅ Ready (feature)")).toBe("my-chat");
+    expect(stripStatusMarker("Cursor Agent - Working ···")).toBe(
+      "Cursor Agent",
+    );
+  });
 });
 
 describe("toPersisted / restoreState (app-restart persistence)", () => {
