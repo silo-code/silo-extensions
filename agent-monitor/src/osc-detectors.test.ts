@@ -1,10 +1,118 @@
 import { describe, it, expect } from "vitest";
 import {
   detectClaudeCode,
+  detectCursorAgent,
+  detectCursorAgentOutput,
   detectCopilotCLI,
   detectCodexCLI,
   detectShellIntegration,
+  CURSOR_SPINNER_FRAMES,
 } from "./osc-detectors";
+
+// ---------------------------------------------------------------------------
+// Cursor Agent
+// ---------------------------------------------------------------------------
+describe("detectCursorAgent", () => {
+  it("returns working+schedule for generating / planning / shell titles", () => {
+    expect(detectCursorAgent(0, "Cursor Agent - ⏳ Working ...")).toEqual({
+      status: "working",
+      source: "agent",
+      timer: "schedule",
+    });
+    expect(detectCursorAgent(0, "my-chat - 🧭 Planning")).toEqual({
+      status: "working",
+      source: "agent",
+      timer: "schedule",
+    });
+    expect(
+      detectCursorAgent(0, "Cursor Agent - ⌨️ Running shell command (wt)"),
+    ).toEqual({
+      status: "working",
+      source: "agent",
+      timer: "schedule",
+    });
+  });
+
+  it("returns working for emoji-less status text (useEmoji=false)", () => {
+    expect(detectCursorAgent(0, "Cursor Agent - Working ···")).toEqual({
+      status: "working",
+      source: "agent",
+      timer: "schedule",
+    });
+  });
+
+  it("returns waiting+clear for Ready / Waiting for you / confirmation", () => {
+    expect(detectCursorAgent(0, "Cursor Agent - ✅ Ready")).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+    expect(detectCursorAgent(0, "my-chat - ❓ Waiting for you")).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+    expect(
+      detectCursorAgent(0, "my-chat - 🔐 Waiting for confirmation (feature)"),
+    ).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+  });
+
+  it("returns waiting+clear for bare Cursor Agent idle titles", () => {
+    expect(detectCursorAgent(0, "Cursor Agent")).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+    expect(detectCursorAgent(0, "Cursor Agent (local-agent)")).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+    expect(detectCursorAgent(0, "Cursor Agent (my-worktree)")).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+  });
+
+  it("returns null for unrelated OSC 0 titles", () => {
+    expect(detectCursorAgent(0, "my-project")).toBeNull();
+    expect(detectCursorAgent(0, "⠋ my-project")).toBeNull();
+    expect(detectCursorAgent(0, "✳ waiting…")).toBeNull();
+    expect(detectCursorAgent(0, "")).toBeNull();
+  });
+
+  it("returns null for non-OSC-0 codes", () => {
+    expect(detectCursorAgent(9, "Cursor Agent - ✅ Ready")).toBeNull();
+    expect(detectCursorAgent(133, "C")).toBeNull();
+  });
+});
+
+describe("detectCursorAgentOutput", () => {
+  it("returns working+schedule-agent for each known spinner frame", () => {
+    for (const frame of CURSOR_SPINNER_FRAMES) {
+      expect(detectCursorAgentOutput(`prefix ${frame} suffix`)).toEqual({
+        status: "working",
+        source: "agent",
+        timer: "schedule-agent",
+      });
+    }
+  });
+
+  it("returns null for single-cell braille (Claude/Codex OSC style)", () => {
+    expect(detectCursorAgentOutput("⠋ working")).toBeNull();
+    expect(detectCursorAgentOutput("⠀")).toBeNull();
+  });
+
+  it("returns null for plain output", () => {
+    expect(detectCursorAgentOutput("Cursor Agent")).toBeNull();
+    expect(detectCursorAgentOutput("hello world")).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Claude Code

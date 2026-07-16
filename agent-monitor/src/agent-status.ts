@@ -290,14 +290,21 @@ export function reduce(
 // "[ ! ]"/"[ . ]" action-required marker — plus any following whitespace.
 const LEADING_MARKER_RE = /^(?:[⠀-⣿]|✳|\[ [!.] \])\s*/;
 
+// Cursor Agent encodes status as a trailing " - <emoji?> <status>" segment
+// (optionally with a worktree suffix on the full title). Strip that so the
+// row label is just the chat/agent name.
+const CURSOR_STATUS_SUFFIX_RE =
+  / - (?:[📤📂🔄⌨️🧭⏳📋❓🔐📝✅]\s*)?(?:Moving to cloud|Loading conversation|Reconnecting|Running shell command|Planning|Working.*|Queued|Reviewing changes|Waiting for you|Waiting for confirmation|Ready)(?: \([^)]+\))?$/;
+
 /**
- * Strip the leading agent-status glyph from a terminal title before showing
- * it as a Workspaces-panel status-row label. The glyph is meaningful in the
+ * Strip agent-status glyphs/suffixes from a terminal title before showing
+ * it as a Workspaces-panel status-row label. Markers are meaningful in the
  * tab title (paired with the tab's own spinner/badge icon) but redundant —
  * and visually noisy — next to the row's own status dot.
  */
 export function stripStatusMarker(title: string): string {
-  return title.replace(LEADING_MARKER_RE, "");
+  const withoutCursor = title.replace(CURSOR_STATUS_SUFFIX_RE, "");
+  return withoutCursor.replace(LEADING_MARKER_RE, "");
 }
 
 /**

@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionContext } from "@silo-code/sdk";
-import { AGENT_DETECTORS } from "./osc-detectors";
+import { AGENT_DETECTORS, detectCursorAgentOutput } from "./osc-detectors";
 import {
   reduce,
   isLiveSignal,
@@ -77,6 +77,9 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
   const lastSeenAt = new Map<string, string>();
   // Disposables for per-terminal OSC subscriptions, keyed by terminal id.
   const oscSubs = new Map<string, { dispose(): void }>();
+  // Raw-PTY output subscriptions — Cursor Agent spinner fallback when OSC
+  // status titles are disabled (showStatusIndicators: false).
+  const outputSubs = new Map<string, { dispose(): void }>();
   // sessionId that was current when each OSC subscription was established.
   // An empty string means "subscribed while the PTY hadn't spawned yet".
   // When the sessionId changes (PTY spawns or restarts), we re-subscribe.
@@ -185,6 +188,47 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     );
   }
 
+  function applyDetection(
+    terminalId: string,
+    result: {
+      status: Activity;
+      source: EventSource;
+      timer?: "schedule" | "schedule-agent" | "clear";
+    },
+  ) {
+    log(
+      `detect → ${result.status}/${result.source}` +
+        (result.timer ? ` timer:${result.timer}` : "") +
+        ` tid=…${terminalId.slice(-8)}`,
+    );
+    if (result.timer === "schedule") scheduleShellIdle(terminalId);
+    else if (result.timer === "clear") clearShellIdleTimer(terminalId);
+
+    if (result.status === "waiting" && result.source === "agent") {
+      // Debounce: Claude emits ✳ briefly between tool calls. Only transition
+      // to "waiting" if no braille-spinner (working) OSC arrives within
+      // AGENT_IDLE_DEBOUNCE_MS. The working branch below clears this timer —
+      // except schedule-agent (Cursor spinner fallback), which keeps resetting
+      // it so silence after the last frame ends the working phase.
+      scheduleAgentIdle(terminalId);
+    } else if (result.timer === "schedule-agent") {
+      // Cursor Agent raw-output spinner: keep the agent-idle timer armed so
+      // AGENT_IDLE_DEBOUNCE_MS of silence after the last frame → waiting.
+      // Must NOT clearAgentIdleTimer here (that would defeat the fallback).
+      scheduleAgentIdle(terminalId);
+      dispatch(
+        terminalId,
+        detectedEvent(terminalId, result.status, result.source),
+      );
+    } else {
+      if (result.status === "working") clearAgentIdleTimer(terminalId);
+      dispatch(
+        terminalId,
+        detectedEvent(terminalId, result.status, result.source),
+      );
+    }
+  }
+
   function subscribeTerminalOsc(terminalId: string, sessionId: string) {
     const prevSessionId = oscSubSessionIds.get(terminalId);
     // Skip if we already have a live sub for this exact session. If sessionId
@@ -203,6 +247,11 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
       stale.dispose();
       oscSubs.delete(terminalId);
     }
+    const staleOut = outputSubs.get(terminalId);
+    if (staleOut) {
+      staleOut.dispose();
+      outputSubs.delete(terminalId);
+    }
     oscSubSessionIds.set(terminalId, sessionId);
     const sub = ctx.terminals.subscribeOsc(terminalId, ({ code, payload }) => {
       for (const detect of AGENT_DETECTORS) {
@@ -213,28 +262,24 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
               (result.timer ? ` timer:${result.timer}` : "") +
               ` tid=…${terminalId.slice(-8)}`,
           );
-          if (result.timer === "schedule") scheduleShellIdle(terminalId);
-          else if (result.timer === "clear") clearShellIdleTimer(terminalId);
-          if (result.status === "waiting" && result.source === "agent") {
-            // Debounce: Claude emits ✳ briefly between tool calls. Only transition
-            // to "waiting" if no braille-spinner (working) OSC arrives within
-            // AGENT_IDLE_DEBOUNCE_MS. The working branch below clears this timer.
-            scheduleAgentIdle(terminalId);
-          } else {
-            if (result.status === "working") clearAgentIdleTimer(terminalId);
-            dispatch(
-              terminalId,
-              detectedEvent(terminalId, result.status, result.source),
-            );
-          }
+          applyDetection(terminalId, result);
           break;
         }
       }
     });
     oscSubs.set(terminalId, sub);
-    // Note: do NOT push into ctx.subscriptions — oscSubs manages the lifecycle
-    // of these per-terminal subscriptions (disposed in teardownTerminal and the
-    // bulk dispose() below). Pushing them would cause the array to grow
+
+    // Cursor Agent fallback: its OSC status titles are off by default
+    // (showStatusIndicators: false). The ink spinner still lands in the raw
+    // PTY stream, so watch output for those frames.
+    const outSub = ctx.terminals.subscribeOutput(terminalId, (chunk) => {
+      const result = detectCursorAgentOutput(chunk);
+      if (result) applyDetection(terminalId, result);
+    });
+    outputSubs.set(terminalId, outSub);
+    // Note: do NOT push into ctx.subscriptions — oscSubs/outputSubs manage the
+    // lifecycle of these per-terminal subscriptions (disposed in teardownTerminal
+    // and the bulk dispose() below). Pushing them would cause the array to grow
     // unboundedly as terminals open and close, and stale entries would be
     // double-disposed at deactivation.
   }
@@ -248,6 +293,8 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
   function teardownTerminal(terminalId: string, opts: { clearStorage: boolean }) {
     oscSubs.get(terminalId)?.dispose();
     oscSubs.delete(terminalId);
+    outputSubs.get(terminalId)?.dispose();
+    outputSubs.delete(terminalId);
     oscSubSessionIds.delete(terminalId);
     states.delete(terminalId);
     lastSeenAt.delete(terminalId);
