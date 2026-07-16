@@ -841,6 +841,17 @@
   line-height: 1.5;
 }
 
+.sm-procmodal-closed-pill {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--silo-color-warn, #e3b341) 18%, transparent);
+  color: var(--silo-color-warn, #e3b341);
+  font-size: 0.78em;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
 /* Footer: counts + selection actions */
 .sm-pm-footer {
   display: flex;
