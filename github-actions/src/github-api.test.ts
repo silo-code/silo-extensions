@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { classifyFetchError } from "./github-api";
+import { classifyFetchError, probeCwd } from "./github-api";
+import type { ExtensionContext } from "@silo-code/sdk";
 
 describe("classifyFetchError", () => {
   it("classifies auth failures as unauthenticated", () => {
@@ -31,5 +32,61 @@ describe("classifyFetchError", () => {
   it("prefers unauthenticated when a 403 also mentions a rate limit", () => {
     // re-auth is the actionable fix, so the auth check wins the ordering
     expect(classifyFetchError("HTTP 403: rate limit exceeded").kind).toBe("unauthenticated");
+  });
+});
+
+function mockCtx(over: {
+  activeId?: string | null;
+  open?: Array<{ id: string; folder: string }>;
+  all?: Array<{ id: string; folder: string }>;
+  os?: "macos" | "linux" | "windows";
+}): ExtensionContext {
+  const open = over.open ?? [];
+  const all = over.all ?? open;
+  const byId = new Map([...open, ...all].map((w) => [w.id, w]));
+  return {
+    workspaces: {
+      getState: () => ({
+        activeId: over.activeId ?? null,
+        open,
+        all,
+        closed: [],
+        hydrated: true,
+      }),
+      get: (id: string) => byId.get(id),
+    },
+    system: {
+      getInfo: async () => ({ os: over.os ?? "macos", arch: "aarch64", siloVersion: "0.0.0" }),
+    },
+  } as unknown as ExtensionContext;
+}
+
+describe("probeCwd", () => {
+  it("prefers the active workspace folder", async () => {
+    const cwd = await probeCwd(
+      mockCtx({
+        activeId: "a",
+        open: [
+          { id: "a", folder: "/work/a" },
+          { id: "b", folder: "/work/b" },
+        ],
+      }),
+    );
+    expect(cwd).toBe("/work/a");
+  });
+
+  it("falls back to any open workspace when none is active", async () => {
+    const cwd = await probeCwd(
+      mockCtx({
+        activeId: null,
+        open: [{ id: "b", folder: "/work/b" }],
+      }),
+    );
+    expect(cwd).toBe("/work/b");
+  });
+
+  it("uses a platform root when no workspaces exist", async () => {
+    await expect(probeCwd(mockCtx({ activeId: null, open: [], os: "macos" }))).resolves.toBe("/");
+    await expect(probeCwd(mockCtx({ activeId: null, open: [], os: "windows" }))).resolves.toBe("C:\\");
   });
 });

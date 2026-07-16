@@ -49,7 +49,7 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
                     </a>
                   </span>
                 )}
-                {authState === null && (
+                {(authState === null || authState === "deferred") && (
                   <span style={{ opacity: 0.5 }}>Checking...</span>
                 )}
               </div>
