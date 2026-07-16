@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionContext } from "@silo-code/sdk";
-import { AGENT_DETECTORS, detectCursorAgentOutput } from "./osc-detectors";
+import { AGENT_DETECTORS, detectCursorAgentOutput, detectCodexIdleAfterWorking } from "./osc-detectors";
 import {
   reduce,
   isLiveSignal,
@@ -263,8 +263,24 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
               ` tid=…${terminalId.slice(-8)}`,
           );
           applyDetection(terminalId, result);
-          break;
+          return;
         }
+      }
+      // Codex: braille spinner → working (shared with Claude), then a plain
+      // project title when idle. No dedicated idle OSC, and the shell idle
+      // timer must not demote agent-sourced working (Claude background tabs).
+      const cur = states.get(terminalId);
+      const idle = detectCodexIdleAfterWorking(
+        code,
+        payload,
+        cur?.activity === "working" && cur.workingSource === "agent",
+      );
+      if (idle) {
+        log(
+          `osc${code} "${payload.slice(0, 40)}" → ${idle.status}/${idle.source}` +
+            ` (codex plain-title idle) tid=…${terminalId.slice(-8)}`,
+        );
+        applyDetection(terminalId, idle);
       }
     });
     oscSubs.set(terminalId, sub);

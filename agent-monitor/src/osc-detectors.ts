@@ -149,9 +149,11 @@ export function detectCursorAgentOutput(chunk: string): DetectionResult | null {
 // ---------------------------------------------------------------------------
 // Uses braille block characters (U+2800–U+28FF) as a spinner while busy, and
 // ✳ (U+2733) as an explicit idle signal when waiting for input.
-// Note: Codex CLI uses the same braille spinner range, so the braille → working
-// branch covers both. The ✳ idle signal and debounce timer handle the difference:
-// Claude emits ✳ immediately; Codex relies on the timer after silence.
+// Note: Codex CLI uses the same braille spinner range for "working", so the
+// braille → working branch covers both. Claude then emits ✳ on idle; Codex
+// instead replaces the spinner title with a plain project name (see
+// detectCodexIdleAfterWorking) — we must NOT end agent-sourced working via the
+// shell idle timer, or backgrounded Claude tabs false-trigger "needs attention".
 const BRAILLE_START = 0x2800;
 const BRAILLE_END = 0x28ff;
 const CLAUDE_IDLE_CHAR = "✳"; // ✳
@@ -163,8 +165,9 @@ export function detectClaudeCode(
   if (code !== 0) return null;
   const first = payload.charCodeAt(0);
   if (first >= BRAILLE_START && first <= BRAILLE_END) {
-    // Braille spinner: agent is busy. Schedule idle timer as a fallback for
-    // Codex (which doesn't emit an explicit done signal).
+    // Braille spinner: agent is busy. The shell idle timer is scheduled as a
+    // no-op fallback for agent-sourced working (blocked in reduce); Claude
+    // ends via ✳, Codex via detectCodexIdleAfterWorking on the plain title.
     return { status: "working", source: "agent", timer: "schedule" };
   }
   if (payload.startsWith(CLAUDE_IDLE_CHAR)) {
@@ -181,6 +184,10 @@ export function detectClaudeCode(
 // awaiting user approval. It also emits OSC 9 desktop notifications when
 // TERM_PROGRAM=iTerm.app — matched on known payload prefixes only to avoid
 // stomping an active Copilot status on unrelated OSC 9 from other programs.
+//
+// After a turn finishes at the prompt (not blocked on approval), Codex drops
+// the braille spinner and sets a plain project/dir title. That OSC 0 does not
+// match the patterns below — see detectCodexIdleAfterWorking.
 const CODEX_ACTION_REQUIRED = ["[ ! ]", "[ . ]"];
 const CODEX_DONE_NOTIFICATIONS = [
   "Agent turn complete",
@@ -208,6 +215,29 @@ export function detectCodexCLI(
     return { status: "waiting", source: "agent", timer: "clear" };
   }
   return null;
+}
+
+/**
+ * Codex idle fallback: while an agent-sourced working phase is active (almost
+ * always from the shared Claude/Codex braille spinner), a non-empty OSC 0 title
+ * that is not Claude's ✳ and not another braille frame means Codex cleared the
+ * spinner to its plain project title — treat as waiting.
+ *
+ * Gated on `wasAgentWorking` so ordinary programs that set a window title are
+ * not promoted to agents. Not used as a silence timer: backgrounded tabs pause
+ * OSC streaming, and a timer-based demotion would false-trigger for Claude.
+ */
+export function detectCodexIdleAfterWorking(
+  code: number,
+  payload: string,
+  wasAgentWorking: boolean,
+): DetectionResult | null {
+  if (code !== 0 || !wasAgentWorking || payload === "") return null;
+  const first = payload.charCodeAt(0);
+  if (first >= BRAILLE_START && first <= BRAILLE_END) return null;
+  if (payload.startsWith(CLAUDE_IDLE_CHAR)) return null;
+  if (CODEX_ACTION_REQUIRED.some((p) => payload.startsWith(p))) return null;
+  return { status: "waiting", source: "agent", timer: "clear" };
 }
 
 // ---------------------------------------------------------------------------

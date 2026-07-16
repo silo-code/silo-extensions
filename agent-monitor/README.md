@@ -20,7 +20,7 @@ Detection is driven entirely by terminal escape sequences (OSC), so there's noth
 | --- | --- |
 | **Claude Code** | OSC 0 title: braille spinner (busy) / `✳` (waiting) |
 | **Cursor Agent** | OSC 0 title when `display.showStatusIndicators` is enabled in `~/.cursor/cli-config.json` (`⏳ Working …` / `✅ Ready`, etc.); otherwise falls back to detecting the TUI's braille spinner frames in the raw PTY stream |
-| **Codex CLI** | OSC 0 title clears / `[ ! ]` / `[ . ]`, plus OSC 9 desktop notifications |
+| **Codex CLI** | OSC 0 braille spinner (busy, shared with Claude); idle via plain project title after the spinner clears, empty title / `[ ! ]` / `[ . ]` when blocked or exited, plus OSC 9 desktop notifications when available |
 | **GitHub Copilot CLI** | OSC 9;4 progress protocol |
 | **Anything with shell integration** (e.g. `pi`) | OSC 133 FTCS sequences — command-running vs. prompt-returned, with an idle-debounce fallback for agents that never emit a completion signal |
 
