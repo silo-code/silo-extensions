@@ -15,16 +15,44 @@ const GH_CANDIDATE_PATHS = [
   "/home/linuxbrew/.linuxbrew/bin/gh", // Linux Homebrew
 ];
 
+// Host `ctx.process.exec` defaults cwd to the active workspace root. With no
+// workspace open that throws PathDeniedError — even with the `process`
+// permission — which callers used to misreport as "gh CLI not found". Auth and
+// version probes don't need a repo, so pick any available folder, else a
+// platform root the `process` permission allows.
+export async function probeCwd(ctx: ExtensionContext): Promise<string> {
+  const state = ctx.workspaces.getState();
+  if (state.activeId) {
+    const active = ctx.workspaces.get(state.activeId);
+    if (active?.folder) return active.folder;
+  }
+  const open = state.open[0] ?? state.all[0];
+  if (open?.folder) return open.folder;
+  const { os } = await ctx.system.getInfo();
+  return os === "windows" ? "C:\\" : "/";
+}
+
+function isPathDenied(err: unknown): boolean {
+  if (err && typeof err === "object" && "name" in err && (err as { name: string }).name === "PathDeniedError") {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("PathDeniedError") || msg.includes("No workspace is open");
+}
+
 export async function resolveGhBin(ctx: ExtensionContext): Promise<string> {
+  const cwd = await probeCwd(ctx);
   for (const bin of GH_CANDIDATE_PATHS) {
     try {
-      const r = await ctx.process.exec(bin, ["--version"], {});
+      const r = await ctx.process.exec(bin, ["--version"], { cwd });
       if (r.code === 0) {
         if (bin !== "gh") ctx.log.info(`gh CLI resolved to ${bin}`);
         return bin;
       }
-    } catch {
-      // binary not found at this path — try next
+    } catch (err) {
+      // PathDeniedError isn't "binary missing" — stop probing so checkAuth can
+      // classify it. Other spawn failures mean try the next candidate path.
+      if (isPathDenied(err)) throw err;
     }
   }
   return "gh"; // fall back; checkAuth will report it as missing
@@ -136,12 +164,13 @@ export async function rerunWorkflow(
   return { ok: false, message: result.stderr.trim() || "Re-run failed" };
 }
 
-export type AuthState = "ok" | "unauthenticated" | "missing";
+export type AuthState = "ok" | "unauthenticated" | "missing" | "deferred";
 
 export async function checkAuth(ctx: ExtensionContext, ghBin: string): Promise<AuthState> {
   ctx.log.debug("Checking gh CLI authentication");
+  const cwd = await probeCwd(ctx);
   try {
-    const result = await ctx.process.exec(ghBin, ["auth", "status"], {});
+    const result = await ctx.process.exec(ghBin, ["auth", "status"], { cwd });
     if (result.code === 0) {
       ctx.log.info("gh CLI is authenticated");
       return "ok";
@@ -154,6 +183,11 @@ export async function checkAuth(ctx: ExtensionContext, ghBin: string): Promise<A
     ctx.log.warn("gh CLI is not authenticated — run `gh auth login`");
     return "unauthenticated";
   } catch (err) {
+    // Host path scoping (no workspace / denied cwd) is not "gh missing".
+    if (isPathDenied(err)) {
+      ctx.log.debug(`gh auth check deferred (${err})`);
+      return "deferred";
+    }
     // exec throws when the binary cannot be found at all
     ctx.log.warn(`gh CLI not found (${err}) — visit https://cli.github.com to install`);
     return "missing";

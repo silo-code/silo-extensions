@@ -76,7 +76,14 @@ export class GhActionsService {
     ctx.log.info("GitHub Actions extension initializing");
     ghStore.hydrate(ctx.storage.global);
 
-    this._ghBin = await resolveGhBin(ctx);
+    try {
+      this._ghBin = await resolveGhBin(ctx);
+    } catch (err) {
+      // PathDeniedError (or similar) during probe — keep the bare name and let
+      // checkAuth classify / defer rather than crashing activate.
+      ctx.log.debug(`resolveGhBin deferred (${err})`);
+      this._ghBin = "gh";
+    }
 
     // Wire up decoration invalidation unconditionally — needed whether auth
     // succeeds now or later via the retry timer.
@@ -90,10 +97,20 @@ export class GhActionsService {
     ghStore.setAuthState(authState);
 
     if (authState !== "ok") {
-      const reason = authState === "missing" ? "gh CLI not found" : "not authenticated";
-      ctx.log.warn(`${reason} — will retry every ${AUTH_RETRY_INTERVAL_MS / 1000}s`);
-      this._notifyAuthIssue(ctx, authState);
+      if (authState === "deferred") {
+        ctx.log.info(`Auth check deferred (no usable cwd yet) — will retry every ${AUTH_RETRY_INTERVAL_MS / 1000}s`);
+      } else {
+        const reason = authState === "missing" ? "gh CLI not found" : "not authenticated";
+        ctx.log.warn(`${reason} — will retry every ${AUTH_RETRY_INTERVAL_MS / 1000}s`);
+        this._notifyAuthIssue(ctx, authState);
+      }
       this._authRetryTimer = setInterval(async () => {
+        // Re-resolve in case the first attempt was deferred (no workspace yet).
+        try {
+          this._ghBin = await resolveGhBin(ctx);
+        } catch {
+          /* keep previous _ghBin */
+        }
         const state = await checkAuth(ctx, this._ghBin);
         if (state === "ok") {
           ctx.log.info("Authentication succeeded — starting workspace polling");
@@ -420,6 +437,7 @@ export class GhActionsService {
 
   getStatusBarState(): StatusBarState {
     if (!ghStore.initialized) return { kind: "hidden" };
+    if (ghStore.authState === "deferred") return { kind: "checking" };
     if (ghStore.authState === "missing") return { kind: "gh-missing" };
     if (ghStore.authState === "unauthenticated") return { kind: "unauthenticated" };
     if (!this._ctx) return { kind: "hidden" };
