@@ -5,6 +5,7 @@ import {
   detectCursorAgentOutput,
   detectCopilotCLI,
   detectCodexCLI,
+  detectCodexIdleAfterWorking,
   detectShellIntegration,
   CURSOR_SPINNER_FRAMES,
 } from "./osc-detectors";
@@ -255,6 +256,38 @@ describe("detectCodexCLI", () => {
 
   it("returns null for non-OSC-0/9 codes", () => {
     expect(detectCodexCLI(133, "")).toBeNull();
+  });
+});
+
+describe("detectCodexIdleAfterWorking", () => {
+  it("returns waiting when a plain title arrives during agent-sourced working", () => {
+    expect(detectCodexIdleAfterWorking(0, "my-project", true)).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+    expect(detectCodexIdleAfterWorking(0, "codex-osc-test", true)).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+  });
+
+  it("returns null when not currently agent-working", () => {
+    expect(detectCodexIdleAfterWorking(0, "my-project", false)).toBeNull();
+  });
+
+  it("returns null for braille / Claude idle / empty / action-required (other detectors)", () => {
+    expect(detectCodexIdleAfterWorking(0, "⠋ my-project", true)).toBeNull();
+    expect(detectCodexIdleAfterWorking(0, "✳ waiting…", true)).toBeNull();
+    expect(detectCodexIdleAfterWorking(0, "", true)).toBeNull();
+    expect(
+      detectCodexIdleAfterWorking(0, "[ ! ] Action Required - x", true),
+    ).toBeNull();
+  });
+
+  it("returns null for non-OSC-0 codes", () => {
+    expect(detectCodexIdleAfterWorking(9, "my-project", true)).toBeNull();
   });
 });
 
