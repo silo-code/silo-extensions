@@ -318,8 +318,12 @@ function AllProcessesModal({ onClose }: { onClose: () => void }) {
   // Groups with sessions, filtered by the query (a workspace-name match keeps
   // the whole group; otherwise rows match on title/leader), sorted per the
   // active column — group order follows the same key via each group's aggregate.
+  // Soft-closed workspaces are included unless hideClosedWorkspaces is on.
+  const scoped = (all ?? []).filter(
+    (ws) => !settings.hideClosedWorkspaces || !ws.closed,
+  );
   const q = query.trim().toLowerCase();
-  const groups = (all ?? [])
+  const groups = scoped
     .filter((ws) => ws.data.rows.length > 0)
     .map((ws) => {
       if (!q || ws.name.toLowerCase().includes(q)) return ws;
@@ -333,8 +337,9 @@ function AllProcessesModal({ onClose }: { onClose: () => void }) {
     .filter((ws) => ws.data.rows.length > 0)
     .sort((a, b) => compareGroups(a, b, sort));
 
-  // Grand totals span every session Silo monitors, independent of the filter.
-  const totals = (all ?? []).reduce(
+  // Grand totals span every session in the current view scope (respecting
+  // hide-closed), independent of the search filter.
+  const totals = scoped.reduce(
     (acc, ws) => ({
       sessions: acc.sessions + ws.data.agg.sessions,
       procs: acc.procs + ws.data.agg.procs,
@@ -423,6 +428,9 @@ function AllProcessesModal({ onClose }: { onClose: () => void }) {
                     {ws.active && (
                       <span className="sm-procmodal-active-pill">active</span>
                     )}
+                    {ws.closed && (
+                      <span className="sm-procmodal-closed-pill">closed</span>
+                    )}
                   </div>
                   <div
                     className="sm-pm-cell-stat"
@@ -460,6 +468,19 @@ function AllProcessesModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="sm-pm-footer">
+        <label className="sm-pm-hide-closed">
+          <input
+            type="checkbox"
+            checked={settings.hideClosedWorkspaces}
+            onChange={(e) =>
+              sysmonStore.updateSettings({
+                ...settings,
+                hideClosedWorkspaces: e.target.checked,
+              })
+            }
+          />
+          Hide closed workspaces
+        </label>
         <span className="sm-pm-footer-info">
           {all
             ? `${totals.sessions} session${totals.sessions === 1 ? "" : "s"} · ${totals.procs} proc${totals.procs === 1 ? "" : "s"}`

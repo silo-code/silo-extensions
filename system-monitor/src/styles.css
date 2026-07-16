@@ -853,9 +853,26 @@
 
 .sm-pm-footer-info {
   flex: 1;
-  font-size: 0.88em;
+  font-size: 0.92em;
   color: var(--silo-color-text);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sm-pm-hide-closed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.92em;
+  color: var(--silo-color-text);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sm-pm-hide-closed input {
+  margin: 0;
+  accent-color: var(--silo-color-accent, #4493f8);
 }
 
 /* Matches the host's .silo-button exactly (tokens confirmed from DevTools). */

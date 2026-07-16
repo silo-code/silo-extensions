@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { PathDeniedError } from "@silo-code/sdk";
 import { isNoWorkspaceError, neededMetrics, wants } from "./poll";
+import { mergeSettings } from "./store";
 import type { PanelId, Settings } from "./store";
 
-const allEnabled: Settings = {
+const allEnabled: Settings = mergeSettings({
   panels: [
     { id: "cpu", enabled: true },
     { id: "memory", enabled: true },
@@ -12,12 +13,7 @@ const allEnabled: Settings = {
     { id: "cpu", enabled: true },
     { id: "memory", enabled: true },
   ],
-  workspaceStatus: true,
-  cpuWarnPercent: 50,
-  cpuDangerPercent: 150,
-  memWarnMb: 1024,
-  memDangerMb: 4096,
-};
+});
 
 describe("neededMetrics", () => {
   it("includes all ids when everything is enabled", () => {
@@ -27,33 +23,23 @@ describe("neededMetrics", () => {
   });
 
   it("includes a metric when enabled only in the panel", () => {
-    const s: Settings = {
+    const s = mergeSettings({
       panels: [{ id: "cpu", enabled: true }],
       statusBar: [{ id: "cpu", enabled: false }],
-      workspaceStatus: true,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
-    };
+    });
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
 
   it("includes a metric when enabled only in the status bar", () => {
-    const s: Settings = {
+    const s = mergeSettings({
       panels: [{ id: "cpu", enabled: false }],
       statusBar: [{ id: "cpu", enabled: true }],
-      workspaceStatus: true,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
-    };
+    });
     expect(neededMetrics(s).has("cpu")).toBe(true);
   });
 
   it("excludes a metric when disabled in both panel and status bar", () => {
-    const s: Settings = {
+    const s = mergeSettings({
       panels: [
         { id: "cpu", enabled: false },
         { id: "memory", enabled: true },
@@ -62,12 +48,7 @@ describe("neededMetrics", () => {
         { id: "cpu", enabled: false },
         { id: "memory", enabled: false },
       ],
-      workspaceStatus: true,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
-    };
+    });
     const needed = neededMetrics(s);
     expect(needed.has("cpu")).toBe(false);
     expect(needed.has("memory")).toBe(true);
@@ -75,6 +56,7 @@ describe("neededMetrics", () => {
 
   it("returns empty set when all items are disabled", () => {
     const s: Settings = {
+      ...allEnabled,
       panels: [
         { id: "cpu", enabled: false },
         { id: "memory", enabled: false },
@@ -83,24 +65,15 @@ describe("neededMetrics", () => {
         { id: "cpu", enabled: false },
         { id: "memory", enabled: false },
       ],
-      workspaceStatus: true,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
     };
     expect(neededMetrics(s).size).toBe(0);
   });
 
   it("returns empty set for empty settings", () => {
     const s: Settings = {
+      ...allEnabled,
       panels: [],
       statusBar: [],
-      workspaceStatus: true,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
     };
     expect(neededMetrics(s).size).toBe(0);
   });
@@ -109,13 +82,10 @@ describe("neededMetrics", () => {
   // which panels/status chips are enabled.
   it("forces cpu and memory while the modal is open, even with everything disabled", () => {
     const s: Settings = {
+      ...allEnabled,
       panels: [],
       statusBar: [],
       workspaceStatus: false,
-      cpuWarnPercent: 50,
-      cpuDangerPercent: 150,
-      memWarnMb: 1024,
-      memDangerMb: 4096,
     };
     const needed = neededMetrics(s, true);
     expect(needed.has("cpu")).toBe(true);

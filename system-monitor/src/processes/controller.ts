@@ -9,6 +9,7 @@ import { sysmonStore } from "../store";
 import type { Settings } from "../store";
 import {
   buildAggregate,
+  buildAllProcessesEntries,
   buildRows,
   computeBadges,
   computeStatusRows,
@@ -159,14 +160,14 @@ class ProcessesController {
       agg: buildAggregate([]),
     };
 
-    // Open workspaces only — a closed workspace has no sessions to show, and
-    // the all-workspaces modal mirrors what the Workspaces panel lists.
-    const allProcesses = wsState.open.map((ws) => ({
-      workspaceId: ws.id,
-      name: ws.name,
-      active: ws.id === wsState.activeId,
-      data: dataByWorkspace.get(ws.id) ?? { rows: [], agg: buildAggregate([]) },
-    }));
+    // Include soft-closed workspaces — close keeps PTYs alive (hard-delete
+    // is what reaps them), so a closed group with running agents must still
+    // show in the all-workspaces modal. Empty groups are filtered in the UI.
+    const allProcesses = buildAllProcessesEntries(
+      wsState.all,
+      wsState.activeId,
+      dataByWorkspace,
+    );
 
     sysmonStore.updateLive({ processes: activeData, allProcesses });
 
