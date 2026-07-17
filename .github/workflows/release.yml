@@ -80,6 +80,7 @@ jobs:
             "agent-monitor:true"
             "docs-panel:false"
             "github-actions:false"
+            "github-prs:true"
             "local-web-viewer:false"
             "system-monitor:true"
           )

@@ -1,0 +1,37 @@
+{
+  "name": "@silo-extensions/github-prs",
+  "displayName": "GitHub Pull Requests",
+  "version": "0.1.0",
+  "description": "GitHub pull requests for workspace repos in a side panel — review state, CI checks, and drill-in details at a glance.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.github-prs",
+    "engine": "^0.31.0",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": [
+      "process"
+    ]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.28.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}
