@@ -1,0 +1,41 @@
+.gha-ws-props {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gha-ws-props__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gha-ws-props__title {
+  margin: 0;
+  font-family: var(--silo-font-ui);
+  font-size: calc(var(--silo-font-size-sm) - 1px);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--silo-color-text-lo);
+}
+
+.gha-ws-props__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--silo-font-size-sm);
+  color: var(--silo-color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.gha-ws-props__label {
+  color: var(--silo-color-text);
+}
+
+.gha-ws-props__hint,
+.gha-ws-props__status {
+  margin: 0;
+  font-size: var(--silo-font-size-sm);
+  color: var(--silo-color-text-lo);
+}

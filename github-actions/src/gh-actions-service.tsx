@@ -372,10 +372,19 @@ export class GhActionsService {
     if (!this._ctx) return;
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return;
-    const ws = this._ctx.workspaces.get(activeId);
+    await this.refreshWorkspace(activeId);
+  }
+
+  // Workspace-scoped refresh — unlike refreshActive, works for any workspace,
+  // not just the currently active one (needed by the workspace properties
+  // tab and the workspace context-menu "Refresh" action, since either can
+  // target a workspace that isn't active).
+  async refreshWorkspace(workspaceId: string): Promise<void> {
+    if (!this._ctx) return;
+    const ws = this._ctx.workspaces.get(workspaceId);
     if (!ws) return;
     for (const folder of [ws.folder, ...(ws.extraFolders ?? [])]) {
-      await this._refreshFolder(this._ctx, activeId, folder);
+      await this._refreshFolder(this._ctx, workspaceId, folder);
     }
   }
 

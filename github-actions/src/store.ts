@@ -159,6 +159,7 @@ export class GhActionsStore {
   private _workspaceClearedAt = new Map<string, Date>();
   private _workspaceCurrentBranchOnly = new Map<string, boolean>();
   private _workspaceDismissOnSuccess = new Map<string, boolean>();
+  private _workspaceEnabled = new Map<string, boolean>();
   private _authState: AuthState | null = null;
   private _initialized = false;
   private _storage: ExtensionStorage | null = null;
@@ -202,6 +203,10 @@ export class GhActionsStore {
     const savedDismissOnSuccess = storage.get<Record<string, boolean>>("workspaceDismissOnSuccess") ?? {};
     for (const [id, val] of Object.entries(savedDismissOnSuccess)) {
       this._workspaceDismissOnSuccess.set(id, val);
+    }
+    const savedEnabled = storage.get<Record<string, boolean>>("workspaceEnabled") ?? {};
+    for (const [id, val] of Object.entries(savedEnabled)) {
+      this._workspaceEnabled.set(id, val);
     }
     const apply = (): void => {
       const saved = storage.get<Partial<GhActionsSettings>>("settings") ?? {};
@@ -286,6 +291,24 @@ export class GhActionsStore {
       record[id] = val;
     }
     this._storage?.set("workspaceDismissOnSuccess", record);
+    this._notify();
+  }
+
+  // Defaults true (opt-out), unlike the other two per-workspace booleans
+  // (default false / opt-in) — this extension already monitors every
+  // detected repo today, so introducing this flag must not silently stop
+  // monitoring anywhere until a user explicitly disables it.
+  getWorkspaceEnabled(workspaceId: string): boolean {
+    return this._workspaceEnabled.get(workspaceId) ?? true;
+  }
+
+  setWorkspaceEnabled(workspaceId: string, value: boolean): void {
+    this._workspaceEnabled.set(workspaceId, value);
+    const record: Record<string, boolean> = {};
+    for (const [id, val] of this._workspaceEnabled) {
+      record[id] = val;
+    }
+    this._storage?.set("workspaceEnabled", record);
     this._notify();
   }
 
