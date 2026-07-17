@@ -5,6 +5,7 @@ import {
   deriveWorkspaceStatusBarState,
   selectFailedRuns,
   selectRunningRuns,
+  GhActionsStore,
   type WorkspaceGhState,
 } from "./store";
 import type { WorkflowRun } from "./github-api";
@@ -264,5 +265,43 @@ describe("deriveWorkspaceStatusBarState", () => {
       mkState({ folder: "/not-github", repoInfo: null, error: { kind: "no-repo" } }),
     ];
     expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 1, running: 0 });
+  });
+});
+
+describe("GhActionsStore.getWorkspaceEnabled / setWorkspaceEnabled", () => {
+  it("defaults to true for a workspace with no stored value", () => {
+    const store = new GhActionsStore();
+    expect(store.getWorkspaceEnabled("ws-unseen")).toBe(true);
+  });
+
+  it("round-trips an explicit false", () => {
+    const store = new GhActionsStore();
+    store.setWorkspaceEnabled("ws-1", false);
+    expect(store.getWorkspaceEnabled("ws-1")).toBe(false);
+  });
+
+  it("round-trips an explicit true after being set false", () => {
+    const store = new GhActionsStore();
+    store.setWorkspaceEnabled("ws-1", false);
+    store.setWorkspaceEnabled("ws-1", true);
+    expect(store.getWorkspaceEnabled("ws-1")).toBe(true);
+  });
+
+  it("tracks each workspace independently", () => {
+    const store = new GhActionsStore();
+    store.setWorkspaceEnabled("ws-1", false);
+    expect(store.getWorkspaceEnabled("ws-1")).toBe(false);
+    expect(store.getWorkspaceEnabled("ws-2")).toBe(true);
+  });
+
+  it("notifies subscribers on change", () => {
+    const store = new GhActionsStore();
+    let calls = 0;
+    const unsubscribe = store.subscribe(() => calls++);
+    store.setWorkspaceEnabled("ws-1", false);
+    expect(calls).toBe(1);
+    unsubscribe();
+    store.setWorkspaceEnabled("ws-1", true);
+    expect(calls).toBe(1);
   });
 });
