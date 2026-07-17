@@ -8,6 +8,7 @@ import { GhActionsService } from "./gh-actions-service";
 import { GhActionsStatusItem } from "./status-item";
 import { GhActionsSettings } from "./settings-page";
 import { GhActionsWorkspaceSettings } from "./workspace-property-page";
+import { registerWorkspaceContextMenu } from "./workspace-context-menu";
 import { ghStore } from "./store";
 
 const STYLE_ID = "silo-github-actions-styles";
@@ -59,6 +60,7 @@ export const extension: Extension = {
         component: (props) => <GhActionsWorkspaceSettings {...props} service={service} />,
         visible: (ws) => ghStore.getRepoStates(ws.id).some((s) => s.repoInfo !== null),
       }),
+      ...registerWorkspaceContextMenu(ctx, service),
       { dispose: () => service.dispose() },
     );
 
