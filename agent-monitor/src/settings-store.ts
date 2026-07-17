@@ -17,6 +17,7 @@
  */
 
 import type { ExtensionStorage, ReactiveService } from "@silo-code/sdk";
+import { sounds, type SoundName } from "cuelume";
 
 /**
  * What focusing an agent's terminal does to its status.
@@ -32,15 +33,33 @@ export type FocusBehavior = "clear" | "hide" | "none";
 
 export interface AgentMonitorSettings {
   focusBehavior: FocusBehavior;
+  /** Whether a sound plays when an agent transitions working → waiting. */
+  soundEnabled: boolean;
+  /** Which cuelume sound to play. */
+  soundId: SoundName;
 }
 
-// Key renamed on each shape change ("hideStatusWhenFocused" → "clearOnFocus"
+// Keys renamed on each shape change ("hideStatusWhenFocused" → "clearOnFocus"
 // → this) so stale persisted values from older versions are simply ignored
 // and the new default applies.
-const STORAGE_KEY = "focusBehavior";
+const STORAGE_KEY_FOCUS = "focusBehavior";
+const STORAGE_KEY_SOUND_ENABLED = "soundEnabled";
+const STORAGE_KEY_SOUND_ID = "soundId";
+
 const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
+const DEFAULT_SOUND_ENABLED = false;
+const DEFAULT_SOUND_ID: SoundName = "chime";
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
+// cuelume's raw UI-feedback sounds (press/release/toggle) read as click
+// acknowledgements, not "come look at this" — excluded from the curated
+// list offered here. Everything else is `sounds`' own names, reused
+// directly rather than hand-copied, so the list can't drift from what
+// `play()` actually accepts.
+const EXCLUDED_SOUND_IDS: readonly SoundName[] = ["press", "release", "toggle"];
+export const SOUND_IDS: readonly SoundName[] = sounds.filter(
+  (name) => !EXCLUDED_SOUND_IDS.includes(name),
+);
 
 /** Guard against garbage in storage (or values from a future version). */
 function coerceBehavior(v: unknown): FocusBehavior {
@@ -49,7 +68,19 @@ function coerceBehavior(v: unknown): FocusBehavior {
     : DEFAULT_BEHAVIOR;
 }
 
-let settings: AgentMonitorSettings = { focusBehavior: DEFAULT_BEHAVIOR };
+function coerceSoundEnabled(v: unknown): boolean {
+  return typeof v === "boolean" ? v : DEFAULT_SOUND_ENABLED;
+}
+
+function coerceSoundId(v: unknown): SoundName {
+  return SOUND_IDS.includes(v as SoundName) ? (v as SoundName) : DEFAULT_SOUND_ID;
+}
+
+let settings: AgentMonitorSettings = {
+  focusBehavior: DEFAULT_BEHAVIOR,
+  soundEnabled: DEFAULT_SOUND_ENABLED,
+  soundId: DEFAULT_SOUND_ID,
+};
 let backingStorage: ExtensionStorage | null = null;
 const listeners = new Set<(s: AgentMonitorSettings) => void>();
 
@@ -63,7 +94,9 @@ export const settingsService: ReactiveService<AgentMonitorSettings> & {
   },
   set(patch) {
     settings = { ...settings, ...patch };
-    backingStorage?.set(STORAGE_KEY, settings.focusBehavior);
+    backingStorage?.set(STORAGE_KEY_FOCUS, settings.focusBehavior);
+    backingStorage?.set(STORAGE_KEY_SOUND_ENABLED, settings.soundEnabled);
+    backingStorage?.set(STORAGE_KEY_SOUND_ID, settings.soundId);
     for (const l of listeners) l(settings);
   },
 };
@@ -79,11 +112,21 @@ export function initSettings(storage: ExtensionStorage): {
 } {
   backingStorage = storage;
   function read() {
-    const stored = coerceBehavior(
-      storage.get<string>(STORAGE_KEY, settings.focusBehavior),
+    const focusBehavior = coerceBehavior(
+      storage.get<string>(STORAGE_KEY_FOCUS, settings.focusBehavior),
     );
-    if (stored !== settings.focusBehavior) {
-      settings = { ...settings, focusBehavior: stored };
+    const soundEnabled = coerceSoundEnabled(
+      storage.get<boolean>(STORAGE_KEY_SOUND_ENABLED, settings.soundEnabled),
+    );
+    const soundId = coerceSoundId(
+      storage.get<string>(STORAGE_KEY_SOUND_ID, settings.soundId),
+    );
+    if (
+      focusBehavior !== settings.focusBehavior ||
+      soundEnabled !== settings.soundEnabled ||
+      soundId !== settings.soundId
+    ) {
+      settings = { ...settings, focusBehavior, soundEnabled, soundId };
       for (const l of listeners) l(settings);
     }
   }

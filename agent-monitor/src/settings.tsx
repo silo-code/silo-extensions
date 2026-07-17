@@ -6,7 +6,9 @@
  */
 
 import { useServiceState } from "@silo-code/sdk";
-import { settingsService, type FocusBehavior } from "./settings-store";
+import type { SoundName } from "cuelume";
+import { settingsService, SOUND_IDS, type FocusBehavior } from "./settings-store";
+import { previewSound } from "./sound";
 
 export {
   settingsService,
@@ -38,6 +40,33 @@ function RadioOption({ label, hint, checked, onSelect }: RadioOptionProps) {
         <span className="am-label">{label}</span>
         <span className="am-hint">{hint}</span>
       </span>
+    </label>
+  );
+}
+
+function soundLabel(name: SoundName): string {
+  return name[0].toUpperCase() + name.slice(1);
+}
+
+interface ToggleProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}
+
+// Mirrors the host's own Terminal settings page Toggle (`.es-switch` /
+// `.es-switch-track` are host-provided design-system classes, no CSS import
+// needed) so this page reads as one family with the host's settings UI.
+function Toggle({ checked, onChange, label }: ToggleProps) {
+  return (
+    <label className="es-switch">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-label={label}
+      />
+      <span className="es-switch-track" />
     </label>
   );
 }
@@ -86,6 +115,58 @@ export function AgentMonitorSettingsPage() {
               onSelect={() => settingsService.set({ focusBehavior: opt.value })}
             />
           ))}
+        </div>
+      </div>
+      <div className="am-section">
+        <span className="am-section-title">Sound</span>
+        <span className="am-hint">
+          Play a sound when an agent stops working and needs your attention.
+          Suppressed while you're already looking at that terminal.
+        </span>
+        <div className="es-rows">
+          <div className="es-row">
+            <div className="es-row-text">
+              <span className="es-label">
+                Play a sound when an agent needs attention
+              </span>
+            </div>
+            <div className="es-control">
+              <Toggle
+                label="Play a sound when an agent needs attention"
+                checked={s.soundEnabled}
+                onChange={(soundEnabled) => settingsService.set({ soundEnabled })}
+              />
+            </div>
+          </div>
+          <div className="es-row">
+            <div className="es-row-text">
+              <span className="es-label">Notification sound</span>
+            </div>
+            <div className="es-control am-sound-control">
+              <select
+                className="es-select"
+                value={s.soundId}
+                onChange={(e) =>
+                  settingsService.set({ soundId: e.target.value as SoundName })
+                }
+                aria-label="Notification sound"
+              >
+                {SOUND_IDS.map((name) => (
+                  <option key={name} value={name}>
+                    {soundLabel(name)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="am-preview-btn"
+                onClick={() => previewSound(s.soundId)}
+                aria-label={`Preview ${soundLabel(s.soundId)} sound`}
+              >
+                ▶
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

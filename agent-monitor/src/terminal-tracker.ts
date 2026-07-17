@@ -20,6 +20,7 @@ import {
   type TerminalAgentState,
 } from "./agent-status";
 import { settingsService } from "./settings-store";
+import { maybePlayTransitionSound } from "./sound";
 
 // Set to true to log OSC events and state transitions to the browser console.
 // Open devtools in Silo with Cmd+Option+I (Mac) or F12.
@@ -125,6 +126,13 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
       log(`${tid} activated → needsAttn cleared`);
     }
     states.set(terminalId, next);
+    if (
+      prev.activity === "working" &&
+      next.activity === "waiting" &&
+      next.needsAttention
+    ) {
+      maybePlayTransitionSound();
+    }
     persistState(terminalId, next);
     ctx.workspaces.invalidateStatus();
     ctx.terminals.invalidateTabDecorations();
