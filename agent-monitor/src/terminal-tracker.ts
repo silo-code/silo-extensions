@@ -126,10 +126,13 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
       log(`${tid} activated → needsAttn cleared`);
     }
     states.set(terminalId, next);
+    // Fires regardless of focus — including when you're watching the
+    // terminal, where reduce() lands straight on "done" instead of
+    // "waiting" (see agent-status.ts) since the finish is auto-acknowledged.
     if (
       prev.activity === "working" &&
-      next.activity === "waiting" &&
-      next.needsAttention
+      next.isAgent &&
+      (next.activity === "waiting" || next.activity === "done")
     ) {
       maybePlayTransitionSound();
     }

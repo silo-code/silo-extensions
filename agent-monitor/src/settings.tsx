@@ -120,19 +120,19 @@ export function AgentMonitorSettingsPage() {
       <div className="am-section">
         <span className="am-section-title">Sound</span>
         <span className="am-hint">
-          Play a sound when an agent stops working and needs your attention.
-          Suppressed while you're already looking at that terminal.
+          Play a sound whenever an agent stops working, whether or not you're
+          watching its terminal.
         </span>
         <div className="es-rows">
           <div className="es-row">
             <div className="es-row-text">
               <span className="es-label">
-                Play a sound when an agent needs attention
+                Play a sound when an agent stops working
               </span>
             </div>
             <div className="es-control">
               <Toggle
-                label="Play a sound when an agent needs attention"
+                label="Play a sound when an agent stops working"
                 checked={s.soundEnabled}
                 onChange={(soundEnabled) => settingsService.set({ soundEnabled })}
               />

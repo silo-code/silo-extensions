@@ -11,7 +11,8 @@ import { settingsService } from "./settings-store";
 const DEBOUNCE_MS = 750;
 let lastPlayedAt = 0;
 
-/** Called from `dispatch()` on every working → waiting attention transition. */
+/** Called from `dispatch()` whenever an agent stops working, regardless of
+ * whether its terminal is currently focused. */
 export function maybePlayTransitionSound(now: number = Date.now()): void {
   const { soundEnabled, soundId } = settingsService.getState();
   if (!soundEnabled) return;
