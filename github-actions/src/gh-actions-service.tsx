@@ -91,6 +91,7 @@ export class GhActionsService {
       ctx.workspaces.invalidateBadges();
       ctx.workspaces.invalidateStatus();
       this._applySettingsChange(ctx);
+      this._applyEnabledGate(ctx);
     });
 
     const authState = await checkAuth(ctx, this._ghBin);
@@ -213,11 +214,17 @@ export class GhActionsService {
       const becameActive = modeChanged && mode === "active";
       const sinceLastFetch = Date.now() - (this._lastFetchedAt.get(ws.id) ?? 0);
       const activationThrottled = becameActive && sinceLastFetch < MIN_FETCH_INTERVAL_MS;
+      // Disabled workspaces get no fetches at all — new-folder detection and
+      // became-active immediate fetches included, not just the poll timer
+      // (gated separately in _startPolling). Suppression, not pause: a
+      // disabled workspace shouldn't make network calls just because a
+      // folder was added or the user switched to it.
+      const enabled = ghStore.getWorkspaceEnabled(ws.id);
       let willFetch = false;
       for (const folder of folders) {
         const isNewFolder = !known.has(folder);
         known.add(folder);
-        if (isNewFolder || (becameActive && !activationThrottled)) {
+        if (enabled && (isNewFolder || (becameActive && !activationThrottled))) {
           this._refreshFolder(ctx, ws.id, folder);
           willFetch = true;
         }
@@ -251,6 +258,12 @@ export class GhActionsService {
     inactive: boolean,
   ): void {
     this._clearTimer(workspaceId);
+    // Gate: a disabled workspace gets no timer at all — checked here (the
+    // single place a timer is created) rather than duplicated at each call
+    // site. _applyEnabledGate re-runs this check reactively so toggling
+    // enabled off mid-session stops an already-running timer too, not just
+    // future ones.
+    if (!ghStore.getWorkspaceEnabled(workspaceId)) return;
     const interval = inactive
       ? ghStore.settings.inactivePollIntervalMs
       : ghStore.settings.activePollIntervalMs;
@@ -265,6 +278,22 @@ export class GhActionsService {
         }
       }, interval),
     );
+  }
+
+  // Re-applies the enabled gate to every tracked workspace — called on
+  // every store change (via the subscribe callback in init(), alongside
+  // _applySettingsChange), since a bare `setWorkspaceEnabled` call doesn't
+  // change poll-interval settings (so _applySettingsChange's own early
+  // return skips it) and doesn't naturally trigger a mode change either.
+  // Without this, disabling a workspace mid-session would only stop its
+  // timer at the next unrelated mode/settings change, not immediately.
+  private _applyEnabledGate(ctx: ExtensionContext): void {
+    for (const [id, mode] of this._pollingMode) {
+      const enabled = ghStore.getWorkspaceEnabled(id);
+      const hasTimer = this._timers.has(id);
+      if (enabled && !hasTimer) this._startPolling(ctx, id, mode === "inactive");
+      else if (!enabled && hasTimer) this._clearTimer(id);
+    }
   }
 
   private async _refreshFolder(
@@ -398,6 +427,9 @@ export class GhActionsService {
   }
 
   getBadgesFor(workspaceId: string): WorkspaceBadge[] {
+    // Suppressed, not paused — a disabled workspace shows nothing rather
+    // than a frozen badge from before it was disabled.
+    if (!ghStore.getWorkspaceEnabled(workspaceId)) return [];
     const states = ghStore.getRepoStates(workspaceId).filter((s) => s.repoInfo !== null);
     if (states.length === 0) return [];
     const clearedBefore = ghStore.getClearedAt(workspaceId);
@@ -411,6 +443,7 @@ export class GhActionsService {
   }
 
   getDecorationsFor(workspaceId: string): WorkspaceStatusRow[] {
+    if (!ghStore.getWorkspaceEnabled(workspaceId)) return [];
     const states = ghStore.getRepoStates(workspaceId).filter((s) => s.repoInfo !== null);
     if (states.length === 0) return [];
 
@@ -452,6 +485,7 @@ export class GhActionsService {
     if (!this._ctx) return { kind: "hidden" };
     const activeId = this._ctx.workspaces.getState().activeId;
     if (!activeId) return { kind: "hidden" };
+    if (!ghStore.getWorkspaceEnabled(activeId)) return { kind: "hidden" };
     return deriveWorkspaceStatusBarState(
       ghStore.getRepoStates(activeId),
       ghStore.getClearedAt(activeId),
