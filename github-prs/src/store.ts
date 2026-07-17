@@ -42,6 +42,11 @@ export interface DetailCacheEntry {
   fetchedAt: Date;
 }
 
+export interface DetailErrorEntry {
+  error: GitHubApiError;
+  fetchedAt: Date;
+}
+
 function detailKey(folder: string, number: number): string {
   return `${folder}:${number}`;
 }
@@ -55,6 +60,7 @@ export class PrStore {
   // Key: `${workspaceId}:${folder}` — one entry per (workspace, folder) pair.
   private _folderStates = new Map<string, WorkspacePrState>();
   private _detailCache = new Map<string, DetailCacheEntry>();
+  private _detailErrors = new Map<string, DetailErrorEntry>();
   private _workspaceEnabled = new Map<string, boolean>();
   private _workspaceFilter = new Map<string, PrFilter>();
   private _authState: AuthState | null = null;
@@ -167,9 +173,24 @@ export class PrStore {
     return this._detailCache.get(detailKey(folder, number));
   }
 
+  getDetailError(folder: string, number: number): DetailErrorEntry | undefined {
+    return this._detailErrors.get(detailKey(folder, number));
+  }
+
   setDetail(folder: string, number: number, detail: PrDetail): void {
-    this._detailCache.set(detailKey(folder, number), { detail, fetchedAt: new Date() });
+    const key = detailKey(folder, number);
+    this._detailCache.set(key, { detail, fetchedAt: new Date() });
+    this._detailErrors.delete(key);
     this._notify();
+  }
+
+  setDetailError(folder: string, number: number, error: GitHubApiError): void {
+    this._detailErrors.set(detailKey(folder, number), { error, fetchedAt: new Date() });
+    this._notify();
+  }
+
+  clearDetailError(folder: string, number: number): void {
+    if (this._detailErrors.delete(detailKey(folder, number))) this._notify();
   }
 
   // Defaults true (opt-out) — same rationale as github-actions: monitoring

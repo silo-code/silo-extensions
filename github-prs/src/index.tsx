@@ -41,7 +41,6 @@ export const extension: Extension = {
         order: 2,
         component: () => <PrSettingsPage ctx={ctx} />,
       }),
-      // Workspace property page intentionally not registered for now.
       { dispose: () => service.dispose() },
     );
 

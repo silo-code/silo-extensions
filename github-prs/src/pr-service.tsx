@@ -15,6 +15,9 @@ const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
 const MIN_FETCH_INTERVAL_MS = 10_000;
 
+/** Auth-retry interval — also used in user-facing gate copy. */
+export const AUTH_RETRY_MINUTES = AUTH_RETRY_INTERVAL_MS / 60_000;
+
 async function resolveRemote(
   ctx: ExtensionContext,
   folder: string,
@@ -228,6 +231,7 @@ export class PrService {
     this._timers.set(
       workspaceId,
       setInterval(() => {
+        if (!prStore.getWorkspaceEnabled(workspaceId)) return;
         const ws = ctx.workspaces.get(workspaceId);
         if (!ws) return;
         this._lastFetchedAt.set(workspaceId, Date.now());
@@ -284,7 +288,13 @@ export class PrService {
       ctx.log.debug(`Refreshing PRs for ${repoInfo.owner}/${repoInfo.repo} (${folder})`, { filter });
 
       const prev = prStore.getRepoStates(workspaceId).find((s) => s.folder === folder);
-      const openResult = await fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
+      const openPromise = fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
+      const mergedPromise = needMerged
+        ? fetchMergedPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin)
+        : Promise.resolve(null);
+
+      const [openResult, mergedResult] = await Promise.all([openPromise, mergedPromise]);
+
       if (!openResult.ok) {
         ctx.log.warn(`Error fetching open PRs for ${folder}`, { error: openResult.error });
         prStore.setFolderState(workspaceId, folder, {
@@ -299,8 +309,7 @@ export class PrService {
       }
 
       let mergedPrs = prev?.mergedPrs ?? [];
-      if (needMerged) {
-        const mergedResult = await fetchMergedPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
+      if (mergedResult) {
         if (!mergedResult.ok) {
           ctx.log.warn(`Error fetching merged PRs for ${folder}`, { error: mergedResult.error });
           prStore.setFolderState(workspaceId, folder, {
@@ -371,14 +380,23 @@ export class PrService {
 
   async fetchDetail(folder: string, number: number): Promise<void> {
     if (!this._ctx || !prStore.authenticated) return;
-    const activeId = this._ctx.workspaces.getState().activeId;
-    if (!activeId) return;
-    const state = prStore.getRepoStates(activeId).find((s) => s.folder === folder);
-    if (!state?.repoInfo) return;
+    // Resolve by folder across open workspaces so a mid-fetch workspace switch
+    // doesn't drop the request.
+    let repoInfo: { owner: string; repo: string } | null = null;
+    for (const ws of this._ctx.workspaces.getState().open) {
+      const state = prStore.getRepoStates(ws.id).find((s) => s.folder === folder);
+      if (state?.repoInfo) {
+        repoInfo = state.repoInfo;
+        break;
+      }
+    }
+    if (!repoInfo) return;
+
+    prStore.clearDetailError(folder, number);
     const result = await fetchPrDetail(
       this._ctx,
-      state.repoInfo.owner,
-      state.repoInfo.repo,
+      repoInfo.owner,
+      repoInfo.repo,
       number,
       folder,
       this._ghBin,
@@ -387,6 +405,7 @@ export class PrService {
       prStore.setDetail(folder, number, result.detail);
     } else {
       this._ctx.log.warn(`Failed to fetch PR detail #${number}`, { error: result.error });
+      prStore.setDetailError(folder, number, result.error);
     }
   }
 

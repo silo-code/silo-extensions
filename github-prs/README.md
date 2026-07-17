@@ -1,21 +1,21 @@
 # GitHub Pull Requests
 
-A [Silo](https://github.com/silo-code/silo) extension that shows pull requests for the repos in your workspace in a right side panel — review state, CI checks, and drill-in details without leaving the editor.
+Browse open and recently merged pull requests for the GitHub repos in your workspace — review state, CI checks, and drill-in details — without leaving Silo.
 
 ![PR detail view showing checks, branch, and review status](assets/hero.png)
 
 ## What you get
 
-- **Side panel** — open PRs for every GitHub remote in the active workspace
-- **Filters** — My PRs (default), Needs my review, All open, Recently merged (per workspace)
-- **In-panel navigation** — click a row for CI checks, reviews, description, and activity; back / Escape returns to the list
-- **At-a-glance status** — review icons, check rollup, draft and conflict chips
-- **Copy actions** — PR URL, head branch name, `gh pr checkout N`
-- **Polling** — configurable intervals for active and background workspaces
+- Side panel listing PRs for every GitHub remote in the active workspace
+- Filters: My PRs (default), Needs my review, All open, Recently merged
+- Click a row for CI checks, reviews, description, and activity
+- At-a-glance review icons, check rollup, draft and conflict chips
+- Copy PR URL, head branch, or `gh pr checkout N`
+- Configurable polling for active and background workspaces
 
 ## Requirements
 
-This extension uses the [`gh` CLI](https://cli.github.com). Install it and run `gh auth login` before using the extension.
+Install the [`gh` CLI](https://cli.github.com) and run `gh auth login`.
 
 ## Installing
 
@@ -38,9 +38,11 @@ Then in Silo: **Settings → Extensions → Install from folder**, point at this
 
 ## Usage
 
-Once installed and authenticated, open the **PRS** panel on the right. The default filter is **My PRs**. Switch filters from the header menu; **Recently merged** fetches on demand.
+Open the **PRS** panel on the right. The default filter is **My PRs**. Switch filters from the header menu; **Recently merged** fetches on demand.
 
-Click a row for details. The detail view uses list data immediately, then hydrates the description and timeline. Use the overflow menu to copy the URL, branch name, or checkout command.
+Click a row for details. List data shows immediately; description and activity load next. Use the overflow menu to copy the URL, branch name, or checkout command.
+
+If monitoring was turned off for a workspace, use **Enable** in the panel gate to turn it back on.
 
 ## Settings
 
@@ -56,3 +58,11 @@ Open **Settings → GitHub Pull Requests**:
 Declared in `package.json` under `silo.permissions`:
 
 - **`process`** — run `gh` / `git` to resolve remotes, list PRs, and check authentication
+
+## Building
+
+```sh
+npm install
+npm run build        # one-shot
+npm run build:watch  # watch mode
+```

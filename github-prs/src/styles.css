@@ -55,13 +55,6 @@
   padding: 0 2px;
 }
 
-.ghpr-header__meta {
-  flex-shrink: 0;
-  font-size: calc(1em - 1px);
-  color: var(--silo-color-text-lo);
-  opacity: 0.8;
-}
-
 /* Push list-view refresh to the trailing edge. Tooltip wraps the button in a
    host, so target that host — only when the filter control is present. */
 .ghpr-header:has(.ghpr-filter-btn) > .silo-tooltip-host:last-child {
@@ -166,8 +159,7 @@
   color: var(--silo-color-text);
   font-size: 1em;
 }
-.ghpr-gate a,
-.ghpr-gate button.ghpr-link {
+.ghpr-link {
   background: none;
   border: none;
   padding: 0;
@@ -175,6 +167,21 @@
   cursor: pointer;
   font: inherit;
   text-decoration: underline;
+}
+
+.ghpr-gate__action {
+  margin-top: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--silo-color-border-strong);
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text-hi);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ghpr-gate__action:hover {
+  background: color-mix(in srgb, var(--silo-color-text) 12%, transparent);
 }
 
 .ghpr-error-banner {
@@ -190,22 +197,8 @@
   font-size: 1em;
   line-height: 1.4;
 }
-
-.ghpr-section {
-  padding: 4px 0 8px;
-}
-.ghpr-section + .ghpr-section {
-  border-top: 1px solid var(--silo-color-border);
-}
-.ghpr-section__title {
-  margin: 0;
-  padding: 8px 12px 4px;
-  /* Match .tree-row.root / .git-root-label */
-  font-size: calc(1em - 2px);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--silo-color-text-lo);
+.ghpr-error-banner--inline {
+  margin: 4px 8px 8px;
 }
 
 .ghpr-repo {
@@ -579,6 +572,10 @@
   white-space: nowrap;
 }
 
+.ghpr-timeline-row__content {
+  flex: 1;
+  min-width: 0;
+}
 .ghpr-timeline-row__who {
   font-weight: 500;
   color: var(--silo-color-text-hi);
@@ -594,6 +591,19 @@
   word-break: break-word;
   color: var(--silo-color-text);
   line-height: 1.45;
+}
+
+.ghpr-settings-status {
+  font-weight: 500;
+}
+.ghpr-settings-status--ok {
+  color: var(--silo-color-ok);
+}
+.ghpr-settings-status--err {
+  color: var(--silo-color-err);
+}
+.ghpr-settings-status--muted {
+  opacity: 0.5;
 }
 
 @keyframes ghpr-spin {

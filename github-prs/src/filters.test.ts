@@ -76,6 +76,11 @@ describe("filterPrs", () => {
     expect(filterPrs([], [], "merged", "dave")).toEqual([]);
   });
 
+  it("authored matching is case-sensitive on login", () => {
+    expect(filterPrs(OPEN, MERGED, "authored", "Dave").map((p) => p.number)).toEqual([]);
+    expect(filterPrs(OPEN, MERGED, "authored", "dave").map((p) => p.number)).toEqual([1]);
+  });
+
   it("has a label for every filter", () => {
     for (const f of PR_FILTERS) {
       expect(FILTER_LABELS[f]).toBeTruthy();

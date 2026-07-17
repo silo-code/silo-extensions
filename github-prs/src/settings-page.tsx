@@ -1,24 +1,17 @@
-import { useEffect, useState } from "react";
 import type { ExtensionContext } from "@silo-code/sdk";
-import { prStore, type PrSettings } from "./store";
-import type { AuthState } from "./github-pr-api";
+import { usePrStore } from "./hooks";
+import type { PrSettings } from "./store";
 
 export interface PrSettingsPageProps {
   ctx: ExtensionContext;
 }
 
-export function PrSettingsPage({ ctx: _ctx }: PrSettingsPageProps) {
-  const [settings, setSettings] = useState<PrSettings>(() => prStore.settings);
-  const [authState, setAuthState] = useState<AuthState | null>(() => prStore.authState);
+export function PrSettingsPage({ ctx }: PrSettingsPageProps) {
+  const store = usePrStore();
+  const settings = store.settings;
+  const authState = store.authState;
 
-  useEffect(() => {
-    return prStore.subscribe(() => {
-      setSettings(prStore.settings);
-      setAuthState(prStore.authState);
-    });
-  }, []);
-
-  const update = (patch: Partial<PrSettings>) => prStore.updateSettings(patch);
+  const update = (patch: Partial<PrSettings>) => store.updateSettings(patch);
 
   return (
     <div className="es-page">
@@ -38,31 +31,32 @@ export function PrSettingsPage({ ctx: _ctx }: PrSettingsPageProps) {
               </div>
               <div className="es-control">
                 {authState === "ok" && (
-                  <span style={{ color: "var(--silo-color-ok)", fontWeight: 500 }}>
+                  <span className="ghpr-settings-status ghpr-settings-status--ok">
                     ✓ Authenticated
-                    {prStore.viewerLogin ? ` as ${prStore.viewerLogin}` : ""}
+                    {store.viewerLogin ? ` as ${store.viewerLogin}` : ""}
                   </span>
                 )}
                 {authState === "unauthenticated" && (
-                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>
+                  <span className="ghpr-settings-status ghpr-settings-status--err">
                     ✗ Not authenticated — run <code>gh auth login</code>
                   </span>
                 )}
                 {authState === "missing" && (
-                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>
+                  <span className="ghpr-settings-status ghpr-settings-status--err">
                     ✗ gh CLI not installed —{" "}
-                    <a
-                      href="https://cli.github.com"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ color: "inherit" }}
+                    <button
+                      type="button"
+                      className="ghpr-link"
+                      onClick={() => void ctx.ui.openExternal("https://cli.github.com")}
                     >
                       cli.github.com
-                    </a>
+                    </button>
                   </span>
                 )}
                 {(authState === null || authState === "deferred") && (
-                  <span style={{ opacity: 0.5 }}>Checking...</span>
+                  <span className="ghpr-settings-status ghpr-settings-status--muted">
+                    Checking…
+                  </span>
                 )}
               </div>
             </div>

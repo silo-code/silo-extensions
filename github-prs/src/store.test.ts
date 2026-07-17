@@ -155,4 +155,86 @@ describe("PrStore folder state + detail cache", () => {
     store.removeWorkspace("ws-1");
     expect(store.isWorkspaceReady("ws-1")).toBe(false);
   });
+
+  it("markWorkspaceReady is idempotent (notifies once)", () => {
+    const store = new PrStore();
+    let calls = 0;
+    store.subscribe(() => calls++);
+    store.markWorkspaceReady("ws-1");
+    store.markWorkspaceReady("ws-1");
+    expect(calls).toBe(1);
+    expect(store.isWorkspaceReady("ws-1")).toBe(true);
+  });
+
+  it("stores and clears detail-fetch errors", () => {
+    const store = new PrStore();
+    store.setDetailError("/repo", 7, { kind: "rate-limited", message: "slow down" });
+    expect(store.getDetailError("/repo", 7)?.error.message).toBe("slow down");
+    store.setDetail("/repo", 7, {
+      ...pr({ number: 7 }),
+      body: "ok",
+      reviews: [],
+      comments: [],
+      changedFiles: 1,
+      closedAt: null,
+    } as PrDetail);
+    expect(store.getDetailError("/repo", 7)).toBeUndefined();
+    expect(store.getDetail("/repo", 7)?.detail.body).toBe("ok");
+  });
+});
+
+describe("PrStore.hydrate", () => {
+  function fakeStorage(initial: Record<string, unknown> = {}) {
+    const data = new Map<string, unknown>(Object.entries(initial));
+    const listeners = new Set<() => void>();
+    return {
+      get: ((key: string, fallback?: unknown) =>
+        data.has(key) ? data.get(key) : fallback) as import("@silo-code/sdk").ExtensionStorage["get"],
+      set(key: string, value: unknown) {
+        if (value === undefined) data.delete(key);
+        else data.set(key, value);
+      },
+      keys: () => [...data.keys()],
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return { dispose: () => listeners.delete(listener) };
+      },
+      emit() {
+        for (const l of listeners) l();
+      },
+    };
+  }
+
+  it("loads enabled flags, filters, and settings from storage", () => {
+    const store = new PrStore();
+    const storage = fakeStorage({
+      workspaceEnabled: { "ws-1": false },
+      workspaceFilter: { "ws-1": "merged" },
+      settings: { activePollIntervalMs: 30_000 },
+    });
+    store.hydrate(storage);
+    expect(store.getWorkspaceEnabled("ws-1")).toBe(false);
+    expect(store.getWorkspaceFilter("ws-1")).toBe("merged");
+    expect(store.settings.activePollIntervalMs).toBe(30_000);
+    expect(store.settings.inactivePollIntervalMs).toBe(10 * 60_000);
+  });
+
+  it("re-applies settings when storage notifies after hydrate", () => {
+    const store = new PrStore();
+    const storage = fakeStorage({});
+    store.hydrate(storage);
+    storage.set("settings", { inactivePollIntervalMs: 5 * 60_000 });
+    storage.emit();
+    expect(store.settings.inactivePollIntervalMs).toBe(5 * 60_000);
+  });
+
+  it("persists enabled and filter changes through storage", () => {
+    const store = new PrStore();
+    const storage = fakeStorage({});
+    store.hydrate(storage);
+    store.setWorkspaceEnabled("ws-9", false);
+    store.setWorkspaceFilter("ws-9", "all");
+    expect(storage.get("workspaceEnabled")).toEqual({ "ws-9": false });
+    expect(storage.get("workspaceFilter")).toEqual({ "ws-9": "all" });
+  });
 });

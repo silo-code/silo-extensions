@@ -1,17 +1,13 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
-import {
-  useFocusGroup,
-  type ExtensionContext,
-  type ExtensionStorage,
-} from "@silo-code/sdk";
+import { useFocusGroup, type ExtensionStorage } from "@silo-code/sdk";
 import type { PrListItem } from "../github-pr-api";
 import { FILTER_LABELS, filterPrs, type PrFilter } from "../filters";
+import { folderRootName } from "../detail-helpers";
 import type { WorkspacePrState } from "../store";
 import { PrRow } from "./PrRow";
 
 export interface PrListViewProps {
-  ctx: ExtensionContext;
   storage: ExtensionStorage;
   repoStates: WorkspacePrState[];
   filter: PrFilter;
@@ -32,12 +28,11 @@ type CollapsedMap = Record<string, boolean>;
 const COLLAPSED_KEY = "collapsed";
 const EMPTY_COLLAPSED: CollapsedMap = {};
 
-function rootName(path: string): string {
-  return path.split("/").filter(Boolean).pop() ?? path;
+function apiErrorMessage(state: WorkspacePrState): string | null {
+  return state.error?.kind === "api-error" ? state.error.error.message : null;
 }
 
 export function PrListView({
-  ctx: _ctx,
   storage,
   repoStates,
   filter,
@@ -72,13 +67,13 @@ export function PrListView({
   const sections = useMemo(() => {
     return withRepo.map((state) => ({
       state,
-      label: rootName(state.folder).toUpperCase(),
+      label: folderRootName(state.folder).toUpperCase(),
       prs: filterPrs(state.openPrs, state.mergedPrs, filter, viewerLogin),
       collapsed: multi && (collapsedMap[state.folder] ?? false),
+      errorMessage: apiErrorMessage(state),
     }));
   }, [withRepo, filter, viewerLogin, multi, collapsedMap]);
 
-  // Focusable rows are only the visible (non-collapsed) PR rows.
   const flat: FlatRow[] = useMemo(() => {
     const rows: FlatRow[] = [];
     for (const section of sections) {
@@ -94,6 +89,12 @@ export function PrListView({
     return rows;
   }, [sections]);
 
+  const flatIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    flat.forEach((row, i) => map.set(row.key, i));
+    return map;
+  }, [flat]);
+
   const group = useFocusGroup({
     count: flat.length,
     orientation: "vertical",
@@ -103,9 +104,9 @@ export function PrListView({
     },
   });
 
-  const apiError = withRepo.find((s) => s.error?.kind === "api-error");
   const totalVisible = flat.length;
   const anyPrs = sections.some((s) => s.prs.length > 0);
+  const singleError = !multi ? sections[0]?.errorMessage : null;
 
   if (withRepo.length === 0) {
     if (!workspaceReady) {
@@ -137,26 +138,21 @@ export function PrListView({
     );
   }
 
-  // Single-repo: flat list, no root header (matches git panel).
   if (!multi) {
     if (totalVisible === 0) {
       return (
-        <div className="ghpr-list-wrap">
-          {apiError?.error?.kind === "api-error" && (
-            <div className="ghpr-error-banner">{apiError.error.error.message}</div>
-          )}
+        <>
+          {singleError && <div className="ghpr-error-banner">{singleError}</div>}
           <div className="ghpr-empty">
             <div className="ghpr-empty__title">No pull requests</div>
             <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
           </div>
-        </div>
+        </>
       );
     }
     return (
-      <div className="ghpr-list-wrap">
-        {apiError?.error?.kind === "api-error" && (
-          <div className="ghpr-error-banner">{apiError.error.error.message}</div>
-        )}
+      <>
+        {singleError && <div className="ghpr-error-banner">{singleError}</div>}
         <ul className="ghpr-list" role="listbox" {...group.containerProps}>
           {flat.map((row, i) => (
             <li key={row.key} role="none">
@@ -168,22 +164,19 @@ export function PrListView({
             </li>
           ))}
         </ul>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="ghpr-list-wrap" {...group.containerProps}>
-      {apiError?.error?.kind === "api-error" && (
-        <div className="ghpr-error-banner">{apiError.error.error.message}</div>
-      )}
+    <div {...group.containerProps}>
       {!anyPrs && (
         <div className="ghpr-empty">
           <div className="ghpr-empty__title">No pull requests</div>
           <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
         </div>
       )}
-      {sections.map(({ state, label, prs, collapsed }) => (
+      {sections.map(({ state, label, prs, collapsed, errorMessage }) => (
         <section key={state.folder} className="ghpr-repo">
           <button
             type="button"
@@ -201,26 +194,30 @@ export function PrListView({
             <span className="ghpr-root-name">{label}</span>
           </button>
           {!collapsed && (
-            prs.length === 0 ? (
-              <div className="ghpr-repo__empty">No matching PRs</div>
-            ) : (
-              <ul className="ghpr-list" role="listbox">
-                {prs.map((pr) => {
-                  const index = flat.findIndex(
-                    (r) => r.folder === state.folder && r.pr.number === pr.number,
-                  );
-                  return (
-                    <li key={`${state.folder}:${pr.number}`} role="none">
-                      <PrRow
-                        pr={pr}
-                        onOpen={() => onOpenPr(state.folder, pr.number)}
-                        focusProps={index >= 0 ? group.getItemProps(index) : undefined}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            )
+            <>
+              {errorMessage && (
+                <div className="ghpr-error-banner ghpr-error-banner--inline">{errorMessage}</div>
+              )}
+              {prs.length === 0 ? (
+                <div className="ghpr-repo__empty">No matching PRs</div>
+              ) : (
+                <ul className="ghpr-list" role="listbox">
+                  {prs.map((pr) => {
+                    const key = `${state.folder}:${pr.number}`;
+                    const index = flatIndex.get(key) ?? -1;
+                    return (
+                      <li key={key} role="none">
+                        <PrRow
+                          pr={pr}
+                          onOpen={() => onOpenPr(state.folder, pr.number)}
+                          focusProps={index >= 0 ? group.getItemProps(index) : undefined}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
           )}
         </section>
       ))}

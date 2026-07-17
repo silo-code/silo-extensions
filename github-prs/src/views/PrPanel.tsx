@@ -15,8 +15,9 @@ import {
 } from "@silo-code/sdk";
 import { FILTER_LABELS, PR_FILTERS, type PrFilter } from "../filters";
 import { buildCopyActions } from "../copy-actions";
-import type { PrService } from "../pr-service";
-import { prStore } from "../store";
+import { findPrInRepoStates } from "../detail-helpers";
+import { usePrStore } from "../hooks";
+import { AUTH_RETRY_MINUTES, type PrService } from "../pr-service";
 import { useViewStack } from "./use-view-stack";
 import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
@@ -30,37 +31,34 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const { view, push, pop } = useViewStack(storage, hydrated);
   const wsState = useServiceState(ctx.workspaces);
   const workspaceId = wsState.activeId ?? "";
-
-  const [, setTick] = useState(0);
-  useEffect(() => prStore.subscribe(() => setTick((t) => t + 1)), []);
+  const store = usePrStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  const filter = workspaceId ? prStore.getWorkspaceFilter(workspaceId) : "authored";
-  const enabled = workspaceId ? prStore.getWorkspaceEnabled(workspaceId) : true;
-  const repoStates = workspaceId ? prStore.getRepoStates(workspaceId) : [];
-  const workspaceReady = workspaceId ? prStore.isWorkspaceReady(workspaceId) : false;
-  const viewerLogin = prStore.viewerLogin;
-  const authState = prStore.authState;
-  const initialized = prStore.initialized;
+  const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
+  const enabled = workspaceId ? store.getWorkspaceEnabled(workspaceId) : true;
+  const repoStates = workspaceId ? store.getRepoStates(workspaceId) : [];
+  const workspaceReady = workspaceId ? store.isWorkspaceReady(workspaceId) : false;
+  const viewerLogin = store.viewerLogin;
+  const authState = store.authState;
+  const initialized = store.initialized;
 
   const detailPr = useMemo(() => {
     if (view.kind !== "detail") return null;
-    for (const state of repoStates) {
-      if (state.folder !== view.folder) continue;
-      const all = [...state.openPrs, ...state.mergedPrs];
-      const found = all.find((p) => p.number === view.number);
-      if (found) return { pr: found, state };
-    }
-    return null;
+    return findPrInRepoStates(repoStates, view.folder, view.number);
   }, [view, repoStates]);
 
   const detailEntry =
-    view.kind === "detail" ? prStore.getDetail(view.folder, view.number) : undefined;
+    view.kind === "detail" ? store.getDetail(view.folder, view.number) : undefined;
+  const detailError =
+    view.kind === "detail" ? store.getDetailError(view.folder, view.number) : undefined;
 
   useEffect(() => {
-    if (view.kind !== "detail" || !active) return;
+    if (view.kind !== "detail" || !active) {
+      setLoadingDetail(false);
+      return;
+    }
     let cancelled = false;
     setLoadingDetail(true);
     void service.fetchDetail(view.folder, view.number).finally(() => {
@@ -68,6 +66,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     });
     return () => {
       cancelled = true;
+      setLoadingDetail(false);
     };
   }, [view, service, active]);
 
@@ -93,9 +92,9 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const handleFilter = useCallback(
     (next: PrFilter) => {
       if (!workspaceId) return;
-      prStore.setWorkspaceFilter(workspaceId, next);
+      store.setWorkspaceFilter(workspaceId, next);
     },
-    [workspaceId],
+    [workspaceId, store],
   );
 
   const openFilterMenu = useCallback(
@@ -113,7 +112,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const openOverflowMenu = useCallback(
     (anchor: HTMLElement) => {
       if (!detailPr) return;
-      const items: MenuEntry[] = buildCopyActions(detailPr.pr).map((a) => ({
+      const items: MenuEntry[] = buildCopyActions(detailPr).map((a) => ({
         label: a.label,
         run: () => {
           void navigator.clipboard.writeText(a.text).then(() => {
@@ -132,8 +131,6 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     },
     [push],
   );
-
-  // ── Gate states ────────────────────────────────────────────────────────────
 
   if (!workspaceId) {
     return (
@@ -170,7 +167,8 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
             >
               gh CLI
             </button>{" "}
-            and restart Silo. The extension retries automatically every 2 minutes.
+            and restart Silo. The extension retries automatically every{" "}
+            {AUTH_RETRY_MINUTES} minutes.
           </div>
         </div>
       </div>
@@ -184,7 +182,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
           <div className="ghpr-gate__title">Not authenticated</div>
           <div>
             Run <code>gh auth login</code> in a terminal. The extension will pick it
-            up within 2 minutes.
+            up within {AUTH_RETRY_MINUTES} minutes.
           </div>
         </div>
       </div>
@@ -196,9 +194,14 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       <div className="ghpr">
         <div className="ghpr-gate">
           <div className="ghpr-gate__title">Monitoring disabled</div>
-          <div>
-            Enable pull request monitoring for this workspace in workspace properties.
-          </div>
+          <div>Pull request monitoring is turned off for this workspace.</div>
+          <button
+            type="button"
+            className="ghpr-gate__action"
+            onClick={() => store.setWorkspaceEnabled(workspaceId, true)}
+          >
+            Enable
+          </button>
         </div>
       </div>
     );
@@ -243,7 +246,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                       type="button"
                       className="ghpr-icon-btn"
                       aria-label="Open on GitHub"
-                      onClick={() => void ctx.ui.openExternal(detailPr.pr.url)}
+                      onClick={() => void ctx.ui.openExternal(detailPr.url)}
                     >
                       <ArrowSquareOut size={16} />
                     </button>
@@ -263,7 +266,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
             </div>
             <div className="ghpr-header__title">
               #{view.number}
-              {detailPr ? ` · ${detailPr.pr.title}` : ""}
+              {detailPr ? ` · ${detailPr.title}` : ""}
             </div>
           </div>
         )}
@@ -272,7 +275,6 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       <div className="ghpr-body">
         {view.kind === "list" ? (
           <PrListView
-            ctx={ctx}
             storage={storage}
             repoStates={repoStates}
             filter={filter}
@@ -283,8 +285,9 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
         ) : detailPr ? (
           <PrDetailView
             ctx={ctx}
-            pr={detailPr.pr}
+            pr={detailPr}
             detailEntry={detailEntry}
+            detailError={detailError}
             loadingDetail={loadingDetail}
           />
         ) : (

@@ -201,9 +201,15 @@ export function classifyFetchError(stderr: string): GitHubApiError {
     return { kind: "not-found", message: "Repository not found — it may be private or the token lacks repo scope" };
   }
   if (s.includes("429") || s.includes("rate limit")) {
-    return { kind: "rate-limited", message: "GitHub API rate limit exceeded" };
+    return {
+      kind: "rate-limited",
+      message: "GitHub API rate limit exceeded — wait a bit, then Refresh, or slow polling in Settings",
+    };
   }
-  return { kind: "network", message: stderr.trim() || "gh call failed" };
+  return {
+    kind: "network",
+    message: "Couldn’t reach GitHub — check your network and that gh is authenticated",
+  };
 }
 
 // ─── Normalization ────────────────────────────────────────────────────────────
@@ -350,7 +356,7 @@ async function runPrList(
     return { ok: true, prs };
   } catch {
     ctx.log.error(`Failed to parse gh pr list response for ${owner}/${repo}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Failed to parse gh pr list response" } };
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
   }
 }
 
@@ -406,7 +412,7 @@ export async function fetchPrDetail(
     return { ok: true, detail: normalizePrDetail(JSON.parse(result.stdout) as RawRecord) };
   } catch {
     ctx.log.error(`Failed to parse gh pr view response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Failed to parse gh pr view response" } };
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
   }
 }
 

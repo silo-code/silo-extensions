@@ -8,7 +8,7 @@ import {
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ExtensionContext } from "@silo-code/sdk";
-import type { CheckContext, PrDetail, PrListItem, PrReview } from "../github-pr-api";
+import type { CheckContext, PrListItem } from "../github-pr-api";
 import {
   REVIEW_STATE_LABELS,
   checkName,
@@ -19,22 +19,20 @@ import {
   type CheckOutcome,
 } from "../status";
 import { formatElapsed } from "../format-elapsed";
-import type { DetailCacheEntry } from "../store";
+import {
+  buildTimeline,
+  checkKey,
+  reviewKindLabel,
+  uniqueReviewers,
+} from "../detail-helpers";
+import type { DetailCacheEntry, DetailErrorEntry } from "../store";
 
 export interface PrDetailViewProps {
   ctx: ExtensionContext;
   pr: PrListItem;
   detailEntry: DetailCacheEntry | undefined;
+  detailError: DetailErrorEntry | undefined;
   loadingDetail: boolean;
-}
-
-interface TimelineItem {
-  key: string;
-  who: string;
-  when: Date | null;
-  kind: string;
-  body: string;
-  url?: string;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -61,50 +59,13 @@ function reviewStateIcon(state: string) {
   }
 }
 
-function buildTimeline(detail: PrDetail): TimelineItem[] {
-  const items: TimelineItem[] = [];
-  for (const c of detail.comments) {
-    items.push({
-      key: `c:${c.createdAt}:${c.author?.login ?? ""}`,
-      who: c.author?.login ?? "unknown",
-      when: c.createdAt ? new Date(c.createdAt) : null,
-      kind: "commented",
-      body: c.body,
-      url: c.url || undefined,
-    });
-  }
-  for (const r of detail.reviews) {
-    if (!r.body && r.state === "COMMENTED") continue;
-    items.push({
-      key: `r:${r.submittedAt ?? ""}:${r.author?.login ?? ""}:${r.state}`,
-      who: r.author?.login ?? "unknown",
-      when: r.submittedAt ? new Date(r.submittedAt) : null,
-      kind: r.state.toLowerCase().replace(/_/g, " "),
-      body: r.body,
-    });
-  }
-  return items.sort((a, b) => {
-    const at = a.when?.getTime() ?? 0;
-    const bt = b.when?.getTime() ?? 0;
-    return bt - at;
-  });
-}
-
-function uniqueReviewers(pr: PrListItem, detail?: PrDetail): PrReview[] {
-  const reviews = detail?.reviews?.length ? detail.reviews : pr.latestReviews;
-  const byLogin = new Map<string, PrReview>();
-  for (const r of reviews) {
-    const login = r.author?.login;
-    if (!login) continue;
-    const prev = byLogin.get(login);
-    if (!prev || (r.submittedAt && (!prev.submittedAt || r.submittedAt > prev.submittedAt))) {
-      byLogin.set(login, r);
-    }
-  }
-  return [...byLogin.values()];
-}
-
-export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailViewProps) {
+export function PrDetailView({
+  ctx,
+  pr,
+  detailEntry,
+  detailError,
+  loadingDetail,
+}: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
   const checks = pr.statusCheckRollup;
@@ -113,6 +74,8 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
   const requested = pr.reviewRequests
     .map((r) => r.login ?? r.name)
     .filter((x): x is string => !!x);
+
+  const showDetailError = !!detailError && !detail;
 
   return (
     <div className="ghpr-detail">
@@ -136,12 +99,16 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
         </div>
       </section>
 
+      {showDetailError && (
+        <div className="ghpr-error-banner">{detailError.error.message}</div>
+      )}
+
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Checks</h3>
         {checks.length === 0 ? (
           <div className="ghpr-detail__loading">No checks reported.</div>
         ) : (
-          checks.map((check: CheckContext, i) => {
+          checks.map((check: CheckContext) => {
             const outcome = classifyCheck(check);
             const url = checkUrl(check);
             const name = checkName(check);
@@ -151,7 +118,7 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
                 : null;
             return (
               <button
-                key={`${name}:${i}`}
+                key={checkKey(check)}
                 type="button"
                 className="ghpr-check-row"
                 disabled={!url}
@@ -182,7 +149,7 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
                 <span>
                   <span className="ghpr-timeline-row__who">{r.author?.login ?? "unknown"}</span>
                   {" · "}
-                  {r.state.toLowerCase().replace(/_/g, " ")}
+                  {reviewKindLabel(r.state)}
                   {r.submittedAt && (
                     <span className="ghpr-timeline-row__when">
                       {" "}
@@ -203,7 +170,9 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Description</h3>
-        {loadingDetail && !detail ? (
+        {showDetailError ? (
+          <div className="ghpr-detail__loading">Couldn’t load description.</div>
+        ) : loadingDetail && !detail ? (
           <div className="ghpr-detail__loading">Loading description…</div>
         ) : detail?.body ? (
           <div className="ghpr-md">
@@ -237,18 +206,20 @@ export function PrDetailView({ ctx, pr, detailEntry, loadingDetail }: PrDetailVi
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Activity</h3>
-        {loadingDetail && timeline.length === 0 ? (
+        {showDetailError ? (
+          <div className="ghpr-detail__loading">Couldn’t load activity.</div>
+        ) : loadingDetail && timeline.length === 0 ? (
           <div className="ghpr-detail__loading">Loading activity…</div>
         ) : timeline.length === 0 ? (
           <div className="ghpr-detail__loading">No recent comments.</div>
         ) : (
           timeline.map((item) => (
             <div key={item.key} className="ghpr-timeline-row">
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="ghpr-timeline-row__content">
                 <div>
                   <span className="ghpr-timeline-row__who">{item.who}</span>
                   {" "}
-                  <span className="ghpr-timeline-row__when">{item.kind}</span>
+                  <span className="ghpr-timeline-row__when">{item.kindLabel}</span>
                   {item.when && (
                     <span className="ghpr-timeline-row__when">
                       {" · "}

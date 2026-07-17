@@ -24,16 +24,23 @@ describe("classifyFetchError", () => {
     expect(classifyFetchError("API rate limit exceeded").kind).toBe("rate-limited");
   });
 
-  it("falls back to network with the stderr text", () => {
+  it("falls back to network with a safe message (no raw stderr)", () => {
     const err = classifyFetchError("dial tcp: lookup api.github.com: no such host");
     expect(err.kind).toBe("network");
-    expect(err.message).toContain("api.github.com");
+    expect(err.message).toMatch(/network|GitHub/i);
+    expect(err.message).not.toContain("api.github.com");
   });
 
   it("provides a generic message for empty stderr", () => {
     const err = classifyFetchError("");
     expect(err.kind).toBe("network");
-    expect(err.message).toBe("gh call failed");
+    expect(err.message).toMatch(/network|GitHub/i);
+  });
+
+  it("rate-limit message points at Refresh / Settings", () => {
+    const err = classifyFetchError("HTTP 429: too many requests");
+    expect(err.kind).toBe("rate-limited");
+    expect(err.message).toMatch(/Refresh|Settings/);
   });
 });
 
@@ -156,5 +163,47 @@ describe("normalizePrDetail", () => {
     expect(detail.comments).toEqual([]);
     expect(detail.reviews).toEqual([]);
     expect(detail.body).toBe("");
+  });
+});
+
+describe("checkAuth", () => {
+  function mockCtx(exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>) {
+    return {
+      workspaces: {
+        getState: () => ({ activeId: "ws", open: [{ id: "ws", folder: "/repo" }], all: [] }),
+        get: () => ({ id: "ws", folder: "/repo" }),
+      },
+      system: { getInfo: async () => ({ os: "darwin" }) },
+      process: { exec },
+      log: { debug: () => {}, info: () => {}, warn: () => {} },
+    } as unknown as import("@silo-code/sdk").ExtensionContext;
+  }
+
+  it("returns ok when gh auth status exits 0", async () => {
+    const { checkAuth } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => ({ code: 0, stdout: "Logged in", stderr: "" }));
+    expect(await checkAuth(ctx, "gh")).toBe("ok");
+  });
+
+  it("returns unauthenticated on non-zero exit that is not missing", async () => {
+    const { checkAuth } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => ({ code: 1, stdout: "", stderr: "not logged in" }));
+    expect(await checkAuth(ctx, "gh")).toBe("unauthenticated");
+  });
+
+  it("returns missing when the binary is not found", async () => {
+    const { checkAuth } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => ({ code: 127, stdout: "", stderr: "gh: command not found" }));
+    expect(await checkAuth(ctx, "gh")).toBe("missing");
+  });
+
+  it("returns deferred on PathDeniedError", async () => {
+    const { checkAuth } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => {
+      const err = new Error("PathDeniedError: No workspace is open");
+      err.name = "PathDeniedError";
+      throw err;
+    });
+    expect(await checkAuth(ctx, "gh")).toBe("deferred");
   });
 });

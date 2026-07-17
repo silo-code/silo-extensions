@@ -150,6 +150,10 @@ describe("deriveReviewState", () => {
     expect(deriveReviewState(pr({ reviewDecision: "REVIEW_REQUIRED" }))).toBe("review-required");
     expect(deriveReviewState(pr({ reviewDecision: "" }))).toBe("none");
   });
+
+  it("treats unknown reviewDecision as none", () => {
+    expect(deriveReviewState(pr({ reviewDecision: "SOMETHING_NEW" as PrListItem["reviewDecision"] }))).toBe("none");
+  });
 });
 
 describe("hasConflicts", () => {
