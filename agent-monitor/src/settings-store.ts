@@ -47,7 +47,7 @@ const STORAGE_KEY_SOUND_ENABLED = "soundEnabled";
 const STORAGE_KEY_SOUND_ID = "soundId";
 
 const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
-const DEFAULT_SOUND_ENABLED = false;
+const DEFAULT_SOUND_ENABLED = true;
 const DEFAULT_SOUND_ID: SoundName = "chime";
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];

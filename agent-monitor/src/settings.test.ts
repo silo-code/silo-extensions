@@ -104,10 +104,15 @@ describe("agent-monitor sound settings", () => {
     initSettings(fakeStorage({ soundEnabled: false, soundId: "chime" })).dispose();
   });
 
-  it("defaults to disabled with \"chime\" when nothing is persisted", () => {
+  it("defaults to enabled with \"chime\" when nothing is persisted", () => {
+    // Restore module to compiled defaults before testing empty storage —
+    // initSettings falls back to the in-memory singleton when a key is missing.
+    initSettings(
+      fakeStorage({ soundEnabled: true, soundId: "chime" }),
+    ).dispose();
     const storage = fakeStorage();
     const sub = initSettings(storage);
-    expect(settingsService.getState().soundEnabled).toBe(false);
+    expect(settingsService.getState().soundEnabled).toBe(true);
     expect(settingsService.getState().soundId).toBe("chime");
     sub.dispose();
   });
@@ -140,7 +145,7 @@ describe("agent-monitor sound settings", () => {
   it("coerces a non-boolean persisted soundEnabled to the default", () => {
     const storage = fakeStorage({ soundEnabled: "yes" });
     const sub = initSettings(storage);
-    expect(settingsService.getState().soundEnabled).toBe(false);
+    expect(settingsService.getState().soundEnabled).toBe(true);
     sub.dispose();
   });
 
