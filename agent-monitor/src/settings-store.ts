@@ -17,7 +17,7 @@
  */
 
 import type { ExtensionStorage, ReactiveService } from "@silo-code/sdk";
-import { sounds, type SoundName } from "cuelume";
+import { sounds, type SoundName } from "./synth";
 
 /**
  * What focusing an agent's terminal does to its status.
@@ -35,7 +35,7 @@ export interface AgentMonitorSettings {
   focusBehavior: FocusBehavior;
   /** Whether a sound plays when an agent transitions working → waiting. */
   soundEnabled: boolean;
-  /** Which cuelume sound to play. */
+  /** Which synthesized sound to play. */
   soundId: SoundName;
 }
 
@@ -51,7 +51,7 @@ const DEFAULT_SOUND_ENABLED = false;
 const DEFAULT_SOUND_ID: SoundName = "chime";
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
-// cuelume's raw UI-feedback sounds (press/release/toggle) read as click
+// The synth's raw UI-feedback sounds (press/release/toggle) read as click
 // acknowledgements, not "come look at this" — excluded from the curated
 // list offered here. Everything else is `sounds`' own names, reused
 // directly rather than hand-copied, so the list can't drift from what

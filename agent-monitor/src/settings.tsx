@@ -6,7 +6,7 @@
  */
 
 import { useServiceState } from "@silo-code/sdk";
-import type { SoundName } from "cuelume";
+import type { SoundName } from "./synth";
 import { settingsService, SOUND_IDS, type FocusBehavior } from "./settings-store";
 import { previewSound } from "./sound";
 

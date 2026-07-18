@@ -4,7 +4,7 @@ import { clearSettingsListeners, initSettings } from "./settings-store";
 import { maybePlayTransitionSound, previewSound } from "./sound";
 
 const playMock = vi.hoisted(() => vi.fn());
-vi.mock("cuelume", () => ({
+vi.mock("./synth", () => ({
   play: playMock,
   sounds: [
     "chime",

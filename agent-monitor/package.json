@@ -21,9 +21,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
-  "dependencies": {
-    "cuelume": "^0.1.2"
-  },
   "devDependencies": {
     "@silo-code/sdk": "^0.23.0",
     "@types/react": "^19.0.0",

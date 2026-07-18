@@ -5,7 +5,7 @@
  * debounce logic is unit-testable without the SDK.
  */
 
-import { play, type SoundName } from "cuelume";
+import { play, type SoundName } from "./synth";
 import { settingsService } from "./settings-store";
 
 const DEBOUNCE_MS = 750;
