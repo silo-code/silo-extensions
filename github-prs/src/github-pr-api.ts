@@ -1,4 +1,7 @@
 import type { ExtensionContext } from "@silo-code/sdk";
+import type { MergeMethod, RepoMergeMethods } from "./merge-methods";
+
+export type { MergeMethod };
 
 // Ceilings on how many PRs a single fetch returns. GitHub returns newest-first,
 // so these bound how far back the panel looks.
@@ -429,4 +432,88 @@ export async function fetchViewerLogin(
   }
   const login = result.stdout.trim();
   return login || null;
+}
+
+export type MergeMethodsResult =
+  | { ok: true; methods: RepoMergeMethods }
+  | { ok: false; error: GitHubApiError };
+
+export type MergePrResult =
+  | { ok: true }
+  | { ok: false; error: GitHubApiError };
+
+export async function fetchRepoMergeMethods(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  cwd: string,
+  ghBin: string,
+): Promise<MergeMethodsResult> {
+  const result = await ctx.process.exec(ghBin, [
+    "repo", "view", `${owner}/${repo}`,
+    "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
+  ], { cwd });
+  if (result.code !== 0) {
+    const error = classifyFetchError(result.stderr);
+    ctx.log.warn(`gh repo view merge methods error (${error.kind}) for ${owner}/${repo}`, {
+      stderr: result.stderr.trim(),
+    });
+    return { ok: false, error };
+  }
+  try {
+    const raw = JSON.parse(result.stdout) as Record<string, unknown>;
+    return {
+      ok: true,
+      methods: {
+        merge: raw.mergeCommitAllowed === true,
+        squash: raw.squashMergeAllowed === true,
+        rebase: raw.rebaseMergeAllowed === true,
+      },
+    };
+  } catch {
+    ctx.log.error(`Failed to parse gh repo view response for ${owner}/${repo}`, {
+      stdout: result.stdout.slice(0, 200),
+    });
+    return {
+      ok: false,
+      error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" },
+    };
+  }
+}
+
+const MERGE_METHOD_FLAG: Record<MergeMethod, string> = {
+  squash: "--squash",
+  merge: "--merge",
+  rebase: "--rebase",
+};
+
+export async function mergePr(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  number: number,
+  method: MergeMethod,
+  cwd: string,
+  ghBin: string,
+): Promise<MergePrResult> {
+  ctx.log.info(`Merging PR #${number} (${method}) for ${owner}/${repo}`);
+  const result = await ctx.process.exec(ghBin, [
+    "pr", "merge", String(number),
+    "-R", `${owner}/${repo}`,
+    MERGE_METHOD_FLAG[method],
+  ], { cwd });
+  if (result.code !== 0) {
+    const error = classifyFetchError(result.stderr);
+    ctx.log.warn(`gh pr merge error (${error.kind}) for ${owner}/${repo}#${number}`, {
+      stderr: result.stderr.trim(),
+    });
+    // Prefer the actionable stderr line when GitHub rejects a merge (permissions,
+    // race, etc.) over the generic network fallback.
+    const detail = result.stderr.trim().split("\n").filter(Boolean).pop();
+    if (error.kind === "network" && detail) {
+      return { ok: false, error: { kind: "network", message: detail } };
+    }
+    return { ok: false, error };
+  }
+  return { ok: true };
 }

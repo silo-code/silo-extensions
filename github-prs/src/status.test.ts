@@ -7,6 +7,9 @@ import {
   checkUrl,
   deriveReviewState,
   hasConflicts,
+  offersMerge,
+  isMergeReady,
+  mergeBlockReason,
 } from "./status";
 import type { CheckContext, PrListItem } from "./github-pr-api";
 
@@ -161,5 +164,51 @@ describe("hasConflicts", () => {
     expect(hasConflicts(pr({ mergeable: "CONFLICTING" }))).toBe(true);
     expect(hasConflicts(pr({ mergeable: "MERGEABLE" }))).toBe(false);
     expect(hasConflicts(pr({ mergeable: "UNKNOWN" }))).toBe(false);
+  });
+});
+
+describe("offersMerge", () => {
+  it("is false only for already-merged PRs", () => {
+    expect(offersMerge(pr({ state: "OPEN" }))).toBe(true);
+    expect(offersMerge(pr({ state: "CLOSED" }))).toBe(true);
+    expect(offersMerge(pr({ state: "MERGED" }))).toBe(false);
+  });
+});
+
+describe("isMergeReady", () => {
+  it("requires open, not draft, and CLEAN mergeStateStatus", () => {
+    expect(
+      isMergeReady(pr({ state: "OPEN", isDraft: false, mergeStateStatus: "CLEAN" })),
+    ).toBe(true);
+    expect(
+      isMergeReady(pr({ state: "OPEN", isDraft: true, mergeStateStatus: "CLEAN" })),
+    ).toBe(false);
+    expect(
+      isMergeReady(pr({ state: "CLOSED", isDraft: false, mergeStateStatus: "CLEAN" })),
+    ).toBe(false);
+    expect(
+      isMergeReady(pr({ state: "OPEN", isDraft: false, mergeStateStatus: "BLOCKED" })),
+    ).toBe(false);
+    expect(
+      isMergeReady(pr({ state: "OPEN", isDraft: false, mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" })),
+    ).toBe(false);
+  });
+});
+
+describe("mergeBlockReason", () => {
+  it("is null when merge-ready or already merged", () => {
+    expect(
+      mergeBlockReason(pr({ state: "OPEN", mergeStateStatus: "CLEAN" })),
+    ).toBeNull();
+    expect(mergeBlockReason(pr({ state: "MERGED" }))).toBeNull();
+  });
+
+  it("names lifecycle and gate reasons", () => {
+    expect(mergeBlockReason(pr({ state: "CLOSED" }))).toMatch(/Closed/);
+    expect(mergeBlockReason(pr({ isDraft: true }))).toMatch(/Draft/);
+    expect(mergeBlockReason(pr({ mergeable: "CONFLICTING" }))).toMatch(/conflicts/i);
+    expect(mergeBlockReason(pr({ mergeStateStatus: "BLOCKED" }))).toMatch(/blocked/i);
+    expect(mergeBlockReason(pr({ mergeStateStatus: "BEHIND" }))).toMatch(/out of date/i);
+    expect(mergeBlockReason(pr({ mergeStateStatus: "UNKNOWN" }))).toMatch(/computing/i);
   });
 });
