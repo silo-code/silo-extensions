@@ -20,6 +20,9 @@
   flex-shrink: 0;
   min-height: calc(1em + 20px);
 }
+.ghpr-header:has(.ghpr-header__detail) {
+  align-items: stretch;
+}
 
 .ghpr-header__detail {
   display: flex;
@@ -45,9 +48,8 @@
 
 .ghpr-header__title {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
   font-size: 1em;
   font-weight: 600;
   color: var(--silo-color-text-hi);
@@ -305,9 +307,8 @@
   gap: 3px;
 }
 .ghpr-row__title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: break-word;
   font-weight: 500;
   color: var(--silo-color-text-hi);
 }
