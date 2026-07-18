@@ -46,13 +46,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   const detailPr = useMemo(() => {
     if (view.kind !== "detail") return null;
-    return findPrInRepoStates(repoStates, view.folder, view.number);
+    return findPrInRepoStates(repoStates, view.repoKey, view.number);
   }, [view, repoStates]);
 
   const detailEntry =
-    view.kind === "detail" ? store.getDetail(view.folder, view.number) : undefined;
+    view.kind === "detail" ? store.getDetail(view.repoKey, view.number) : undefined;
   const detailError =
-    view.kind === "detail" ? store.getDetailError(view.folder, view.number) : undefined;
+    view.kind === "detail" ? store.getDetailError(view.repoKey, view.number) : undefined;
 
   useEffect(() => {
     if (view.kind !== "detail" || !active) {
@@ -61,7 +61,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     }
     let cancelled = false;
     setLoadingDetail(true);
-    void service.fetchDetail(view.folder, view.number).finally(() => {
+    void service.fetchDetail(view.repoKey, view.number).finally(() => {
       if (!cancelled) setLoadingDetail(false);
     });
     return () => {
@@ -126,8 +126,8 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   );
 
   const openPr = useCallback(
-    (folder: string, number: number) => {
-      push({ kind: "detail", folder, number });
+    (repoKey: string, number: number) => {
+      push({ kind: "detail", repoKey, number });
     },
     [push],
   );

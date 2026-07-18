@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PrStore, type WorkspacePrState } from "./store";
+import { PrStore, preferredFetchCwd, type WorkspacePrState } from "./store";
 import type { PrDetail, PrListItem } from "./github-pr-api";
 
 function pr(partial: Partial<PrListItem> = {}): PrListItem {
@@ -30,7 +30,7 @@ function pr(partial: Partial<PrListItem> = {}): PrListItem {
 
 function folderState(overrides: Partial<WorkspacePrState> = {}): WorkspacePrState {
   return {
-    folder: "/repo",
+    folders: [{ path: "/repo", branch: "main" }],
     repoInfo: { owner: "o", repo: "r" },
     openPrs: [],
     mergedPrs: [],
@@ -92,39 +92,76 @@ describe("PrStore.getWorkspaceFilter / setWorkspaceFilter", () => {
   });
 });
 
-describe("PrStore folder state + detail cache", () => {
-  it("stores and retrieves folder states by workspace", () => {
+describe("PrStore repo state + detail cache", () => {
+  it("stores and retrieves repo states by workspace", () => {
     const store = new PrStore();
-    store.setFolderState("ws-1", "/a", folderState({ folder: "/a", openPrs: [pr({ number: 1 })] }));
-    store.setFolderState("ws-1", "/b", folderState({ folder: "/b", openPrs: [pr({ number: 2 })] }));
-    store.setFolderState("ws-2", "/a", folderState({ folder: "/a", openPrs: [pr({ number: 3 })] }));
+    store.setRepoState("ws-1", "o", "a", folderState({
+      folders: [{ path: "/a", branch: "main" }],
+      repoInfo: { owner: "o", repo: "a" },
+      openPrs: [pr({ number: 1 })],
+    }));
+    store.setRepoState("ws-1", "o", "b", folderState({
+      folders: [{ path: "/b", branch: "main" }],
+      repoInfo: { owner: "o", repo: "b" },
+      openPrs: [pr({ number: 2 })],
+    }));
+    store.setRepoState("ws-2", "o", "a", folderState({
+      folders: [{ path: "/a", branch: "main" }],
+      repoInfo: { owner: "o", repo: "a" },
+      openPrs: [pr({ number: 3 })],
+    }));
     expect(store.getRepoStates("ws-1")).toHaveLength(2);
     expect(store.getRepoStates("ws-2")).toHaveLength(1);
   });
 
-  it("removeFolderState drops one folder", () => {
+  it("collapses multiple worktree folders into one remote entry", () => {
     const store = new PrStore();
-    store.setFolderState("ws-1", "/a", folderState({ folder: "/a" }));
-    store.setFolderState("ws-1", "/b", folderState({ folder: "/b" }));
-    store.removeFolderState("ws-1", "/a");
-    expect(store.getRepoStates("ws-1").map((s) => s.folder)).toEqual(["/b"]);
+    store.setRepoState("ws-1", "o", "r", folderState({
+      folders: [
+        { path: "/wt-a", branch: "feat/a" },
+        { path: "/wt-b", branch: "feat/b" },
+      ],
+      openPrs: [pr({ number: 1 })],
+    }));
+    expect(store.getRepoStates("ws-1")).toHaveLength(1);
+    expect(store.getRepoStates("ws-1")[0].folders).toHaveLength(2);
   });
 
-  it("removeWorkspace drops all folders for that workspace", () => {
+  it("removeRepoState drops one remote", () => {
     const store = new PrStore();
-    store.setFolderState("ws-1", "/a", folderState({ folder: "/a" }));
-    store.setFolderState("ws-2", "/a", folderState({ folder: "/a" }));
+    store.setRepoState("ws-1", "o", "a", folderState({
+      folders: [{ path: "/a", branch: "main" }],
+      repoInfo: { owner: "o", repo: "a" },
+    }));
+    store.setRepoState("ws-1", "o", "b", folderState({
+      folders: [{ path: "/b", branch: "main" }],
+      repoInfo: { owner: "o", repo: "b" },
+    }));
+    store.removeRepoState("ws-1", "o", "a");
+    expect(store.getRepoStates("ws-1").map((s) => s.repoInfo?.repo)).toEqual(["b"]);
+  });
+
+  it("removeWorkspace drops all remotes for that workspace", () => {
+    const store = new PrStore();
+    store.setRepoState("ws-1", "o", "a", folderState({
+      folders: [{ path: "/a", branch: "main" }],
+      repoInfo: { owner: "o", repo: "a" },
+    }));
+    store.setRepoState("ws-2", "o", "a", folderState({
+      folders: [{ path: "/a", branch: "main" }],
+      repoInfo: { owner: "o", repo: "a" },
+    }));
     store.removeWorkspace("ws-1");
     expect(store.getRepoStates("ws-1")).toEqual([]);
     expect(store.getRepoStates("ws-2")).toHaveLength(1);
   });
 
-  it("caches PR detail by folder+number", () => {
+  it("caches PR detail by repoKey+number", () => {
     const store = new PrStore();
     const detail = { ...pr(), body: "hi", reviews: [], comments: [], changedFiles: 2, closedAt: null } as PrDetail;
-    store.setDetail("/repo", 42, detail);
-    expect(store.getDetail("/repo", 42)?.detail.body).toBe("hi");
-    expect(store.getDetail("/repo", 99)).toBeUndefined();
+    store.setDetail("o/r", 42, detail);
+    expect(store.getDetail("o/r", 42)?.detail.body).toBe("hi");
+    expect(store.getDetail("o/r", 99)).toBeUndefined();
   });
 
   it("setAuthState marks initialized and setViewerLogin stores login", () => {
@@ -147,7 +184,7 @@ describe("PrStore folder state + detail cache", () => {
     expect(calls).toBe(1);
   });
 
-  it("tracks workspace ready separately from folder state", () => {
+  it("tracks workspace ready separately from repo state", () => {
     const store = new PrStore();
     expect(store.isWorkspaceReady("ws-1")).toBe(false);
     store.markWorkspaceReady("ws-1");
@@ -168,9 +205,9 @@ describe("PrStore folder state + detail cache", () => {
 
   it("stores and clears detail-fetch errors", () => {
     const store = new PrStore();
-    store.setDetailError("/repo", 7, { kind: "rate-limited", message: "slow down" });
-    expect(store.getDetailError("/repo", 7)?.error.message).toBe("slow down");
-    store.setDetail("/repo", 7, {
+    store.setDetailError("o/r", 7, { kind: "rate-limited", message: "slow down" });
+    expect(store.getDetailError("o/r", 7)?.error.message).toBe("slow down");
+    store.setDetail("o/r", 7, {
       ...pr({ number: 7 }),
       body: "ok",
       reviews: [],
@@ -178,8 +215,19 @@ describe("PrStore folder state + detail cache", () => {
       changedFiles: 1,
       closedAt: null,
     } as PrDetail);
-    expect(store.getDetailError("/repo", 7)).toBeUndefined();
-    expect(store.getDetail("/repo", 7)?.detail.body).toBe("ok");
+    expect(store.getDetailError("o/r", 7)).toBeUndefined();
+    expect(store.getDetail("o/r", 7)?.detail.body).toBe("ok");
+  });
+});
+
+describe("preferredFetchCwd", () => {
+  it("prefers the workspace primary folder when present", () => {
+    const folders = [
+      { path: "/wt-a", branch: "feat/a" },
+      { path: "/primary", branch: "main" },
+    ];
+    expect(preferredFetchCwd("/primary", folders)).toBe("/primary");
+    expect(preferredFetchCwd("/other", folders)).toBe("/wt-a");
   });
 });
 

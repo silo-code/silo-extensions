@@ -3,8 +3,7 @@ import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { useFocusGroup, type ExtensionStorage } from "@silo-code/sdk";
 import type { PrListItem } from "../github-pr-api";
 import { FILTER_LABELS, filterPrs, type PrFilter } from "../filters";
-import { folderRootName } from "../detail-helpers";
-import type { WorkspacePrState } from "../store";
+import { repoStateKey, type WorkspacePrState } from "../store";
 import { PrRow } from "./PrRow";
 
 export interface PrListViewProps {
@@ -12,14 +11,14 @@ export interface PrListViewProps {
   repoStates: WorkspacePrState[];
   filter: PrFilter;
   viewerLogin: string | null;
-  /** False until the service finishes its first probe of this workspace's folders. */
+  /** False until the service finishes its first probe of this workspace's remotes. */
   workspaceReady: boolean;
-  onOpenPr: (folder: string, number: number) => void;
+  onOpenPr: (repoKey: string, number: number) => void;
 }
 
 interface FlatRow {
   key: string;
-  folder: string;
+  repoKey: string;
   pr: PrListItem;
 }
 
@@ -30,6 +29,10 @@ const EMPTY_COLLAPSED: CollapsedMap = {};
 
 function apiErrorMessage(state: WorkspacePrState): string | null {
   return state.error?.kind === "api-error" ? state.error.error.message : null;
+}
+
+function sectionRepoKey(state: WorkspacePrState): string {
+  return repoStateKey(state.repoInfo!.owner, state.repoInfo!.repo);
 }
 
 export function PrListView({
@@ -55,23 +58,27 @@ export function PrListView({
   );
 
   const persistCollapsed = useCallback(
-    (folder: string, value: boolean) => {
+    (key: string, value: boolean) => {
       storage.set(COLLAPSED_KEY, {
         ...storage.get<CollapsedMap>(COLLAPSED_KEY, EMPTY_COLLAPSED),
-        [folder]: value,
+        [key]: value,
       });
     },
     [storage],
   );
 
   const sections = useMemo(() => {
-    return withRepo.map((state) => ({
-      state,
-      label: folderRootName(state.folder).toUpperCase(),
-      prs: filterPrs(state.openPrs, state.mergedPrs, filter, viewerLogin),
-      collapsed: multi && (collapsedMap[state.folder] ?? false),
-      errorMessage: apiErrorMessage(state),
-    }));
+    return withRepo.map((state) => {
+      const key = sectionRepoKey(state);
+      return {
+        state,
+        repoKey: key,
+        label: key.toUpperCase(),
+        prs: filterPrs(state.openPrs, state.mergedPrs, filter, viewerLogin),
+        collapsed: multi && (collapsedMap[key] ?? false),
+        errorMessage: apiErrorMessage(state),
+      };
+    });
   }, [withRepo, filter, viewerLogin, multi, collapsedMap]);
 
   const flat: FlatRow[] = useMemo(() => {
@@ -80,8 +87,8 @@ export function PrListView({
       if (section.collapsed) continue;
       for (const pr of section.prs) {
         rows.push({
-          key: `${section.state.folder}:${pr.number}`,
-          folder: section.state.folder,
+          key: `${section.repoKey}:${pr.number}`,
+          repoKey: section.repoKey,
           pr,
         });
       }
@@ -100,7 +107,7 @@ export function PrListView({
     orientation: "vertical",
     onActivate: (i) => {
       const row = flat[i];
-      if (row) onOpenPr(row.folder, row.pr.number);
+      if (row) onOpenPr(row.repoKey, row.pr.number);
     },
   });
 
@@ -158,7 +165,7 @@ export function PrListView({
             <li key={row.key} role="none">
               <PrRow
                 pr={row.pr}
-                onOpen={() => onOpenPr(row.folder, row.pr.number)}
+                onOpen={() => onOpenPr(row.repoKey, row.pr.number)}
                 focusProps={group.getItemProps(i)}
               />
             </li>
@@ -176,12 +183,12 @@ export function PrListView({
           <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
         </div>
       )}
-      {sections.map(({ state, label, prs, collapsed, errorMessage }) => (
-        <section key={state.folder} className="ghpr-repo">
+      {sections.map(({ state, repoKey, label, prs, collapsed, errorMessage }) => (
+        <section key={repoKey} className="ghpr-repo">
           <button
             type="button"
             className="ghpr-root-label"
-            onClick={() => persistCollapsed(state.folder, !collapsed)}
+            onClick={() => persistCollapsed(repoKey, !collapsed)}
             aria-expanded={!collapsed}
           >
             <span className="ghpr-root-chev">
@@ -203,13 +210,13 @@ export function PrListView({
               ) : (
                 <ul className="ghpr-list" role="listbox">
                   {prs.map((pr) => {
-                    const key = `${state.folder}:${pr.number}`;
+                    const key = `${repoKey}:${pr.number}`;
                     const index = flatIndex.get(key) ?? -1;
                     return (
                       <li key={key} role="none">
                         <PrRow
                           pr={pr}
-                          onOpen={() => onOpenPr(state.folder, pr.number)}
+                          onOpen={() => onOpenPr(repoKey, pr.number)}
                           focusProps={index >= 0 ? group.getItemProps(index) : undefined}
                         />
                       </li>

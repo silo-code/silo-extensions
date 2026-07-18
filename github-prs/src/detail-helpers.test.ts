@@ -153,12 +153,12 @@ describe("buildTimeline", () => {
 });
 
 describe("findPrInRepoStates", () => {
-  it("finds a PR across open and merged lists", () => {
+  it("finds a PR across open and merged lists by repoKey", () => {
     const states = [
-      { folder: "/a", openPrs: [pr({ number: 1 })], mergedPrs: [] },
-      { folder: "/b", openPrs: [], mergedPrs: [pr({ number: 9, state: "MERGED" })] },
+      { repoInfo: { owner: "o", repo: "a" }, openPrs: [pr({ number: 1 })], mergedPrs: [] },
+      { repoInfo: { owner: "o", repo: "b" }, openPrs: [], mergedPrs: [pr({ number: 9, state: "MERGED" })] },
     ];
-    expect(findPrInRepoStates(states, "/b", 9)?.number).toBe(9);
-    expect(findPrInRepoStates(states, "/a", 99)).toBeNull();
+    expect(findPrInRepoStates(states, "o/b", 9)?.number).toBe(9);
+    expect(findPrInRepoStates(states, "o/a", 99)).toBeNull();
   });
 });

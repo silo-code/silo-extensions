@@ -4,7 +4,7 @@
 
 export type PanelView =
   | { kind: "list" }
-  | { kind: "detail"; folder: string; number: number };
+  | { kind: "detail"; repoKey: string; number: number };
 
 export interface ViewStack {
   // Invariant: views[0] is always the list root.
@@ -35,7 +35,7 @@ function isPanelView(raw: unknown): raw is PanelView {
   if (!raw || typeof raw !== "object") return false;
   const v = raw as Record<string, unknown>;
   if (v.kind === "list") return true;
-  return v.kind === "detail" && typeof v.folder === "string" && typeof v.number === "number";
+  return v.kind === "detail" && typeof v.repoKey === "string" && typeof v.number === "number";
 }
 
 // Restores a persisted stack, falling back to the root for anything that isn't
