@@ -14,11 +14,17 @@ const DEFAULTS: PrSettings = {
   inactivePollIntervalMs: 10 * 60_000,
 };
 
-// ─── Per-folder state ─────────────────────────────────────────────────────────
+// ─── Per-repo state (collapsed across worktree folders) ───────────────────────
 
 export interface RepoInfo {
   owner: string;
   repo: string;
+}
+
+/** One workspace folder (or worktree) that resolved to this remote. */
+export interface CheckoutFolder {
+  path: string;
+  branch: string;
 }
 
 export type WorkspacePrError =
@@ -27,12 +33,28 @@ export type WorkspacePrError =
   | { kind: "no-repo" };
 
 export interface WorkspacePrState {
-  folder: string;
+  /** Folders in this workspace that share this remote (worktrees included). */
+  folders: CheckoutFolder[];
   repoInfo: RepoInfo | null;
   openPrs: PrListItem[];
   mergedPrs: PrListItem[];
   lastFetched: Date | null;
   error: WorkspacePrError | null;
+}
+
+export function repoStateKey(owner: string, repo: string): string {
+  return `${owner}/${repo}`;
+}
+
+/** Prefer the workspace primary folder when it belongs to this remote. */
+export function preferredFetchCwd(
+  primaryFolder: string | undefined,
+  folders: CheckoutFolder[],
+): string {
+  if (primaryFolder && folders.some((f) => f.path === primaryFolder)) {
+    return primaryFolder;
+  }
+  return folders[0]!.path;
 }
 
 // ─── Detail cache ─────────────────────────────────────────────────────────────
@@ -47,8 +69,8 @@ export interface DetailErrorEntry {
   fetchedAt: Date;
 }
 
-function detailKey(folder: string, number: number): string {
-  return `${folder}:${number}`;
+function detailKey(repoKey: string, number: number): string {
+  return `${repoKey}:${number}`;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -57,8 +79,8 @@ type Listener = () => void;
 
 export class PrStore {
   private _settings: PrSettings = { ...DEFAULTS };
-  // Key: `${workspaceId}:${folder}` — one entry per (workspace, folder) pair.
-  private _folderStates = new Map<string, WorkspacePrState>();
+  // Key: `${workspaceId}:${owner}/${repo}` — one entry per unique remote.
+  private _repoStates = new Map<string, WorkspacePrState>();
   private _detailCache = new Map<string, DetailCacheEntry>();
   private _detailErrors = new Map<string, DetailErrorEntry>();
   private _workspaceEnabled = new Map<string, boolean>();
@@ -66,7 +88,7 @@ export class PrStore {
   private _authState: AuthState | null = null;
   private _viewerLogin: string | null = null;
   private _initialized = false;
-  // Workspaces that have finished at least one full folder probe. Until then,
+  // Workspaces that have finished at least one full remote probe. Until then,
   // an empty repo list means "still loading", not "no GitHub remotes".
   private _workspaceReady = new Set<string>();
   private _storage: ExtensionStorage | null = null;
@@ -95,7 +117,7 @@ export class PrStore {
   getRepoStates(workspaceId: string): WorkspacePrState[] {
     const prefix = `${workspaceId}:`;
     const result: WorkspacePrState[] = [];
-    for (const [key, state] of this._folderStates) {
+    for (const [key, state] of this._repoStates) {
       if (key.startsWith(prefix)) result.push(state);
     }
     return result;
@@ -140,20 +162,20 @@ export class PrStore {
     this._notify();
   }
 
-  setFolderState(workspaceId: string, folder: string, state: WorkspacePrState): void {
-    this._folderStates.set(`${workspaceId}:${folder}`, state);
+  setRepoState(workspaceId: string, owner: string, repo: string, state: WorkspacePrState): void {
+    this._repoStates.set(`${workspaceId}:${repoStateKey(owner, repo)}`, state);
     this._notify();
   }
 
-  removeFolderState(workspaceId: string, folder: string): void {
-    if (this._folderStates.delete(`${workspaceId}:${folder}`)) this._notify();
+  removeRepoState(workspaceId: string, owner: string, repo: string): void {
+    if (this._repoStates.delete(`${workspaceId}:${repoStateKey(owner, repo)}`)) this._notify();
   }
 
   removeWorkspace(workspaceId: string): void {
     const prefix = `${workspaceId}:`;
     let changed = false;
-    for (const key of this._folderStates.keys()) {
-      if (key.startsWith(prefix)) { this._folderStates.delete(key); changed = true; }
+    for (const key of this._repoStates.keys()) {
+      if (key.startsWith(prefix)) { this._repoStates.delete(key); changed = true; }
     }
     if (this._workspaceReady.delete(workspaceId)) changed = true;
     if (changed) this._notify();
@@ -169,28 +191,28 @@ export class PrStore {
     this._notify();
   }
 
-  getDetail(folder: string, number: number): DetailCacheEntry | undefined {
-    return this._detailCache.get(detailKey(folder, number));
+  getDetail(repoKey: string, number: number): DetailCacheEntry | undefined {
+    return this._detailCache.get(detailKey(repoKey, number));
   }
 
-  getDetailError(folder: string, number: number): DetailErrorEntry | undefined {
-    return this._detailErrors.get(detailKey(folder, number));
+  getDetailError(repoKey: string, number: number): DetailErrorEntry | undefined {
+    return this._detailErrors.get(detailKey(repoKey, number));
   }
 
-  setDetail(folder: string, number: number, detail: PrDetail): void {
-    const key = detailKey(folder, number);
+  setDetail(repoKey: string, number: number, detail: PrDetail): void {
+    const key = detailKey(repoKey, number);
     this._detailCache.set(key, { detail, fetchedAt: new Date() });
     this._detailErrors.delete(key);
     this._notify();
   }
 
-  setDetailError(folder: string, number: number, error: GitHubApiError): void {
-    this._detailErrors.set(detailKey(folder, number), { error, fetchedAt: new Date() });
+  setDetailError(repoKey: string, number: number, error: GitHubApiError): void {
+    this._detailErrors.set(detailKey(repoKey, number), { error, fetchedAt: new Date() });
     this._notify();
   }
 
-  clearDetailError(folder: string, number: number): void {
-    if (this._detailErrors.delete(detailKey(folder, number))) this._notify();
+  clearDetailError(repoKey: string, number: number): void {
+    if (this._detailErrors.delete(detailKey(repoKey, number))) this._notify();
   }
 
   // Defaults true (opt-out) — same rationale as github-actions: monitoring

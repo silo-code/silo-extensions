@@ -85,13 +85,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   const detailPr = useMemo(() => {
     if (view.kind !== "detail") return null;
-    return findPrInRepoStates(repoStates, view.folder, view.number);
+    return findPrInRepoStates(repoStates, view.repoKey, view.number);
   }, [view, repoStates]);
 
   const detailEntry =
-    view.kind === "detail" ? store.getDetail(view.folder, view.number) : undefined;
+    view.kind === "detail" ? store.getDetail(view.repoKey, view.number) : undefined;
   const detailError =
-    view.kind === "detail" ? store.getDetailError(view.folder, view.number) : undefined;
+    view.kind === "detail" ? store.getDetailError(view.repoKey, view.number) : undefined;
 
   useEffect(() => {
     if (view.kind !== "detail" || !active) {
@@ -100,7 +100,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     }
     let cancelled = false;
     setLoadingDetail(true);
-    void service.fetchDetail(view.folder, view.number).finally(() => {
+    void service.fetchDetail(view.repoKey, view.number).finally(() => {
       if (!cancelled) setLoadingDetail(false);
     });
     return () => {
@@ -165,7 +165,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   );
 
   const confirmAndMerge = useCallback(
-    async (folder: string, method: MergeMethod) => {
+    async (repoKey: string, method: MergeMethod) => {
       if (!detailPr || !workspaceId) return;
       const copy = mergeConfirmCopy(detailPr, method);
       const confirmed = await ctx.ui.confirm({
@@ -179,7 +179,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       try {
         const result = await service.mergePullRequest(
           workspaceId,
-          folder,
+          repoKey,
           detailPr.number,
           method,
         );
@@ -198,9 +198,9 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const handleMergeClick = useCallback(
     async (anchor: HTMLElement) => {
       if (!detailPr || view.kind !== "detail" || !isMergeReady(detailPr) || merging) return;
-      const folder = view.folder;
+      const repoKey = view.repoKey;
 
-      const methodsResult = await service.fetchMergeMethods(folder);
+      const methodsResult = await service.fetchMergeMethods(repoKey);
       if (!methodsResult.ok) {
         ctx.ui.notify("error", methodsResult.error.message, {
           title: "Couldn't load merge options",
@@ -217,14 +217,14 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       }
 
       if (methods.length === 1) {
-        await confirmAndMerge(folder, methods[0]);
+        await confirmAndMerge(repoKey, methods[0]);
         return;
       }
 
       const items: MenuEntry[] = methods.map((method) => ({
         label: MERGE_METHOD_LABELS[method],
         run: () => {
-          void confirmAndMerge(folder, method);
+          void confirmAndMerge(repoKey, method);
         },
       }));
       void ctx.ui.showMenu({ items, anchor });
@@ -233,8 +233,8 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   );
 
   const openPr = useCallback(
-    (folder: string, number: number) => {
-      push({ kind: "detail", folder, number });
+    (repoKey: string, number: number) => {
+      push({ kind: "detail", repoKey, number });
     },
     [push],
   );

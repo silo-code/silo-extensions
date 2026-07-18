@@ -68,12 +68,13 @@ export function uniqueReviewers(pr: PrListItem, detail?: PrDetail): PrReview[] {
 }
 
 export function findPrInRepoStates(
-  repoStates: Array<{ folder: string; openPrs: PrListItem[]; mergedPrs: PrListItem[] }>,
-  folder: string,
+  repoStates: Array<{ repoInfo: { owner: string; repo: string } | null; openPrs: PrListItem[]; mergedPrs: PrListItem[] }>,
+  repoKey: string,
   number: number,
 ): PrListItem | null {
   for (const state of repoStates) {
-    if (state.folder !== folder) continue;
+    if (!state.repoInfo) continue;
+    if (`${state.repoInfo.owner}/${state.repoInfo.repo}` !== repoKey) continue;
     const found = [...state.openPrs, ...state.mergedPrs].find((p) => p.number === number);
     if (found) return found;
   }

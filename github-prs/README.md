@@ -6,7 +6,7 @@ Browse open and recently merged pull requests for the GitHub repos in your works
 
 ## What you get
 
-- Side panel listing PRs for every GitHub remote in the active workspace
+- Side panel listing PRs for every unique GitHub remote in the active workspace (worktrees of the same repo collapse into one list)
 - Filters: My PRs (default), Needs my review, All open, Recently merged
 - Click a row for CI checks, reviews, description, and activity
 - Merge from the detail view when the PR is merge-ready (disabled with a reason otherwise)

@@ -12,7 +12,13 @@ import {
   resolveGhBin,
   type MergeMethod,
 } from "./github-pr-api";
-import { prStore, type WorkspacePrState } from "./store";
+import {
+  prStore,
+  preferredFetchCwd,
+  repoStateKey,
+  type CheckoutFolder,
+  type WorkspacePrState,
+} from "./store";
 
 const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
@@ -42,11 +48,47 @@ async function resolveRemote(
   return parsed;
 }
 
+async function resolveHeadBranch(
+  ctx: ExtensionContext,
+  folder: string,
+): Promise<string | null> {
+  const result = await ctx.process.exec(
+    "git",
+    ["rev-parse", "--abbrev-ref", "HEAD"],
+    { cwd: folder },
+  );
+  if (result.code !== 0) return null;
+  return result.stdout.trim() || null;
+}
+
+interface ResolvedCheckout {
+  path: string;
+  repoInfo: { owner: string; repo: string };
+  branch: string;
+}
+
+function groupByRemote(
+  checkouts: ResolvedCheckout[],
+): Map<string, { repoInfo: { owner: string; repo: string }; folders: CheckoutFolder[] }> {
+  const byRemote = new Map<string, { repoInfo: { owner: string; repo: string }; folders: CheckoutFolder[] }>();
+  for (const c of checkouts) {
+    const key = repoStateKey(c.repoInfo.owner, c.repoInfo.repo);
+    let group = byRemote.get(key);
+    if (!group) {
+      group = { repoInfo: c.repoInfo, folders: [] };
+      byRemote.set(key, group);
+    }
+    group.folders.push({ path: c.path, branch: c.branch });
+  }
+  return byRemote;
+}
+
 export class PrService {
   private _timers = new Map<string, ReturnType<typeof setInterval>>();
   private _authRetryTimer: ReturnType<typeof setInterval> | null = null;
   private _reconcileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private _refreshingFolders = new Set<string>();
+  // Key: `${workspaceId}:${owner}/${repo}` — prevents concurrent refreshes per remote.
+  private _refreshingRepos = new Set<string>();
   private _pollingMode = new Map<string, "active" | "inactive">();
   private _knownFolders = new Map<string, Set<string>>();
   private _lastFetchedAt = new Map<string, number>();
@@ -150,9 +192,16 @@ export class PrService {
 
       const liveFolderSet = new Set(folders);
       for (const state of prStore.getRepoStates(ws.id)) {
-        if (!liveFolderSet.has(state.folder)) {
-          ctx.log.debug(`Removing stale folder ${state.folder} from workspace ${ws.id}`);
-          prStore.removeFolderState(ws.id, state.folder);
+        if (!state.repoInfo) continue;
+        const remaining = state.folders.filter((f) => liveFolderSet.has(f.path));
+        if (remaining.length === 0) {
+          ctx.log.debug(`Removing stale remote ${state.repoInfo.owner}/${state.repoInfo.repo} from workspace ${ws.id}`);
+          prStore.removeRepoState(ws.id, state.repoInfo.owner, state.repoInfo.repo);
+        } else if (remaining.length !== state.folders.length) {
+          prStore.setRepoState(ws.id, state.repoInfo.owner, state.repoInfo.repo, {
+            ...state,
+            folders: remaining,
+          });
         }
       }
       let known = this._knownFolders.get(ws.id);
@@ -182,11 +231,13 @@ export class PrService {
         const isNewFolder = !known.has(folder);
         known.add(folder);
         if (enabled && (isNewFolder || (becameActive && !activationThrottled))) {
-          this._refreshFolder(ctx, ws.id, folder);
           willFetch = true;
         }
       }
-      if (willFetch) this._lastFetchedAt.set(ws.id, Date.now());
+      if (willFetch) {
+        this._refreshWorkspaceRepos(ctx, ws.id);
+        this._lastFetchedAt.set(ws.id, Date.now());
+      }
     }
   }
 
@@ -235,12 +286,9 @@ export class PrService {
       workspaceId,
       setInterval(() => {
         if (!prStore.getWorkspaceEnabled(workspaceId)) return;
-        const ws = ctx.workspaces.get(workspaceId);
-        if (!ws) return;
+        if (!ctx.workspaces.get(workspaceId)) return;
         this._lastFetchedAt.set(workspaceId, Date.now());
-        for (const folder of [ws.folder, ...(ws.extraFolders ?? [])]) {
-          this._refreshFolder(ctx, workspaceId, folder);
-        }
+        this._refreshWorkspaceRepos(ctx, workspaceId);
       }, interval),
     );
   }
@@ -254,54 +302,86 @@ export class PrService {
     }
   }
 
-  private async _refreshFolder(
+  /** Resolve all workspace folders, group by remote, fetch each remote once. */
+  private async _refreshWorkspaceRepos(
     ctx: ExtensionContext,
     workspaceId: string,
-    folder: string,
   ): Promise<void> {
-    const refreshKey = `${workspaceId}:${folder}`;
-    if (this._refreshingFolders.has(refreshKey)) {
-      ctx.log.debug(`Skipping refresh for ${folder} in workspace ${workspaceId} — fetch already in flight`);
+    const ws = ctx.workspaces.get(workspaceId);
+    if (!ws) return;
+
+    if (!prStore.authenticated) {
+      ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
+      this._maybeMarkWorkspaceReady(workspaceId);
       return;
     }
-    this._refreshingFolders.add(refreshKey);
+
+    const folderPaths = [ws.folder, ...(ws.extraFolders ?? [])];
+    const resolved = await Promise.all(
+      folderPaths.map(async (path) => {
+        const [repoInfo, headBranch] = await Promise.all([
+          resolveRemote(ctx, path),
+          resolveHeadBranch(ctx, path),
+        ]);
+        if (!repoInfo) return null;
+        return { path, repoInfo, branch: headBranch ?? "main" } satisfies ResolvedCheckout;
+      }),
+    );
+    const checkouts = resolved.filter((c): c is ResolvedCheckout => c !== null);
+    const byRemote = groupByRemote(checkouts);
+
+    for (const state of prStore.getRepoStates(workspaceId)) {
+      if (!state.repoInfo) continue;
+      const key = repoStateKey(state.repoInfo.owner, state.repoInfo.repo);
+      if (!byRemote.has(key)) {
+        prStore.removeRepoState(workspaceId, state.repoInfo.owner, state.repoInfo.repo);
+      }
+    }
+
+    await Promise.all(
+      [...byRemote.values()].map((group) =>
+        this._refreshRemote(ctx, workspaceId, ws.folder, group.repoInfo, group.folders),
+      ),
+    );
+    this._maybeMarkWorkspaceReady(workspaceId);
+  }
+
+  private async _refreshRemote(
+    ctx: ExtensionContext,
+    workspaceId: string,
+    primaryFolder: string,
+    repoInfo: { owner: string; repo: string },
+    folders: CheckoutFolder[],
+  ): Promise<void> {
+    const refreshKey = `${workspaceId}:${repoStateKey(repoInfo.owner, repoInfo.repo)}`;
+    if (this._refreshingRepos.has(refreshKey)) {
+      ctx.log.debug(`Skipping refresh for ${refreshKey} — fetch already in flight`);
+      return;
+    }
+    this._refreshingRepos.add(refreshKey);
     try {
-      if (!prStore.authenticated) {
-        ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
-        prStore.setFolderState(workspaceId, folder, {
-          folder,
-          repoInfo: null,
-          openPrs: [],
-          mergedPrs: [],
-          lastFetched: null,
-          error: { kind: "unauthenticated" },
-        });
-        return;
-      }
-
-      const repoInfo = await resolveRemote(ctx, folder);
-      if (!repoInfo) {
-        ctx.log.debug(`No GitHub remote found for folder ${folder} in workspace ${workspaceId}`);
-        prStore.removeFolderState(workspaceId, folder);
-        return;
-      }
-
+      const cwd = preferredFetchCwd(primaryFolder, folders);
       const filter = prStore.getWorkspaceFilter(workspaceId);
       const needMerged = filter === "merged";
-      ctx.log.debug(`Refreshing PRs for ${repoInfo.owner}/${repoInfo.repo} (${folder})`, { filter });
+      ctx.log.debug(
+        `Refreshing PRs for ${repoInfo.owner}/${repoInfo.repo} (${folders.length} checkout(s))`,
+        { filter, cwd },
+      );
 
-      const prev = prStore.getRepoStates(workspaceId).find((s) => s.folder === folder);
-      const openPromise = fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin);
+      const prev = prStore.getRepoStates(workspaceId).find(
+        (s) => s.repoInfo?.owner === repoInfo.owner && s.repoInfo?.repo === repoInfo.repo,
+      );
+      const openPromise = fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, cwd, this._ghBin);
       const mergedPromise = needMerged
-        ? fetchMergedPrs(ctx, repoInfo.owner, repoInfo.repo, folder, this._ghBin)
+        ? fetchMergedPrs(ctx, repoInfo.owner, repoInfo.repo, cwd, this._ghBin)
         : Promise.resolve(null);
 
       const [openResult, mergedResult] = await Promise.all([openPromise, mergedPromise]);
 
       if (!openResult.ok) {
-        ctx.log.warn(`Error fetching open PRs for ${folder}`, { error: openResult.error });
-        prStore.setFolderState(workspaceId, folder, {
-          folder,
+        ctx.log.warn(`Error fetching open PRs for ${repoInfo.owner}/${repoInfo.repo}`, { error: openResult.error });
+        prStore.setRepoState(workspaceId, repoInfo.owner, repoInfo.repo, {
+          folders,
           repoInfo,
           openPrs: prev?.openPrs ?? [],
           mergedPrs: prev?.mergedPrs ?? [],
@@ -314,9 +394,9 @@ export class PrService {
       let mergedPrs = prev?.mergedPrs ?? [];
       if (mergedResult) {
         if (!mergedResult.ok) {
-          ctx.log.warn(`Error fetching merged PRs for ${folder}`, { error: mergedResult.error });
-          prStore.setFolderState(workspaceId, folder, {
-            folder,
+          ctx.log.warn(`Error fetching merged PRs for ${repoInfo.owner}/${repoInfo.repo}`, { error: mergedResult.error });
+          prStore.setRepoState(workspaceId, repoInfo.owner, repoInfo.repo, {
+            folders,
             repoInfo,
             openPrs: openResult.prs,
             mergedPrs,
@@ -329,26 +409,25 @@ export class PrService {
       }
 
       const next: WorkspacePrState = {
-        folder,
+        folders,
         repoInfo,
         openPrs: openResult.prs,
         mergedPrs,
         lastFetched: new Date(),
         error: null,
       };
-      prStore.setFolderState(workspaceId, folder, next);
+      prStore.setRepoState(workspaceId, repoInfo.owner, repoInfo.repo, next);
     } finally {
-      this._refreshingFolders.delete(refreshKey);
-      this._maybeMarkWorkspaceReady(workspaceId);
+      this._refreshingRepos.delete(refreshKey);
     }
   }
 
-  // A workspace is "ready" once every in-flight folder probe for it has
+  // A workspace is "ready" once every in-flight remote probe for it has
   // settled — including the case where every folder had no GitHub remote and
-  // left no folder state behind.
+  // left no repo state behind.
   private _maybeMarkWorkspaceReady(workspaceId: string): void {
     const prefix = `${workspaceId}:`;
-    for (const key of this._refreshingFolders) {
+    for (const key of this._refreshingRepos) {
       if (key.startsWith(prefix)) return;
     }
     prStore.markWorkspaceReady(workspaceId);
@@ -371,73 +450,80 @@ export class PrService {
 
   async refreshWorkspace(workspaceId: string): Promise<void> {
     if (!this._ctx) return;
-    const ws = this._ctx.workspaces.get(workspaceId);
-    if (!ws) return;
     this._lastFetchedAt.set(workspaceId, Date.now());
-    const folders = [ws.folder, ...(ws.extraFolders ?? [])];
-    await Promise.all(
-      folders.map((folder) => this._refreshFolder(this._ctx!, workspaceId, folder)),
-    );
-    this._maybeMarkWorkspaceReady(workspaceId);
+    await this._refreshWorkspaceRepos(this._ctx, workspaceId);
   }
 
-  async fetchDetail(folder: string, number: number): Promise<void> {
+  async fetchDetail(repoKey: string, number: number): Promise<void> {
     if (!this._ctx || !prStore.authenticated) return;
-    const repoInfo = this._repoInfoForFolder(folder);
-    if (!repoInfo) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
 
-    prStore.clearDetailError(folder, number);
+    prStore.clearDetailError(repoKey, number);
     const result = await fetchPrDetail(
       this._ctx,
-      repoInfo.owner,
-      repoInfo.repo,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
       number,
-      folder,
+      resolved.cwd,
       this._ghBin,
     );
     if (result.ok) {
-      prStore.setDetail(folder, number, result.detail);
+      prStore.setDetail(repoKey, number, result.detail);
     } else {
       this._ctx.log.warn(`Failed to fetch PR detail #${number}`, { error: result.error });
-      prStore.setDetailError(folder, number, result.error);
+      prStore.setDetailError(repoKey, number, result.error);
     }
   }
 
-  private _repoInfoForFolder(folder: string): { owner: string; repo: string } | null {
+  /** Resolve a collapsed remote by owner/repo across open workspaces. */
+  private _resolveRepo(repoKey: string): {
+    repoInfo: { owner: string; repo: string };
+    folders: CheckoutFolder[];
+    cwd: string;
+  } | null {
     if (!this._ctx) return null;
     for (const ws of this._ctx.workspaces.getState().open) {
-      const state = prStore.getRepoStates(ws.id).find((s) => s.folder === folder);
-      if (state?.repoInfo) return state.repoInfo;
+      const state = prStore.getRepoStates(ws.id).find(
+        (s) => s.repoInfo && repoStateKey(s.repoInfo.owner, s.repoInfo.repo) === repoKey,
+      );
+      if (state?.repoInfo && state.folders.length > 0) {
+        return {
+          repoInfo: state.repoInfo,
+          folders: state.folders,
+          cwd: preferredFetchCwd(ws.folder, state.folders),
+        };
+      }
     }
     return null;
   }
 
-  async fetchMergeMethods(folder: string) {
+  async fetchMergeMethods(repoKey: string) {
     if (!this._ctx || !prStore.authenticated) {
       return {
         ok: false as const,
         error: { kind: "unauthenticated" as const, message: "Not authenticated" },
       };
     }
-    const repoInfo = this._repoInfoForFolder(folder);
-    if (!repoInfo) {
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) {
       return {
         ok: false as const,
-        error: { kind: "not-found" as const, message: "Repository not found for this folder" },
+        error: { kind: "not-found" as const, message: "Repository not found for this workspace" },
       };
     }
     return fetchRepoMergeMethods(
       this._ctx,
-      repoInfo.owner,
-      repoInfo.repo,
-      folder,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
+      resolved.cwd,
       this._ghBin,
     );
   }
 
   async mergePullRequest(
     workspaceId: string,
-    folder: string,
+    repoKey: string,
     number: number,
     method: MergeMethod,
   ) {
@@ -447,26 +533,26 @@ export class PrService {
         error: { kind: "unauthenticated" as const, message: "Not authenticated" },
       };
     }
-    const repoInfo = this._repoInfoForFolder(folder);
-    if (!repoInfo) {
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) {
       return {
         ok: false as const,
-        error: { kind: "not-found" as const, message: "Repository not found for this folder" },
+        error: { kind: "not-found" as const, message: "Repository not found for this workspace" },
       };
     }
     const result = await mergePr(
       this._ctx,
-      repoInfo.owner,
-      repoInfo.repo,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
       number,
       method,
-      folder,
+      resolved.cwd,
       this._ghBin,
     );
     // Refresh list + detail whether we succeeded or failed so merge-ready
     // catches up after a race or a successful land.
     await this.refreshWorkspace(workspaceId);
-    await this.fetchDetail(folder, number);
+    await this.fetchDetail(repoKey, number);
     return result;
   }
 
