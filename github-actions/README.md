@@ -10,7 +10,7 @@ A [Silo](https://github.com/silo-code/silo) extension that surfaces GitHub Actio
 - **Workspace badges and decorations** — failure counts and status labels appear next to each workspace in the sidebar so you can spot problems at a glance
 - **Workflow modal** — click the status bar item to open a full list of failing and running runs, with one-click re-run of a workflow and links to GitHub
 - **Failure notifications** — desktop alerts when a new failure is detected in any open workspace
-- **Per-workspace branch filter** — optionally restrict monitoring to only the checked-out branch for each workspace independently
+- **Per-workspace branch filter** — optionally restrict monitoring to only the checked-out branches for each workspace independently
 - **Configurable polling** — separate intervals for the active workspace and background workspaces
 
 ## Screenshots
@@ -62,7 +62,7 @@ Click the status bar item to open the workflow modal for the active workspace. F
 
 ### Branch filter
 
-Each workspace has its own **Only monitor the checked-out branch** toggle at the bottom of the modal. When enabled, only runs on the branch currently checked out in that workspace's folder are shown — runs on other branches are filtered out. The setting persists per workspace across restarts. Other workspaces are unaffected.
+Each workspace has its own **Only monitor checked-out branches** toggle at the bottom of the modal. When enabled, only runs on branches currently checked out in that workspace's folders (including worktrees) are shown — runs on other branches are filtered out. Multiple worktrees of the same remote collapse into one repo section. The setting persists per workspace across restarts. Other workspaces are unaffected.
 
 ## Settings
 

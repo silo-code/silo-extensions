@@ -1,4 +1,11 @@
-import { type StatusBarState, type WorkspaceGhState, selectFailedRuns, selectRunningRuns } from "./store";
+import {
+  type StatusBarState,
+  type WorkspaceGhState,
+  selectFailedRuns,
+  selectRunningRuns,
+  monitoredBranches,
+  formatBranchList,
+} from "./store";
 import { formatElapsed } from "./format-elapsed";
 
 // Pure presentation helpers for the status bar item. Kept out of the component
@@ -70,7 +77,10 @@ export function getRichTooltip(
     ? `GitHub Actions — ${ws.repoInfo.owner}/${ws.repoInfo.repo}`
     : "GitHub Actions");
 
-  if (ws?.branch) parts.push(ws.branch);
+  if (ws) {
+    const branchLabel = formatBranchList(monitoredBranches(ws));
+    if (branchLabel) parts.push(branchLabel);
+  }
 
   if (state.failed > 0) {
     const names = ws

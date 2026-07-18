@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WorkspacePropertyPageProps } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
-import { ghStore } from "./store";
+import { ghStore, formatBranchList, monitoredBranches } from "./store";
 import { formatElapsed } from "./format-elapsed";
 
 // The workspace-properties-modal tab (RFC 0015). Registered via
@@ -62,7 +62,7 @@ export function GhActionsWorkspaceSettings({ ws, service }: Props) {
             checked={branchOnly}
             onChange={(e) => void handleToggleBranchOnly(e.target.checked)}
           />
-          <span className="gha-ws-props__label">Only monitor the checked-out branch</span>
+          <span className="gha-ws-props__label">Only monitor checked-out branches</span>
         </label>
         <label className="gha-ws-props__row">
           <input
@@ -89,12 +89,12 @@ export function GhActionsWorkspaceSettings({ ws, service }: Props) {
       {states.map(
         (state) =>
           state.repoInfo && (
-            <section key={state.folder} className="gha-ws-props__section">
+            <section key={`${state.repoInfo.owner}/${state.repoInfo.repo}`} className="gha-ws-props__section">
               <h3 className="gha-ws-props__title">
                 {state.repoInfo.owner}/{state.repoInfo.repo}
               </h3>
               <p className="gha-ws-props__hint">
-                Branch: <code>{state.branch}</code>
+                Branches: <code>{formatBranchList(monitoredBranches(state)) || "—"}</code>
               </p>
             </section>
           ),

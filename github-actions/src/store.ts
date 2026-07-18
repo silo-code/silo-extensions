@@ -13,11 +13,17 @@ const DEFAULTS: GhActionsSettings = {
   inactivePollIntervalMs: 10 * 60_000,
 };
 
-// ─── Per-folder state ─────────────────────────────────────────────────────────
+// ─── Per-repo state (collapsed across worktree folders) ───────────────────────
 
 export interface RepoInfo {
   owner: string;
   repo: string;
+}
+
+/** One workspace folder (or worktree) that resolved to this remote. */
+export interface CheckoutFolder {
+  path: string;
+  branch: string;
 }
 
 export type WorkspaceError =
@@ -26,12 +32,50 @@ export type WorkspaceError =
   | { kind: "no-repo" };
 
 export interface WorkspaceGhState {
-  folder: string;
+  /** Folders in this workspace that share this remote (worktrees included). */
+  folders: CheckoutFolder[];
   repoInfo: RepoInfo | null;
-  branch: string | null;
   runs: WorkflowRun[];
   lastFetched: Date | null;
   error: WorkspaceError | null;
+}
+
+export function repoStateKey(owner: string, repo: string): string {
+  return `${owner}/${repo}`;
+}
+
+export function monitoredBranches(state: WorkspaceGhState): string[] {
+  return [...new Set(state.folders.map((f) => f.branch))];
+}
+
+/** Compact branch list for headers: `a · b · c` or `a · b · c +2`. */
+export function formatBranchList(branches: string[], maxVisible = 3): string {
+  const unique = [...new Set(branches)];
+  if (unique.length === 0) return "";
+  if (unique.length <= maxVisible) return unique.join(" · ");
+  return `${unique.slice(0, maxVisible).join(" · ")} +${unique.length - maxVisible}`;
+}
+
+/** Prefer the workspace primary folder when it belongs to this remote. */
+export function preferredFetchCwd(
+  primaryFolder: string | undefined,
+  folders: CheckoutFolder[],
+): string {
+  if (primaryFolder && folders.some((f) => f.path === primaryFolder)) {
+    return primaryFolder;
+  }
+  return folders[0]!.path;
+}
+
+/** Prefer a folder whose HEAD matches the run's branch; else fetch cwd. */
+export function preferredRerunCwd(
+  primaryFolder: string | undefined,
+  folders: CheckoutFolder[],
+  headBranch: string,
+): string {
+  const match = folders.find((f) => f.branch === headBranch);
+  if (match) return match.path;
+  return preferredFetchCwd(primaryFolder, folders);
 }
 
 // ─── Aggregated status bar state ──────────────────────────────────────────────
@@ -126,7 +170,7 @@ export function deriveStatusBarState(
   return { kind: "ok", failed, running };
 }
 
-// Aggregates status across all folder states in a workspace.
+// Aggregates status across all repo states in a workspace.
 export function deriveWorkspaceStatusBarState(
   states: WorkspaceGhState[],
   clearedBefore?: Date,
@@ -154,8 +198,8 @@ type Listener = () => void;
 
 export class GhActionsStore {
   private _settings: GhActionsSettings = { ...DEFAULTS };
-  // Key: `${workspaceId}:${folder}` — one entry per (workspace, folder) pair.
-  private _folderStates = new Map<string, WorkspaceGhState>();
+  // Key: `${workspaceId}:${owner}/${repo}` — one entry per unique remote.
+  private _repoStates = new Map<string, WorkspaceGhState>();
   private _workspaceClearedAt = new Map<string, Date>();
   private _workspaceCurrentBranchOnly = new Map<string, boolean>();
   private _workspaceDismissOnSuccess = new Map<string, boolean>();
@@ -184,7 +228,7 @@ export class GhActionsStore {
   getRepoStates(workspaceId: string): WorkspaceGhState[] {
     const prefix = `${workspaceId}:`;
     const result: WorkspaceGhState[] = [];
-    for (const [key, state] of this._folderStates) {
+    for (const [key, state] of this._repoStates) {
       if (key.startsWith(prefix)) result.push(state);
     }
     return result;
@@ -232,21 +276,21 @@ export class GhActionsStore {
     this._notify();
   }
 
-  setFolderState(workspaceId: string, folder: string, state: WorkspaceGhState): void {
-    this._folderStates.set(`${workspaceId}:${folder}`, state);
+  setRepoState(workspaceId: string, owner: string, repo: string, state: WorkspaceGhState): void {
+    this._repoStates.set(`${workspaceId}:${repoStateKey(owner, repo)}`, state);
     this._notify();
   }
 
-  removeFolderState(workspaceId: string, folder: string): void {
-    if (this._folderStates.delete(`${workspaceId}:${folder}`)) this._notify();
+  removeRepoState(workspaceId: string, owner: string, repo: string): void {
+    if (this._repoStates.delete(`${workspaceId}:${repoStateKey(owner, repo)}`)) this._notify();
   }
 
   clearWorkspaceRuns(workspaceId: string): void {
     const prefix = `${workspaceId}:`;
     let changed = false;
-    for (const [key, state] of this._folderStates) {
+    for (const [key, state] of this._repoStates) {
       if (key.startsWith(prefix)) {
-        this._folderStates.set(key, { ...state, runs: [], lastFetched: null });
+        this._repoStates.set(key, { ...state, runs: [], lastFetched: null });
         changed = true;
       }
     }
@@ -256,8 +300,8 @@ export class GhActionsStore {
   removeWorkspace(workspaceId: string): void {
     const prefix = `${workspaceId}:`;
     let changed = false;
-    for (const key of this._folderStates.keys()) {
-      if (key.startsWith(prefix)) { this._folderStates.delete(key); changed = true; }
+    for (const key of this._repoStates.keys()) {
+      if (key.startsWith(prefix)) { this._repoStates.delete(key); changed = true; }
     }
     if (changed) this._notify();
   }

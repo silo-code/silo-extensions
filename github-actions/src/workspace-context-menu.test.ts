@@ -23,9 +23,8 @@ function run(partial: Partial<WorkflowRun>): WorkflowRun {
 
 function state(partial: Partial<WorkspaceGhState>): WorkspaceGhState {
   return {
-    folder: "/repo",
+    folders: [{ path: "/repo", branch: "main" }],
     repoInfo: { owner: "o", repo: "r" },
-    branch: "main",
     runs: [],
     lastFetched: null,
     error: null,
@@ -69,8 +68,8 @@ describe("hasFailedRuns", () => {
 
   it("is true when only one of several repos has a failure", () => {
     const states = [
-      state({ folder: "/a", runs: [run({ conclusion: "success" })] }),
-      state({ folder: "/b", runs: [run({ conclusion: "failure" })] }),
+      state({ folders: [{ path: "/a", branch: "main" }], runs: [run({ conclusion: "success" })] }),
+      state({ folders: [{ path: "/b", branch: "main" }], runs: [run({ conclusion: "failure" })] }),
     ];
     expect(hasFailedRuns(states)).toBe(true);
   });

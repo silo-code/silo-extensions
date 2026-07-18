@@ -5,6 +5,10 @@ import {
   deriveWorkspaceStatusBarState,
   selectFailedRuns,
   selectRunningRuns,
+  formatBranchList,
+  preferredFetchCwd,
+  preferredRerunCwd,
+  monitoredBranches,
   GhActionsStore,
   type WorkspaceGhState,
 } from "./store";
@@ -157,9 +161,8 @@ describe("selectRunningRuns", () => {
 
 describe("deriveStatusBarState", () => {
   const base: WorkspaceGhState = {
-    folder: "/repo",
+    folders: [{ path: "/repo", branch: "main" }],
     repoInfo: { owner: "o", repo: "r" },
-    branch: "main",
     runs: [],
     lastFetched: new Date(),
     error: null,
@@ -192,9 +195,8 @@ describe("deriveStatusBarState", () => {
 
 describe("deriveWorkspaceStatusBarState", () => {
   const mkState = (overrides: Partial<WorkspaceGhState> = {}): WorkspaceGhState => ({
-    folder: "/repo",
+    folders: [{ path: "/repo", branch: "main" }],
     repoInfo: { owner: "o", repo: "r" },
-    branch: "main",
     runs: [],
     lastFetched: new Date(),
     error: null,
@@ -229,7 +231,11 @@ describe("deriveWorkspaceStatusBarState", () => {
   it("aggregates failures across multiple repos", () => {
     const states = [
       mkState({ runs: [failed({ name: "build" })] }),
-      mkState({ folder: "/repo2", repoInfo: { owner: "o", repo: "r2" }, runs: [failed({ name: "lint" })] }),
+      mkState({
+        folders: [{ path: "/repo2", branch: "main" }],
+        repoInfo: { owner: "o", repo: "r2" },
+        runs: [failed({ name: "lint" })],
+      }),
     ];
     expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 2, running: 0 });
   });
@@ -243,7 +249,7 @@ describe("deriveWorkspaceStatusBarState", () => {
         ],
       }),
       mkState({
-        folder: "/repo2",
+        folders: [{ path: "/repo2", branch: "main" }],
         repoInfo: { owner: "o", repo: "r2" },
         runs: [failed({ name: "lint", created_at: "2026-01-03T00:00:00Z" })],
       }),
@@ -254,7 +260,11 @@ describe("deriveWorkspaceStatusBarState", () => {
   it("aggregates running runs across multiple repos", () => {
     const states = [
       mkState({ runs: [run({ status: "in_progress", conclusion: null })] }),
-      mkState({ folder: "/repo2", repoInfo: { owner: "o", repo: "r2" }, runs: [run({ status: "queued", conclusion: null })] }),
+      mkState({
+        folders: [{ path: "/repo2", branch: "main" }],
+        repoInfo: { owner: "o", repo: "r2" },
+        runs: [run({ status: "queued", conclusion: null })],
+      }),
     ];
     expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 0, running: 2 });
   });
@@ -262,7 +272,11 @@ describe("deriveWorkspaceStatusBarState", () => {
   it("ignores no-repo folders when other repos have data", () => {
     const states = [
       mkState({ runs: [failed({ name: "CI" })] }),
-      mkState({ folder: "/not-github", repoInfo: null, error: { kind: "no-repo" } }),
+      mkState({
+        folders: [{ path: "/not-github", branch: "main" }],
+        repoInfo: null,
+        error: { kind: "no-repo" },
+      }),
     ];
     expect(deriveWorkspaceStatusBarState(states)).toEqual({ kind: "ok", failed: 1, running: 0 });
   });
@@ -303,5 +317,78 @@ describe("GhActionsStore.getWorkspaceEnabled / setWorkspaceEnabled", () => {
     unsubscribe();
     store.setWorkspaceEnabled("ws-1", true);
     expect(calls).toBe(1);
+  });
+});
+
+describe("formatBranchList", () => {
+  it("joins with middots", () => {
+    expect(formatBranchList(["a", "b", "c"])).toBe("a · b · c");
+  });
+
+  it("truncates with +N past maxVisible", () => {
+    expect(formatBranchList(["a", "b", "c", "d", "e"], 3)).toBe("a · b · c +2");
+  });
+
+  it("dedupes branches", () => {
+    expect(formatBranchList(["main", "main", "feat"])).toBe("main · feat");
+  });
+});
+
+describe("preferredFetchCwd / preferredRerunCwd", () => {
+  const folders = [
+    { path: "/wt-a", branch: "feat/a" },
+    { path: "/primary", branch: "main" },
+    { path: "/wt-b", branch: "feat/b" },
+  ];
+
+  it("prefers the workspace primary folder when it is in the remote group", () => {
+    expect(preferredFetchCwd("/primary", folders)).toBe("/primary");
+  });
+
+  it("falls back to the first checkout when primary is not in the group", () => {
+    expect(preferredFetchCwd("/other", folders)).toBe("/wt-a");
+  });
+
+  it("prefers a folder whose HEAD matches the run branch for re-run", () => {
+    expect(preferredRerunCwd("/primary", folders, "feat/b")).toBe("/wt-b");
+  });
+
+  it("falls back to fetch cwd when no folder matches the run branch", () => {
+    expect(preferredRerunCwd("/primary", folders, "other")).toBe("/primary");
+  });
+});
+
+describe("monitoredBranches", () => {
+  it("returns unique HEADs across worktree folders", () => {
+    const state: WorkspaceGhState = {
+      folders: [
+        { path: "/a", branch: "feat/a" },
+        { path: "/b", branch: "feat/b" },
+        { path: "/c", branch: "feat/a" },
+      ],
+      repoInfo: { owner: "o", repo: "r" },
+      runs: [],
+      lastFetched: null,
+      error: null,
+    };
+    expect(monitoredBranches(state)).toEqual(["feat/a", "feat/b"]);
+  });
+});
+
+describe("GhActionsStore.setRepoState keys by owner/repo", () => {
+  it("collapses multiple folder writes into one remote entry", () => {
+    const store = new GhActionsStore();
+    store.setRepoState("ws", "o", "r", {
+      folders: [
+        { path: "/a", branch: "feat/a" },
+        { path: "/b", branch: "feat/b" },
+      ],
+      repoInfo: { owner: "o", repo: "r" },
+      runs: [],
+      lastFetched: null,
+      error: null,
+    });
+    expect(store.getRepoStates("ws")).toHaveLength(1);
+    expect(store.getRepoStates("ws")[0].folders).toHaveLength(2);
   });
 });
