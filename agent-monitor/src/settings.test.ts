@@ -105,6 +105,11 @@ describe("agent-monitor sound settings", () => {
   });
 
   it("defaults to enabled with \"chime\" when nothing is persisted", () => {
+    // Restore module to compiled defaults before testing empty storage —
+    // initSettings falls back to the in-memory singleton when a key is missing.
+    initSettings(
+      fakeStorage({ soundEnabled: true, soundId: "chime" }),
+    ).dispose();
     const storage = fakeStorage();
     const sub = initSettings(storage);
     expect(settingsService.getState().soundEnabled).toBe(true);
