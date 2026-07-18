@@ -5,9 +5,12 @@ import {
   fetchMergedPrs,
   fetchOpenPrs,
   fetchPrDetail,
+  fetchRepoMergeMethods,
   fetchViewerLogin,
+  mergePr,
   probeCwd,
   resolveGhBin,
+  type MergeMethod,
 } from "./github-pr-api";
 import { prStore, type WorkspacePrState } from "./store";
 
@@ -380,16 +383,7 @@ export class PrService {
 
   async fetchDetail(folder: string, number: number): Promise<void> {
     if (!this._ctx || !prStore.authenticated) return;
-    // Resolve by folder across open workspaces so a mid-fetch workspace switch
-    // doesn't drop the request.
-    let repoInfo: { owner: string; repo: string } | null = null;
-    for (const ws of this._ctx.workspaces.getState().open) {
-      const state = prStore.getRepoStates(ws.id).find((s) => s.folder === folder);
-      if (state?.repoInfo) {
-        repoInfo = state.repoInfo;
-        break;
-      }
-    }
+    const repoInfo = this._repoInfoForFolder(folder);
     if (!repoInfo) return;
 
     prStore.clearDetailError(folder, number);
@@ -407,6 +401,73 @@ export class PrService {
       this._ctx.log.warn(`Failed to fetch PR detail #${number}`, { error: result.error });
       prStore.setDetailError(folder, number, result.error);
     }
+  }
+
+  private _repoInfoForFolder(folder: string): { owner: string; repo: string } | null {
+    if (!this._ctx) return null;
+    for (const ws of this._ctx.workspaces.getState().open) {
+      const state = prStore.getRepoStates(ws.id).find((s) => s.folder === folder);
+      if (state?.repoInfo) return state.repoInfo;
+    }
+    return null;
+  }
+
+  async fetchMergeMethods(folder: string) {
+    if (!this._ctx || !prStore.authenticated) {
+      return {
+        ok: false as const,
+        error: { kind: "unauthenticated" as const, message: "Not authenticated" },
+      };
+    }
+    const repoInfo = this._repoInfoForFolder(folder);
+    if (!repoInfo) {
+      return {
+        ok: false as const,
+        error: { kind: "not-found" as const, message: "Repository not found for this folder" },
+      };
+    }
+    return fetchRepoMergeMethods(
+      this._ctx,
+      repoInfo.owner,
+      repoInfo.repo,
+      folder,
+      this._ghBin,
+    );
+  }
+
+  async mergePullRequest(
+    workspaceId: string,
+    folder: string,
+    number: number,
+    method: MergeMethod,
+  ) {
+    if (!this._ctx || !prStore.authenticated) {
+      return {
+        ok: false as const,
+        error: { kind: "unauthenticated" as const, message: "Not authenticated" },
+      };
+    }
+    const repoInfo = this._repoInfoForFolder(folder);
+    if (!repoInfo) {
+      return {
+        ok: false as const,
+        error: { kind: "not-found" as const, message: "Repository not found for this folder" },
+      };
+    }
+    const result = await mergePr(
+      this._ctx,
+      repoInfo.owner,
+      repoInfo.repo,
+      number,
+      method,
+      folder,
+      this._ghBin,
+    );
+    // Refresh list + detail whether we succeeded or failed so merge-ready
+    // catches up after a race or a successful land.
+    await this.refreshWorkspace(workspaceId);
+    await this.fetchDetail(folder, number);
+    return result;
   }
 
   dispose(): void {
