@@ -111,3 +111,42 @@ export const REVIEW_STATE_LABELS: Record<ReviewState, string> = {
 export function hasConflicts(pr: PrListItem): boolean {
   return pr.mergeable === "CONFLICTING";
 }
+
+// Merge is offered for every PR that is not already merged (including closed /
+// draft / blocked); enabled only when merge-ready.
+export function offersMerge(pr: PrListItem): boolean {
+  return pr.state !== "MERGED";
+}
+
+// Open, not draft, and GitHub's full merge gate is CLEAN — not merely
+// conflict-free (`mergeable === MERGEABLE`).
+export function isMergeReady(pr: PrListItem): boolean {
+  return pr.state === "OPEN" && !pr.isDraft && pr.mergeStateStatus === "CLEAN";
+}
+
+// Short tooltip copy for a disabled Merge button. Null when merge-ready (no
+// tooltip needed) or when Merge is not offered.
+export function mergeBlockReason(pr: PrListItem): string | null {
+  if (!offersMerge(pr)) return null;
+  if (isMergeReady(pr)) return null;
+  if (pr.state === "CLOSED") return "Closed pull requests can't be merged";
+  if (pr.isDraft) return "Draft pull requests can't be merged";
+  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") {
+    return "This branch has conflicts that must be resolved";
+  }
+  switch (pr.mergeStateStatus) {
+    case "BLOCKED":
+      return "Merge is blocked by required checks or reviews";
+    case "BEHIND":
+      return "Branch is out of date with the base branch";
+    case "UNSTABLE":
+      return "Required checks are failing or incomplete";
+    case "UNKNOWN":
+      return "Merge status is still computing — try Refresh";
+    default:
+      if (pr.mergeable === "UNKNOWN") {
+        return "Merge status is still computing — try Refresh";
+      }
+      return "This pull request isn't ready to merge";
+  }
+}

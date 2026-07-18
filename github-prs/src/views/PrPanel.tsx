@@ -17,7 +17,18 @@ import { FILTER_LABELS, PR_FILTERS, type PrFilter } from "../filters";
 import { buildCopyActions } from "../copy-actions";
 import { findPrInRepoStates } from "../detail-helpers";
 import { usePrStore } from "../hooks";
+import {
+  allowedMergeMethods,
+  MERGE_METHOD_LABELS,
+  mergeConfirmCopy,
+  type MergeMethod,
+} from "../merge-methods";
 import { AUTH_RETRY_MINUTES, type PrService } from "../pr-service";
+import {
+  isMergeReady,
+  mergeBlockReason,
+  offersMerge,
+} from "../status";
 import { useViewStack } from "./use-view-stack";
 import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
@@ -25,6 +36,33 @@ import { PrDetailView } from "./PrDetailView";
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
   service: PrService;
+}
+
+function MergeButton({
+  reason,
+  enabled,
+  merging,
+  onMerge,
+}: {
+  reason: string | null;
+  enabled: boolean;
+  merging: boolean;
+  onMerge: (anchor: HTMLElement) => void;
+}) {
+  const label = merging ? "Merging…" : "Merge";
+  return (
+    <Tooltip content={reason ?? ""} disabled={!reason}>
+      <button
+        type="button"
+        className="ghpr-merge-btn"
+        disabled={!enabled || merging}
+        aria-label={reason ? `Merge unavailable: ${reason}` : label}
+        onClick={(e) => onMerge(e.currentTarget)}
+      >
+        {label}
+      </button>
+    </Tooltip>
+  );
 }
 
 export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProps) {
@@ -35,6 +73,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   const [refreshing, setRefreshing] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
   const enabled = workspaceId ? store.getWorkspaceEnabled(workspaceId) : true;
@@ -123,6 +162,74 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       void ctx.ui.showMenu({ items, anchor });
     },
     [ctx, detailPr],
+  );
+
+  const confirmAndMerge = useCallback(
+    async (repoKey: string, method: MergeMethod) => {
+      if (!detailPr || !workspaceId) return;
+      const copy = mergeConfirmCopy(detailPr, method);
+      const confirmed = await ctx.ui.confirm({
+        title: copy.title,
+        body: copy.body,
+        confirmLabel: copy.confirmLabel,
+      });
+      if (!confirmed) return;
+
+      setMerging(true);
+      try {
+        const result = await service.mergePullRequest(
+          workspaceId,
+          repoKey,
+          detailPr.number,
+          method,
+        );
+        if (result.ok) {
+          ctx.ui.notify("info", `Merged #${detailPr.number}.`, { title: "Pull request merged" });
+        } else {
+          ctx.ui.notify("error", result.error.message, { title: "Couldn't merge pull request" });
+        }
+      } finally {
+        setMerging(false);
+      }
+    },
+    [ctx, detailPr, service, workspaceId],
+  );
+
+  const handleMergeClick = useCallback(
+    async (anchor: HTMLElement) => {
+      if (!detailPr || view.kind !== "detail" || !isMergeReady(detailPr) || merging) return;
+      const repoKey = view.repoKey;
+
+      const methodsResult = await service.fetchMergeMethods(repoKey);
+      if (!methodsResult.ok) {
+        ctx.ui.notify("error", methodsResult.error.message, {
+          title: "Couldn't load merge options",
+        });
+        return;
+      }
+
+      const methods = allowedMergeMethods(methodsResult.methods);
+      if (methods.length === 0) {
+        ctx.ui.notify("error", "No merge methods are enabled on this repository.", {
+          title: "Couldn't merge pull request",
+        });
+        return;
+      }
+
+      if (methods.length === 1) {
+        await confirmAndMerge(repoKey, methods[0]);
+        return;
+      }
+
+      const items: MenuEntry[] = methods.map((method) => ({
+        label: MERGE_METHOD_LABELS[method],
+        run: () => {
+          void confirmAndMerge(repoKey, method);
+        },
+      }));
+      void ctx.ui.showMenu({ items, anchor });
+    },
+    [confirmAndMerge, ctx, detailPr, merging, service, view],
   );
 
   const openPr = useCallback(
@@ -264,9 +371,19 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 </div>
               )}
             </div>
-            <div className="ghpr-header__title">
-              #{view.number}
-              {detailPr ? ` · ${detailPr.title}` : ""}
+            <div className="ghpr-header__title-row">
+              <div className="ghpr-header__title">
+                #{view.number}
+                {detailPr ? ` · ${detailPr.title}` : ""}
+              </div>
+              {detailPr && offersMerge(detailPr) && (
+                <MergeButton
+                  reason={mergeBlockReason(detailPr)}
+                  enabled={isMergeReady(detailPr)}
+                  merging={merging}
+                  onMerge={(anchor) => void handleMergeClick(anchor)}
+                />
+              )}
             </div>
           </div>
         )}

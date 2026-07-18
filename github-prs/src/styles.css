@@ -46,7 +46,15 @@
   margin-left: auto;
 }
 
+.ghpr-header__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
 .ghpr-header__title {
+  flex: 1;
   min-width: 0;
   white-space: normal;
   overflow-wrap: break-word;
@@ -55,6 +63,36 @@
   color: var(--silo-color-text-hi);
   line-height: 1.35;
   padding: 0 2px;
+}
+
+.ghpr-merge-btn {
+  appearance: none;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 1px;
+  padding: 5px 12px;
+  border: 1px solid var(--silo-button-border, var(--silo-color-border));
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-button-primary-bg, var(--silo-button-bg, var(--silo-color-input-bg)));
+  color: var(--silo-button-primary-text, var(--silo-button-text, var(--silo-color-text-hi)));
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.ghpr-merge-btn:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--silo-button-primary-bg, var(--silo-button-bg, var(--silo-color-input-bg))) 85%,
+    #000
+  );
+}
+
+.ghpr-merge-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* Push list-view refresh to the trailing edge. Tooltip wraps the button in a

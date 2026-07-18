@@ -5,9 +5,12 @@ import {
   fetchMergedPrs,
   fetchOpenPrs,
   fetchPrDetail,
+  fetchRepoMergeMethods,
   fetchViewerLogin,
+  mergePr,
   probeCwd,
   resolveGhBin,
+  type MergeMethod,
 } from "./github-pr-api";
 import {
   prStore,
@@ -453,30 +456,16 @@ export class PrService {
 
   async fetchDetail(repoKey: string, number: number): Promise<void> {
     if (!this._ctx || !prStore.authenticated) return;
-    // Resolve by repoKey across open workspaces so a mid-fetch workspace switch
-    // doesn't drop the request.
-    let matched: WorkspacePrState | null = null;
-    let primaryFolder: string | undefined;
-    for (const ws of this._ctx.workspaces.getState().open) {
-      const state = prStore.getRepoStates(ws.id).find(
-        (s) => s.repoInfo && repoStateKey(s.repoInfo.owner, s.repoInfo.repo) === repoKey,
-      );
-      if (state?.repoInfo) {
-        matched = state;
-        primaryFolder = ws.folder;
-        break;
-      }
-    }
-    if (!matched?.repoInfo || matched.folders.length === 0) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
 
-    const cwd = preferredFetchCwd(primaryFolder, matched.folders);
     prStore.clearDetailError(repoKey, number);
     const result = await fetchPrDetail(
       this._ctx,
-      matched.repoInfo.owner,
-      matched.repoInfo.repo,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
       number,
-      cwd,
+      resolved.cwd,
       this._ghBin,
     );
     if (result.ok) {
@@ -485,6 +474,86 @@ export class PrService {
       this._ctx.log.warn(`Failed to fetch PR detail #${number}`, { error: result.error });
       prStore.setDetailError(repoKey, number, result.error);
     }
+  }
+
+  /** Resolve a collapsed remote by owner/repo across open workspaces. */
+  private _resolveRepo(repoKey: string): {
+    repoInfo: { owner: string; repo: string };
+    folders: CheckoutFolder[];
+    cwd: string;
+  } | null {
+    if (!this._ctx) return null;
+    for (const ws of this._ctx.workspaces.getState().open) {
+      const state = prStore.getRepoStates(ws.id).find(
+        (s) => s.repoInfo && repoStateKey(s.repoInfo.owner, s.repoInfo.repo) === repoKey,
+      );
+      if (state?.repoInfo && state.folders.length > 0) {
+        return {
+          repoInfo: state.repoInfo,
+          folders: state.folders,
+          cwd: preferredFetchCwd(ws.folder, state.folders),
+        };
+      }
+    }
+    return null;
+  }
+
+  async fetchMergeMethods(repoKey: string) {
+    if (!this._ctx || !prStore.authenticated) {
+      return {
+        ok: false as const,
+        error: { kind: "unauthenticated" as const, message: "Not authenticated" },
+      };
+    }
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) {
+      return {
+        ok: false as const,
+        error: { kind: "not-found" as const, message: "Repository not found for this workspace" },
+      };
+    }
+    return fetchRepoMergeMethods(
+      this._ctx,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
+      resolved.cwd,
+      this._ghBin,
+    );
+  }
+
+  async mergePullRequest(
+    workspaceId: string,
+    repoKey: string,
+    number: number,
+    method: MergeMethod,
+  ) {
+    if (!this._ctx || !prStore.authenticated) {
+      return {
+        ok: false as const,
+        error: { kind: "unauthenticated" as const, message: "Not authenticated" },
+      };
+    }
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) {
+      return {
+        ok: false as const,
+        error: { kind: "not-found" as const, message: "Repository not found for this workspace" },
+      };
+    }
+    const result = await mergePr(
+      this._ctx,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
+      number,
+      method,
+      resolved.cwd,
+      this._ghBin,
+    );
+    // Refresh list + detail whether we succeeded or failed so merge-ready
+    // catches up after a race or a successful land.
+    await this.refreshWorkspace(workspaceId);
+    await this.fetchDetail(repoKey, number);
+    return result;
   }
 
   dispose(): void {
