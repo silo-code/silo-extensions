@@ -114,3 +114,35 @@
   gap: 2px;
   min-width: 0;
 }
+
+/* Toggle (.es-switch/.es-switch-track) and dropdown (.es-select) reuse the
+   host's own settings-page design system — see SettingsDialog.css in the
+   host repo. No import needed; they're global and consumed as-is. .es-row's
+   left padding assumes a full-bleed host settings pane; .am-section already
+   insets its own content, so drop it here to avoid double indentation. */
+.am-section .es-row {
+  padding-left: 0;
+}
+
+.am-sound-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.am-preview-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--silo-color-border);
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-input-bg);
+  color: var(--silo-color-text-hi);
+  cursor: pointer;
+}
+.am-preview-btn:hover {
+  background: var(--silo-color-bg-active);
+  border-color: var(--silo-color-border-strong);
+}
