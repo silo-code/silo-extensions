@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowClockwise, CopySimple } from "@phosphor-icons/react";
+import { EmptyState } from "@silo-code/sdk";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { WorkflowRun } from "./github-api";
@@ -100,11 +101,12 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
   if (visibleStates.length === 0) {
     return (
       <div className="gha-modal">
-        <div className="gha-empty">
-          <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
-          <div className="gha-empty__title">No repository detected</div>
-          <div className="gha-empty__sub">This workspace doesn't have a GitHub remote.</div>
-        </div>
+        <EmptyState
+          tone="ok"
+          icon={<IconCheck />}
+          title="No repository detected"
+          description="This workspace doesn't have a GitHub remote."
+        />
       </div>
     );
   }
@@ -197,11 +199,12 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
             </section>
           )}
           {!refreshing && failedRuns.length === 0 && runningRuns.length === 0 && (
-            <div className="gha-empty">
-              <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
-              <div className="gha-empty__title">All workflows passing</div>
-              <div className="gha-empty__sub">No failures or active runs on this repo.</div>
-            </div>
+            <EmptyState
+              tone="ok"
+              icon={<IconCheck />}
+              title="All workflows passing"
+              description="No failures or active runs on this repo."
+            />
           )}
         </div>
 
@@ -264,11 +267,12 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
           />
         ))}
         {!refreshing && totalFailed === 0 && totalRunning === 0 && (
-          <div className="gha-empty">
-            <div className="gha-empty__icon-wrap"><IconCheckCircle /></div>
-            <div className="gha-empty__title">All workflows passing</div>
-            <div className="gha-empty__sub">No failures or active runs across all repos.</div>
-          </div>
+          <EmptyState
+            tone="ok"
+            icon={<IconCheck />}
+            title="All workflows passing"
+            description="No failures or active runs across all repos."
+          />
         )}
       </div>
 
@@ -506,11 +510,12 @@ function IconSpinner({ spinning }: { spinning?: boolean }) {
   );
 }
 
-function IconCheckCircle() {
+// Glyph only — EmptyState's host-styled ring wraps this, so this no longer
+// draws its own circle (see .silo-empty-state-icon in the design system).
+function IconCheck() {
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden>
-      <circle cx="18" cy="18" r="15" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.3" />
-      <path d="m11 18 5 6 9-10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 8.5l3 3 7-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
