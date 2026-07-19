@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowClockwise, CopySimple } from "@phosphor-icons/react";
-import { EmptyState } from "@silo-code/sdk";
+import { Badge, Button, CheckboxRow, EmptyState, IconButton, Tooltip } from "@silo-code/sdk";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import type { WorkflowRun } from "./github-api";
@@ -143,15 +143,17 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
             {wsState.lastFetched && (
               <span className="gha-modal__updated">Updated {formatElapsed(wsState.lastFetched)}</span>
             )}
-            <button
-              className={`gha-refresh-btn${refreshing ? " gha-refresh-btn--spinning" : ""}`}
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Refresh"
-              aria-label="Refresh workflows"
-            >
-              <ArrowClockwise size={14} weight="bold" />
-            </button>
+            <Tooltip content="Refresh">
+              <IconButton
+                size="sm"
+                className={refreshing ? "gha-refresh-spin" : undefined}
+                onClick={handleRefresh}
+                disabled={refreshing}
+                aria-label="Refresh workflows"
+              >
+                <ArrowClockwise size={14} weight="bold" />
+              </IconButton>
+            </Tooltip>
           </div>
         </div>
 
@@ -165,10 +167,10 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
               <div className="gha-section__header">
                 <span className="gha-section__dot gha-section__dot--failed" />
                 <span className="gha-section__title">Failed</span>
-                <span className="gha-section__count">{failedRuns.length}</span>
-                <button className="gha-section__action" onClick={handleClearAlerts} title="Mark current failures as seen">
+                <Badge tone="err">{failedRuns.length}</Badge>
+                <Button size="sm" className="gha-section__action" onClick={handleClearAlerts} title="Mark current failures as seen">
                   Clear alerts
-                </button>
+                </Button>
               </div>
               <div className="gha-runs">
                 {failedRuns.map((run) => (
@@ -186,7 +188,7 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
               <div className="gha-section__header">
                 <span className="gha-section__dot gha-section__dot--running" />
                 <span className="gha-section__title">Running</span>
-                <span className="gha-section__count">{runningRuns.length}</span>
+                <Badge tone="accent">{runningRuns.length}</Badge>
               </div>
               <div className="gha-runs">
                 {runningRuns.map((run) => (
@@ -209,19 +211,17 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
         </div>
 
         <div className="gha-modal__footer">
-          <label className="gha-modal__footer-toggle">
-            <input type="checkbox" checked={currentBranchOnly} disabled={refreshing}
-              onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
-            <span>Only monitor checked-out branches</span>
-          </label>
-          <label className="gha-modal__footer-toggle">
-            <input
-              type="checkbox"
-              checked={dismissOnSuccess}
-              onChange={(e) => handleToggleDismissOnSuccess(e.target.checked)}
-            />
-            <span>Auto-dismiss alerts when workflows pass</span>
-          </label>
+          <CheckboxRow
+            label="Only monitor checked-out branches"
+            checked={currentBranchOnly}
+            disabled={refreshing}
+            onChange={handleToggleCurrentBranchOnly}
+          />
+          <CheckboxRow
+            label="Auto-dismiss alerts when workflows pass"
+            checked={dismissOnSuccess}
+            onChange={handleToggleDismissOnSuccess}
+          />
         </div>
       </div>
     );
@@ -237,19 +237,21 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
         <span className="gha-modal__title">{visibleStates.length} repositories</span>
         <div className="gha-modal__actions">
           {totalFailed > 0 && (
-            <button className="gha-section__action" onClick={handleClearAlerts} title="Mark all failures as seen">
+            <Button size="sm" onClick={handleClearAlerts} title="Mark all failures as seen">
               Clear alerts
-            </button>
+            </Button>
           )}
-          <button
-            className={`gha-refresh-btn${refreshing ? " gha-refresh-btn--spinning" : ""}`}
-            onClick={handleRefresh}
-            disabled={refreshing}
-            title="Refresh all"
-            aria-label="Refresh all repositories"
-          >
-            <ArrowClockwise size={14} weight="bold" />
-          </button>
+          <Tooltip content="Refresh all">
+            <IconButton
+              size="sm"
+              className={refreshing ? "gha-refresh-spin" : undefined}
+              onClick={handleRefresh}
+              disabled={refreshing}
+              aria-label="Refresh all repositories"
+            >
+              <ArrowClockwise size={14} weight="bold" />
+            </IconButton>
+          </Tooltip>
         </div>
       </div>
 
@@ -277,19 +279,17 @@ export function ActionsModal({ ctx, service, close: _close }: Props) {
       </div>
 
       <div className="gha-modal__footer">
-        <label className="gha-modal__footer-toggle">
-          <input type="checkbox" checked={currentBranchOnly} disabled={refreshing}
-            onChange={(e) => handleToggleCurrentBranchOnly(e.target.checked)} />
-          <span>Only monitor checked-out branches</span>
-        </label>
-        <label className="gha-modal__footer-toggle">
-          <input
-            type="checkbox"
-            checked={dismissOnSuccess}
-            onChange={(e) => handleToggleDismissOnSuccess(e.target.checked)}
-          />
-          <span>Auto-dismiss alerts when workflows pass</span>
-        </label>
+        <CheckboxRow
+          label="Only monitor checked-out branches"
+          checked={currentBranchOnly}
+          disabled={refreshing}
+          onChange={handleToggleCurrentBranchOnly}
+        />
+        <CheckboxRow
+          label="Auto-dismiss alerts when workflows pass"
+          checked={dismissOnSuccess}
+          onChange={handleToggleDismissOnSuccess}
+        />
       </div>
     </div>
   );
@@ -341,7 +341,7 @@ function RepoSection({ repoState, ctx, clearedAt, dismissOnSuccess, rerunning, o
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--failed" />
             <span className="gha-section__title">Failed</span>
-            <span className="gha-section__count">{failedRuns.length}</span>
+            <Badge tone="err">{failedRuns.length}</Badge>
           </div>
           <div className="gha-runs">
             {failedRuns.map((run) => (
@@ -360,7 +360,7 @@ function RepoSection({ repoState, ctx, clearedAt, dismissOnSuccess, rerunning, o
           <div className="gha-section__header">
             <span className="gha-section__dot gha-section__dot--running" />
             <span className="gha-section__title">Running</span>
-            <span className="gha-section__count">{runningRuns.length}</span>
+            <Badge tone="accent">{runningRuns.length}</Badge>
           </div>
           <div className="gha-runs">
             {runningRuns.map((run) => (

@@ -61,88 +61,15 @@
   color: var(--silo-color-text-lo);
   line-height: 1.35;
 }
+/* A plain block wrapper — no flex/gap of its own. RadioCard (SDK) spaces
+   itself via `.silo-radio-card + .silo-radio-card`; adding a flex gap here
+   would double up on that. */
 .am-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   margin-top: 8px;
-}
-.am-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--silo-color-border);
-  border-radius: 6px;
-  cursor: pointer;
-  position: relative;
-}
-.am-option:hover {
-  background: var(--silo-color-bg-active);
-}
-.am-option:has(input:checked) {
-  border-color: var(--silo-color-accent);
-}
-.am-option input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.am-option-dot {
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
-  border-radius: 50%;
-  border: 1.5px solid var(--silo-color-border-strong);
-  position: relative;
-}
-.am-option input:checked ~ .am-option-dot {
-  border-color: var(--silo-color-accent);
-}
-.am-option input:checked ~ .am-option-dot::after {
-  content: "";
-  position: absolute;
-  inset: 2.5px;
-  border-radius: 50%;
-  background: var(--silo-color-accent);
-}
-.am-option-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-/* Toggle (.es-switch/.es-switch-track) and dropdown (.es-select) reuse the
-   host's own settings-page design system — see SettingsDialog.css in the
-   host repo. No import needed; they're global and consumed as-is. .es-row's
-   left padding assumes a full-bleed host settings pane; .am-section already
-   insets its own content, so drop it here to avoid double indentation. */
-.am-section .es-row {
-  padding-left: 0;
 }
 
 .am-sound-control {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-.am-preview-btn {
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--silo-color-border);
-  border-radius: var(--silo-radius-sm);
-  background: var(--silo-color-input-bg);
-  color: var(--silo-color-text-hi);
-  cursor: pointer;
-}
-.am-preview-btn:hover {
-  background: var(--silo-color-bg-active);
-  border-color: var(--silo-color-border-strong);
 }

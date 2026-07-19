@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Section, SettingRow, Select } from "@silo-code/sdk";
 import type { ExtensionContext } from "@silo-code/sdk";
 import { ghStore, type GhActionsSettings } from "./store";
 import type { AuthState } from "./github-api";
@@ -21,83 +22,70 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
   const update = (patch: Partial<GhActionsSettings>) => ghStore.updateSettings(patch);
 
   return (
-    <div className="es-page">
-      <div className="es-header">
-        <h2>GitHub Actions</h2>
-      </div>
-      <div className="es-scroll">
-        <section className="es-section">
-          <h3 className="es-section-title">Authentication</h3>
-          <div className="es-rows">
-            <div className="es-row">
-              <div className="es-row-text">
-                <span className="es-label">GitHub CLI status</span>
-                <span className="es-hint">Authentication is detected from the <code>gh</code> CLI</span>
-              </div>
-              <div className="es-control">
-                {authState === "ok" && (
-                  <span style={{ color: "var(--silo-color-ok)", fontWeight: 500 }}>✓ Authenticated</span>
-                )}
-                {authState === "unauthenticated" && (
-                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>✗ Not authenticated — run <code>gh auth login</code></span>
-                )}
-                {authState === "missing" && (
-                  <span style={{ color: "var(--silo-color-err)", fontWeight: 500 }}>
-                    ✗ gh CLI not installed —{" "}
-                    <a href="https://cli.github.com" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
-                      cli.github.com
-                    </a>
-                  </span>
-                )}
-                {(authState === null || authState === "deferred") && (
-                  <span style={{ opacity: 0.5 }}>Checking...</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+    <div className="gha-settings-page">
+      <h2 className="gha-settings-title">GitHub Actions</h2>
+      <div className="silo-scroll gha-settings-scroll">
+        <Section label="Authentication">
+          <SettingRow
+            label="GitHub CLI status"
+            hint="Authentication is detected from the gh CLI"
+          >
+            {authState === "ok" && (
+              <span className="gha-settings-status gha-settings-status--ok">
+                ✓ Authenticated
+              </span>
+            )}
+            {authState === "unauthenticated" && (
+              <span className="gha-settings-status gha-settings-status--err">
+                ✗ Not authenticated — run <code>gh auth login</code>
+              </span>
+            )}
+            {authState === "missing" && (
+              <span className="gha-settings-status gha-settings-status--err">
+                ✗ gh CLI not installed —{" "}
+                <a href="https://cli.github.com" target="_blank" rel="noreferrer" className="gha-settings-link">
+                  cli.github.com
+                </a>
+              </span>
+            )}
+            {(authState === null || authState === "deferred") && (
+              <span className="gha-settings-status gha-settings-status--muted">
+                Checking…
+              </span>
+            )}
+          </SettingRow>
+        </Section>
 
-        <section className="es-section">
-          <h3 className="es-section-title">Polling</h3>
-          <div className="es-rows">
-            <div className="es-row">
-              <div className="es-row-text">
-                <span className="es-label">Active workspace interval</span>
-                <span className="es-hint">How often to check the active workspace for new runs</span>
-              </div>
-              <div className="es-control">
-                <select
-                  className="es-select"
-                  value={settings.activePollIntervalMs}
-                  onChange={(e) => update({ activePollIntervalMs: Number(e.target.value) })}
-                >
-                  <option value={30_000}>30 seconds</option>
-                  <option value={60_000}>1 minute</option>
-                  <option value={2 * 60_000}>2 minutes</option>
-                  <option value={5 * 60_000}>5 minutes</option>
-                </select>
-              </div>
-            </div>
-            <div className="es-row">
-              <div className="es-row-text">
-                <span className="es-label">Inactive workspace interval</span>
-                <span className="es-hint">How often to check background workspaces</span>
-              </div>
-              <div className="es-control">
-                <select
-                  className="es-select"
-                  value={settings.inactivePollIntervalMs}
-                  onChange={(e) => update({ inactivePollIntervalMs: Number(e.target.value) })}
-                >
-                  <option value={2 * 60_000}>2 minutes</option>
-                  <option value={5 * 60_000}>5 minutes</option>
-                  <option value={10 * 60_000}>10 minutes</option>
-                  <option value={15 * 60_000}>15 minutes</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </section>
+        <Section label="Polling">
+          <SettingRow
+            label="Active workspace interval"
+            hint="How often to check the active workspace for new runs"
+          >
+            <Select
+              value={settings.activePollIntervalMs}
+              onChange={(e) => update({ activePollIntervalMs: Number(e.target.value) })}
+            >
+              <option value={30_000}>30 seconds</option>
+              <option value={60_000}>1 minute</option>
+              <option value={2 * 60_000}>2 minutes</option>
+              <option value={5 * 60_000}>5 minutes</option>
+            </Select>
+          </SettingRow>
+          <SettingRow
+            label="Inactive workspace interval"
+            hint="How often to check background workspaces"
+          >
+            <Select
+              value={settings.inactivePollIntervalMs}
+              onChange={(e) => update({ inactivePollIntervalMs: Number(e.target.value) })}
+            >
+              <option value={2 * 60_000}>2 minutes</option>
+              <option value={5 * 60_000}>5 minutes</option>
+              <option value={10 * 60_000}>10 minutes</option>
+              <option value={15 * 60_000}>15 minutes</option>
+            </Select>
+          </SettingRow>
+        </Section>
       </div>
     </div>
   );

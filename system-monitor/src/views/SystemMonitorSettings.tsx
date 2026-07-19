@@ -1,11 +1,11 @@
 import { useState } from "react";
+import { Input, Section, SettingRow, Switch, Tabs, TabPanel } from "@silo-code/sdk";
 import { useStore } from "../hooks";
 import { sysmonStore } from "../store";
 import type { PanelId, Settings } from "../store";
 import { METRIC_REGISTRY } from "../registry";
 import { DraggableSection } from "./DraggableSection";
 import type { DraggableItem } from "./DraggableSection";
-import { Toggle } from "./Toggle";
 
 type SettingsTab = "panels" | "statusBar" | "options";
 
@@ -78,139 +78,103 @@ export function SystemMonitorSettings() {
   }
 
   return (
-    <div className="es-page">
-      <div className="es-header">
-        <h2>System Monitor</h2>
-      </div>
-      <div className="sms-tabs" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={"sms-tab" + (tab === t.id ? " sms-tab-active" : "")}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div className="es-scroll">
-        {tab === "panels" && (
-          <DraggableSection
-            items={toItems(settings.panels, "panelHint")}
-            onToggle={(id, next) => toggle("panels", id, next)}
-            onReorder={(from, to) => reorderSection("panels", from, to)}
-          />
-        )}
-        {tab === "statusBar" && (
-          <DraggableSection
-            items={toItems(settings.statusBar, "sbHint")}
-            onToggle={(id, next) => toggle("statusBar", id, next)}
-            onReorder={(from, to) => reorderSection("statusBar", from, to)}
-          />
-        )}
-        {tab === "options" && (
-          <section className="es-section">
-            <div className="es-rows">
-              <div className="es-row">
-                <div className="es-row-text">
-                  <span className="es-label">Workspace status</span>
-                  <span className="es-hint">Show CPU and memory warnings in the workspace status row and badge.</span>
-                </div>
-                <div className="es-control">
-                  <Toggle
-                    label="Workspace status"
-                    checked={settings.workspaceStatus}
-                    onChange={(next) =>
-                      sysmonStore.updateSettings({ ...settings, workspaceStatus: next })
-                    }
-                  />
-                </div>
-              </div>
-              <div className="es-row">
-                <div className="es-row-text">
-                  <span className="es-label">CPU warning threshold</span>
-                  <span className="es-hint">
-                    Percent (per-core; summed across a workspace's sessions
-                    and their child processes for the badge).
-                  </span>
-                </div>
-                <div className="es-control">
-                  <input
-                    className="es-number sm-threshold-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={settings.cpuWarnPercent}
-                    onChange={(e) =>
-                      setThreshold("cpuWarnPercent", Number(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="es-row">
-                <div className="es-row-text">
-                  <span className="es-label">CPU danger threshold</span>
-                  <span className="es-hint">Percent — at or above this, the warning turns red.</span>
-                </div>
-                <div className="es-control">
-                  <input
-                    className="es-number sm-threshold-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={settings.cpuDangerPercent}
-                    onChange={(e) =>
-                      setThreshold("cpuDangerPercent", Number(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="es-row">
-                <div className="es-row-text">
-                  <span className="es-label">Memory warning threshold</span>
-                  <span className="es-hint">
-                    MB, summed across a workspace's sessions and their child
-                    processes for the badge.
-                  </span>
-                </div>
-                <div className="es-control">
-                  <input
-                    className="es-number sm-threshold-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={settings.memWarnMb}
-                    onChange={(e) =>
-                      setThreshold("memWarnMb", Number(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="es-row">
-                <div className="es-row-text">
-                  <span className="es-label">Memory danger threshold</span>
-                  <span className="es-hint">MB — at or above this, the warning turns red.</span>
-                </div>
-                <div className="es-control">
-                  <input
-                    className="es-number sm-threshold-input"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={settings.memDangerMb}
-                    onChange={(e) =>
-                      setThreshold("memDangerMb", Number(e.target.value))
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-      </div>
+    <div className="sms-settings-page">
+      <h2 className="sms-settings-title">System Monitor</h2>
+      <Tabs tabs={TABS} active={tab} onSelect={setTab} />
+      <TabPanel>
+        <div className="silo-scroll sms-settings-scroll">
+          {tab === "panels" && (
+            <DraggableSection
+              items={toItems(settings.panels, "panelHint")}
+              onToggle={(id, next) => toggle("panels", id, next)}
+              onReorder={(from, to) => reorderSection("panels", from, to)}
+            />
+          )}
+          {tab === "statusBar" && (
+            <DraggableSection
+              items={toItems(settings.statusBar, "sbHint")}
+              onToggle={(id, next) => toggle("statusBar", id, next)}
+              onReorder={(from, to) => reorderSection("statusBar", from, to)}
+            />
+          )}
+          {tab === "options" && (
+            <Section label="Options">
+              <SettingRow
+                label="Workspace status"
+                hint="Show CPU and memory warnings in the workspace status row and badge."
+              >
+                <Switch
+                  checked={settings.workspaceStatus}
+                  onChange={(next) =>
+                    sysmonStore.updateSettings({ ...settings, workspaceStatus: next })
+                  }
+                  aria-label="Workspace status"
+                />
+              </SettingRow>
+              <SettingRow
+                label="CPU warning threshold"
+                hint="Percent (per-core; summed across a workspace's sessions and their child processes for the badge)."
+              >
+                <Input
+                  className="sm-threshold-input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={settings.cpuWarnPercent}
+                  onChange={(e) =>
+                    setThreshold("cpuWarnPercent", Number(e.target.value))
+                  }
+                />
+              </SettingRow>
+              <SettingRow
+                label="CPU danger threshold"
+                hint="Percent — at or above this, the warning turns red."
+              >
+                <Input
+                  className="sm-threshold-input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={settings.cpuDangerPercent}
+                  onChange={(e) =>
+                    setThreshold("cpuDangerPercent", Number(e.target.value))
+                  }
+                />
+              </SettingRow>
+              <SettingRow
+                label="Memory warning threshold"
+                hint="MB, summed across a workspace's sessions and their child processes for the badge."
+              >
+                <Input
+                  className="sm-threshold-input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={settings.memWarnMb}
+                  onChange={(e) =>
+                    setThreshold("memWarnMb", Number(e.target.value))
+                  }
+                />
+              </SettingRow>
+              <SettingRow
+                label="Memory danger threshold"
+                hint="MB — at or above this, the warning turns red."
+              >
+                <Input
+                  className="sm-threshold-input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={settings.memDangerMb}
+                  onChange={(e) =>
+                    setThreshold("memDangerMb", Number(e.target.value))
+                  }
+                />
+              </SettingRow>
+            </Section>
+          )}
+        </div>
+      </TabPanel>
     </div>
   );
 }

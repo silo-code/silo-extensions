@@ -16,33 +16,6 @@
   border-top: 1px solid var(--silo-color-border-lo, rgba(128,128,128,0.12));
 }
 
-.gha-modal__footer-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 1em;
-  color: var(--silo-color-text-lo);
-  cursor: pointer;
-  user-select: none;
-}
-
-.gha-modal__footer-toggle input[type="checkbox"] {
-  width: 13px;
-  height: 13px;
-  accent-color: var(--silo-color-accent, #4f8ef7);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.gha-modal__footer-toggle:hover {
-  color: var(--silo-color-text);
-}
-
-.gha-modal__footer-toggle:has(input:disabled) {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .gha-modal__body {
   overflow-y: auto;
   flex: 1;
@@ -68,8 +41,8 @@
   cursor: pointer;
   padding: 0;
   font-family: var(--silo-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif);
-  font-size: 1.42em;  /* 16.5px → 18.5px */
-  font-weight: 700;
+  font-size: 1.05em;
+  font-weight: 600;
   color: var(--silo-color-text);
 }
 
@@ -107,7 +80,7 @@
   align-items: center;
   gap: 4px;
   font-family: var(--silo-font-mono, monospace);
-  font-size: 1em;
+  font-size: 0.88em;
   background: var(--silo-color-bg-subtle, rgba(128,128,128,0.08));
   padding: 2px 8px;
   border-radius: 4px;
@@ -121,26 +94,8 @@
   opacity: 0.65;
 }
 
-.gha-refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 2px;
-  color: var(--silo-color-text-lo);
-  border-radius: 4px;
-  transition: color 0.1s, background 0.1s;
-  margin-left: 2px;
-}
-
-.gha-refresh-btn:hover:not(:disabled) {
-  color: var(--silo-color-text);
-  background: var(--silo-color-bg-hover, rgba(128,128,128,0.1));
-}
-
-.gha-refresh-btn--spinning svg {
+/* Positioning + spin state only — visual treatment now comes from IconButton. */
+.gha-refresh-spin svg {
   animation: gha-spin 0.8s linear infinite;
 }
 
@@ -198,32 +153,10 @@
   color: var(--silo-color-text);
 }
 
-.gha-section__count {
-  background: var(--silo-color-bg-subtle, rgba(128,128,128,0.1));
-  color: var(--silo-color-text);
-  font-size: 0.92em;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 10px;
-  line-height: 1.6;
-}
-
+/* Positioning only — visual treatment now comes from the SDK Button classes
+   this is composed with; restyling those locally would fight them. */
 .gha-section__action {
   margin-left: auto;
-  font-size: 1em;
-  font-family: inherit;
-  color: var(--silo-color-text);
-  background: none;
-  border: 1px solid var(--silo-color-border-lo, rgba(128,128,128,0.2));
-  cursor: pointer;
-  padding: 2px 9px;
-  border-radius: 4px;
-  transition: background 0.1s, color 0.1s;
-}
-
-.gha-section__action:hover {
-  background: var(--silo-color-bg-hover, rgba(128,128,128,0.08));
-  color: var(--silo-color-text);
 }
 
 .gha-runs {
@@ -416,10 +349,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.gha-modal__actions .gha-section__action {
-  margin-left: 0;
 }
 
 .gha-repo-section {
