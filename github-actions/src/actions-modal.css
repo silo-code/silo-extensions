@@ -383,32 +383,6 @@
   color: var(--silo-color-text-lo);
 }
 
-.gha-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 16px;
-  gap: 8px;
-  text-align: center;
-}
-
-.gha-empty__icon-wrap {
-  color: var(--silo-color-ok);
-  margin-bottom: 4px;
-}
-
-.gha-empty__title {
-  font-size: 1.23em;
-  font-weight: 600;
-  color: var(--silo-color-text);
-}
-
-.gha-empty__sub {
-  font-size: 1.08em;
-  color: var(--silo-color-text-lo);
-}
-
 @keyframes gha-spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
