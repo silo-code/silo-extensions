@@ -7,6 +7,7 @@
 
 import { useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Button, CheckboxRow } from "@silo-code/sdk";
 import { useSize, useStore } from "../hooks";
 import { formatCpu, formatMem, displayName } from "../processes/model";
 import type { SessionRow } from "../processes/model";
@@ -468,42 +469,35 @@ function AllProcessesModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="sm-pm-footer">
-        <label className="sm-pm-hide-closed">
-          <input
-            type="checkbox"
-            checked={settings.hideClosedWorkspaces}
-            onChange={(e) =>
-              sysmonStore.updateSettings({
-                ...settings,
-                hideClosedWorkspaces: e.target.checked,
-              })
-            }
-          />
-          Hide closed workspaces
-        </label>
+        <CheckboxRow
+          label="Hide closed workspaces"
+          checked={settings.hideClosedWorkspaces}
+          onChange={(hideClosedWorkspaces) =>
+            sysmonStore.updateSettings({ ...settings, hideClosedWorkspaces })
+          }
+        />
         <span className="sm-pm-footer-info">
           {all
             ? `${totals.sessions} session${totals.sessions === 1 ? "" : "s"} · ${totals.procs} proc${totals.procs === 1 ? "" : "s"}`
             : ""}
         </span>
-        <button
-          className="sm-pm-btn"
+        <Button
           disabled={!selectedRow?.terminalId}
           onClick={() =>
             selectedRow && selectedWorkspaceId && jump(selectedWorkspaceId, selectedRow)
           }
         >
           Go to Terminal
-        </button>
-        <button
-          className="sm-pm-btn sm-pm-btn-danger"
+        </Button>
+        <Button
+          variant="danger"
           disabled={!selectedRow}
           onClick={() =>
             selectedRow && void processesController.killSession(selectedRow)
           }
         >
           End Task
-        </button>
+        </Button>
       </div>
     </div>
   );

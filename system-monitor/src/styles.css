@@ -244,60 +244,85 @@
   cursor: default;
 }
 
-/* ─── Settings page tabs ─────────────────────────────────────────────────── */
-.sms-tabs {
+/* ─── Settings page shell ────────────────────────────────────────────────
+   Built locally rather than relying on the host's internal .es-* classes
+   (SettingsDialog.css), which aren't part of the public extension contract.
+   The pane itself doesn't scroll (each page owns its scroll region via the
+   public .silo-scroll class). Tab switching itself is the SDK's Tabs/TabPanel
+   (.silo-tabs/.silo-tab/.silo-tab-panel) — no local tab styling needed. ── */
+.sms-settings-page {
   display: flex;
-  flex-shrink: 0;
-  gap: 4px;
-  padding: 6px 0 0 8px;
-  margin-left: -9px;
-  background: var(--silo-color-input-bg);
-  border: 1px solid var(--silo-color-border);
-  border-radius: 6px 6px 0 0;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
 }
-
-.sms-tab {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  padding: 5px 14px;
-  margin-bottom: -1px;
-  font: inherit;
-  font-size: 0.88em;
-  color: var(--silo-color-text);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 0.1s ease;
-  position: relative;
-  z-index: 1;
-}
-
-.sms-tabs .sms-tab:hover {
-  background: color-mix(in srgb, var(--silo-color-text) 10%, var(--silo-color-input-bg));
-}
-
-.sms-tabs .sms-tab-active:hover {
-  background: var(--silo-color-bg);
-}
-
-.sms-tab-active {
-  background: var(--silo-color-bg);
-  border-color: var(--silo-color-border);
+.sms-settings-title {
+  margin: 0;
+  font-size: 1.1em;
   color: var(--silo-color-text-hi);
-  font-weight: 500;
+}
+/* TabPanel takes the remaining page height so its .silo-scroll child has a
+   bounded height to actually scroll within — TabPanel has no className prop
+   to set this directly, so it's targeted as a scoped descendant instead. */
+.sms-settings-page > .silo-tab-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.sms-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-/* ─── Drag-and-drop reorder (full settings page) ─────────────────────────── */
+/* ─── Drag-and-drop reorder (full settings page) ─────────────────────────
+   No kit component covers reorderable lists, so these rows are built
+   locally from design tokens only (never from the host's internal .es-*
+   classes) — visually in the same family as SettingRow, but a real drag
+   source, which SettingRow's fixed prop surface can't take. ───────────── */
+.sms-draggable-rows {
+  display: flex;
+  flex-direction: column;
+}
+
 .sms-draggable-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 10px 0;
   cursor: default;
   transition:
     opacity 0.15s,
     background 0.1s;
 }
 
+.sms-draggable-row + .sms-draggable-row {
+  border-top: 1px solid var(--silo-color-border-strong);
+}
+
+.sms-draggable-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sms-draggable-row-label {
+  font-size: var(--silo-font-size-base);
+  color: var(--silo-color-text-hi);
+}
+
+.sms-draggable-row-hint {
+  font-size: var(--silo-font-size-sm);
+  color: var(--silo-color-text-lo);
+}
+
 .sms-panel-controls {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
   gap: 8px;
 }
 
@@ -870,51 +895,7 @@
   text-align: right;
 }
 
-.sm-pm-hide-closed {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.92em;
-  color: var(--silo-color-text);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-
-.sm-pm-hide-closed input {
-  margin: 0;
-  accent-color: var(--silo-color-accent, #4493f8);
-}
-
-/* Matches the host's .silo-button exactly (tokens confirmed from DevTools). */
-.sm-pm-btn {
-  appearance: none;
-  padding: 6px 16px;
-  border: 1px solid var(--silo-button-border, var(--silo-color-border));
-  border-radius: 6px;
-  background: var(--silo-button-bg, var(--silo-color-input-bg));
-  color: var(--silo-button-text, var(--silo-color-text-hi));
-  font: inherit;
-  font-size: 0.92em;
-  cursor: pointer;
-}
-
-.sm-pm-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--silo-button-bg, var(--silo-color-input-bg)) 85%, #000);
-}
-
-.sm-pm-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.sm-pm-btn-danger:not(:disabled) {
-  border-color: var(--silo-color-err, #f47067);
-  background: var(--silo-color-err, #f47067);
-  color: #fff;
-}
-
-.sm-pm-btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--silo-color-err, #f47067) 82%, #000);
-  border-color: color-mix(in srgb, var(--silo-color-err, #f47067) 82%, #000);
-}
+/* "Hide closed workspaces" and Go to Terminal / End Task now render through
+   the SDK's CheckboxRow/Button — both were hand-rolled replicas of
+   .silo-checkbox-row/.silo-button (the Button one even said so: "Matches
+   the host's .silo-button exactly"), so this is a like-for-like swap. */

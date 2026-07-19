@@ -1,0 +1,39 @@
+/* Settings page shell — built locally rather than relying on the host's
+   internal .es-* classes (SettingsDialog.css), which aren't part of the
+   public extension contract. The pane itself doesn't scroll (each page owns
+   its own scroll region via the public .silo-scroll class). */
+.gha-settings-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+}
+.gha-settings-title {
+  margin: 0;
+  font-size: 1.1em;
+  color: var(--silo-color-text-hi);
+}
+.gha-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.gha-settings-status {
+  font-weight: 500;
+}
+.gha-settings-status--ok {
+  color: var(--silo-color-ok);
+}
+.gha-settings-status--err {
+  color: var(--silo-color-err);
+}
+.gha-settings-status--muted {
+  opacity: 0.5;
+}
+
+.gha-settings-link {
+  color: inherit;
+}

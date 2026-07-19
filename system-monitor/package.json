@@ -10,7 +10,7 @@
   ],
   "silo": {
     "id": "silo.system-monitor",
-    "engine": "^0.26.0",
+    "engine": "^0.34.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": [

@@ -4,6 +4,7 @@ import GLOBAL_STYLES from "./styles.css";
 import STATUS_ITEM_STYLES from "./status-item.css";
 import MODAL_STYLES from "./actions-modal.css";
 import WORKSPACE_PROPERTY_PAGE_STYLES from "./workspace-property-page.css";
+import SETTINGS_PAGE_STYLES from "./settings-page.css";
 import { GhActionsService } from "./gh-actions-service";
 import { GhActionsStatusItem } from "./status-item";
 import { GhActionsSettings } from "./settings-page";
@@ -25,7 +26,11 @@ export const extension: Extension = {
       const styleEl = document.createElement("style");
       styleEl.id = STYLE_ID;
       styleEl.textContent =
-        GLOBAL_STYLES + STATUS_ITEM_STYLES + MODAL_STYLES + WORKSPACE_PROPERTY_PAGE_STYLES;
+        GLOBAL_STYLES +
+        STATUS_ITEM_STYLES +
+        MODAL_STYLES +
+        WORKSPACE_PROPERTY_PAGE_STYLES +
+        SETTINGS_PAGE_STYLES;
       document.head.appendChild(styleEl);
     }
 

@@ -298,7 +298,10 @@
 .ghpr-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /* Small horizontal inset so a row's focus ring floats off the panel edges
+     instead of being clipped flush against them (same pattern as .file-tree
+     in the file explorer panel). */
+  padding: 0 4px;
 }
 
 .ghpr-row {
@@ -306,6 +309,7 @@
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
   text-align: left;
   background: none;
   border: none;
@@ -630,6 +634,29 @@
   word-break: break-word;
   color: var(--silo-color-text);
   line-height: 1.45;
+}
+
+/* Settings page shell — built locally rather than relying on the host's
+   internal .es-* classes (SettingsDialog.css), which aren't part of the
+   public extension contract. The pane itself doesn't scroll (each page owns
+   its own scroll region via the public .silo-scroll class). */
+.ghpr-settings-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 12px;
+}
+.ghpr-settings-title {
+  margin: 0;
+  font-size: 1.1em;
+  color: var(--silo-color-text-hi);
+}
+.ghpr-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .ghpr-settings-status {

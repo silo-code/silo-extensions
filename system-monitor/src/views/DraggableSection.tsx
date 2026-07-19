@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
+import { Section, Switch } from "@silo-code/sdk";
 import { GripIcon } from "../icons";
-import { Toggle } from "./Toggle";
 import type { PanelId } from "../store";
 
 export interface DraggableItem {
@@ -51,41 +51,40 @@ export function DraggableSection({
     setDropTarget(null);
   }
 
-  return (
-    <section className="es-section">
-      {title && <h3 className="es-section-title">{title}</h3>}
-      <div className="es-rows" onDragLeave={() => setDropTarget(null)}>
-        {items.map((item, i) => (
-          <div
-            key={item.id}
-            className={[
-              "es-row sms-draggable-row",
-              dragIndex.current === i ? "sms-dragging" : "",
-              dropTarget === i ? "sms-drop-target" : "",
-            ].join(" ")}
-            draggable
-            onDragStart={() => onDragStart(i)}
-            onDragOver={(e) => onDragOver(e, i)}
-            onDrop={() => onDrop(i)}
-            onDragEnd={reset}
-          >
-            <div className="es-row-text">
-              <span className="es-label">{item.label}</span>
-              <span className="es-hint">{item.hint}</span>
-            </div>
-            <div className="es-control sms-panel-controls">
-              <Toggle
-                label={`Show ${item.label}`}
-                checked={item.enabled}
-                onChange={(next) => onToggle(item.id, next)}
-              />
-              <span className="sms-grip" title="Drag to reorder" aria-hidden>
-                <GripIcon />
-              </span>
-            </div>
+  const rows = (
+    <div className="sms-draggable-rows" onDragLeave={() => setDropTarget(null)}>
+      {items.map((item, i) => (
+        <div
+          key={item.id}
+          className={[
+            "sms-draggable-row",
+            dragIndex.current === i ? "sms-dragging" : "",
+            dropTarget === i ? "sms-drop-target" : "",
+          ].join(" ")}
+          draggable
+          onDragStart={() => onDragStart(i)}
+          onDragOver={(e) => onDragOver(e, i)}
+          onDrop={() => onDrop(i)}
+          onDragEnd={reset}
+        >
+          <div className="sms-draggable-row-text">
+            <span className="sms-draggable-row-label">{item.label}</span>
+            <span className="sms-draggable-row-hint">{item.hint}</span>
           </div>
-        ))}
-      </div>
-    </section>
+          <div className="sms-panel-controls">
+            <Switch
+              checked={item.enabled}
+              onChange={(next) => onToggle(item.id, next)}
+              aria-label={`Show ${item.label}`}
+            />
+            <span className="sms-grip" title="Drag to reorder" aria-hidden>
+              <GripIcon />
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
+
+  return title ? <Section label={title}>{rows}</Section> : rows;
 }

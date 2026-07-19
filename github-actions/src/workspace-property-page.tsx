@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button, Section, SettingRow, Switch } from "@silo-code/sdk";
 import type { WorkspacePropertyPageProps } from "@silo-code/sdk";
 import type { GhActionsService } from "./gh-actions-service";
 import { ghStore, formatBranchList, monitoredBranches } from "./store";
@@ -46,57 +47,48 @@ export function GhActionsWorkspaceSettings({ ws, service }: Props) {
 
   return (
     <div className="gha-ws-props">
-      <section className="gha-ws-props__section">
-        <h3 className="gha-ws-props__title">Monitoring</h3>
-        <label className="gha-ws-props__row">
-          <input
-            type="checkbox"
+      <Section label="Monitoring">
+        <SettingRow label="Monitor this workspace">
+          <Switch
             checked={enabled}
-            onChange={(e) => ghStore.setWorkspaceEnabled(ws.id, e.target.checked)}
+            onChange={(v) => ghStore.setWorkspaceEnabled(ws.id, v)}
+            aria-label="Monitor this workspace"
           />
-          <span className="gha-ws-props__label">Monitor this workspace</span>
-        </label>
-        <label className="gha-ws-props__row">
-          <input
-            type="checkbox"
+        </SettingRow>
+        <SettingRow label="Only monitor checked-out branches">
+          <Switch
             checked={branchOnly}
-            onChange={(e) => void handleToggleBranchOnly(e.target.checked)}
+            onChange={(v) => void handleToggleBranchOnly(v)}
+            aria-label="Only monitor checked-out branches"
           />
-          <span className="gha-ws-props__label">Only monitor checked-out branches</span>
-        </label>
-        <label className="gha-ws-props__row">
-          <input
-            type="checkbox"
+        </SettingRow>
+        <SettingRow label="Auto-dismiss alerts when workflows pass">
+          <Switch
             checked={dismissOnSuccess}
-            onChange={(e) => ghStore.setWorkspaceDismissOnSuccess(ws.id, e.target.checked)}
+            onChange={(v) => ghStore.setWorkspaceDismissOnSuccess(ws.id, v)}
+            aria-label="Auto-dismiss alerts when workflows pass"
           />
-          <span className="gha-ws-props__label">Auto-dismiss alerts when workflows pass</span>
-        </label>
-      </section>
+        </SettingRow>
+      </Section>
 
-      <section className="gha-ws-props__section">
-        <h3 className="gha-ws-props__title">Alerts</h3>
-        {clearedAt ? (
-          <p className="gha-ws-props__status">All alerts cleared {formatElapsed(clearedAt)}.</p>
-        ) : (
-          <p className="gha-ws-props__status">No alerts.</p>
-        )}
-        <button className="gha-btn" onClick={() => ghStore.clearAlerts(ws.id)}>
-          Clear alerts
-        </button>
-      </section>
+      <Section label="Alerts">
+        <p className="gha-ws-props__status">
+          {clearedAt ? `All alerts cleared ${formatElapsed(clearedAt)}.` : "No alerts."}
+        </p>
+        <Button onClick={() => ghStore.clearAlerts(ws.id)}>Clear alerts</Button>
+      </Section>
 
       {states.map(
         (state) =>
           state.repoInfo && (
-            <section key={`${state.repoInfo.owner}/${state.repoInfo.repo}`} className="gha-ws-props__section">
-              <h3 className="gha-ws-props__title">
-                {state.repoInfo.owner}/{state.repoInfo.repo}
-              </h3>
+            <Section
+              key={`${state.repoInfo.owner}/${state.repoInfo.repo}`}
+              label={`${state.repoInfo.owner}/${state.repoInfo.repo}`}
+            >
               <p className="gha-ws-props__hint">
                 Branches: <code>{formatBranchList(monitoredBranches(state)) || "—"}</code>
               </p>
-            </section>
+            </Section>
           ),
       )}
     </div>
