@@ -185,6 +185,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
         );
         if (result.ok) {
           ctx.ui.notify("info", `Merged #${detailPr.number}.`, { title: "Pull request merged" });
+          pop();
         } else {
           ctx.ui.notify("error", result.error.message, { title: "Couldn't merge pull request" });
         }
@@ -192,7 +193,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
         setMerging(false);
       }
     },
-    [ctx, detailPr, service, workspaceId],
+    [ctx, detailPr, pop, service, workspaceId],
   );
 
   const handleMergeClick = useCallback(
@@ -376,13 +377,25 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 #{view.number}
                 {detailPr ? ` · ${detailPr.title}` : ""}
               </div>
-              {detailPr && offersMerge(detailPr) && (
-                <MergeButton
-                  reason={mergeBlockReason(detailPr)}
-                  enabled={isMergeReady(detailPr)}
-                  merging={merging}
-                  onMerge={(anchor) => void handleMergeClick(anchor)}
-                />
+              {detailPr && (
+                <div className="ghpr-header__cta">
+                  <button
+                    type="button"
+                    className="ghpr-open-btn"
+                    aria-label="Open on GitHub"
+                    onClick={() => void ctx.ui.openExternal(detailPr.url)}
+                  >
+                    Open
+                  </button>
+                  {offersMerge(detailPr) && (
+                    <MergeButton
+                      reason={mergeBlockReason(detailPr)}
+                      enabled={isMergeReady(detailPr)}
+                      merging={merging}
+                      onMerge={(anchor) => void handleMergeClick(anchor)}
+                    />
+                  )}
+                </div>
               )}
             </div>
           </div>
