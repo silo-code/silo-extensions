@@ -7,7 +7,12 @@
  */
 
 import type { ExtensionContext } from "@silo-code/sdk";
-import { AGENT_DETECTORS, detectCursorAgentOutput, detectCodexIdleAfterWorking } from "./osc-detectors";
+import {
+  AGENT_DETECTORS,
+  detectCursorAgentOutput,
+  detectCodexIdleAfterWorking,
+  detectFromOscTitle,
+} from "./osc-detectors";
 import {
   reduce,
   isLiveSignal,
@@ -76,6 +81,11 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
   // uses at the next activation to tell "app was closed a while" apart from
   // "we were alive a second ago."
   const lastSeenAt = new Map<string, string>();
+  // Terminals whose status has been confirmed by a live OSC signal or by
+  // seeding from the host's current title. Async storage hydration must not
+  // overwrite these — `ctx.storage` may deliver a stale blob after title
+  // seed already corrected a restored "working" to "waiting".
+  const confirmed = new Set<string>();
   // Disposables for per-terminal OSC subscriptions, keyed by terminal id.
   const oscSubs = new Map<string, { dispose(): void }>();
   // Raw-PTY output subscriptions — Cursor Agent spinner fallback when OSC
@@ -89,6 +99,9 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
   const agentIdleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   let activeTerminalId = ctx.terminals.getActive();
+  // When true, skip the working→waiting chime — used while seeding from a
+  // restored title so reloading the extension doesn't ding for a correction.
+  let suppressTransitionSound = false;
 
   function persistState(terminalId: string, state: TerminalAgentState) {
     const stored: StoredTerminalState = {
@@ -106,7 +119,10 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     // Any live, non-timer signal reconfirms this terminal's aliveness, even
     // when the transition itself is a no-op — bump + persist the heartbeat
     // so a long unchanging "working" phase doesn't look stale on restart.
-    if (isLiveSignal(ev)) lastSeenAt.set(terminalId, ev.now);
+    if (isLiveSignal(ev)) {
+      lastSeenAt.set(terminalId, ev.now);
+      confirmed.add(terminalId);
+    }
 
     // reduce() returns prev by identity when nothing changed — critical here,
     // since Claude Code's braille spinner emits an OSC 0 per animation frame
@@ -130,6 +146,7 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     // terminal, where reduce() lands straight on "done" instead of
     // "waiting" (see agent-status.ts) since the finish is auto-acknowledged.
     if (
+      !suppressTransitionSound &&
       prev.activity === "working" &&
       next.isAgent &&
       (next.activity === "waiting" || next.activity === "done")
@@ -240,6 +257,42 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     }
   }
 
+  /**
+   * Correct restored state from the host's current terminal title (OSC 0
+   * payload). Applied once when a terminal is first tracked / when storage
+   * finally hydrates — not on every workspace tick, so a brief ✳ flicker
+   * between Claude tool calls can't keep resetting us. Unlike live OSC
+   * frames, a title at restore time is already settled, so ✳ → waiting is
+   * applied immediately (no agent-idle debounce).
+   */
+  function seedFromTitle(terminalId: string, title: string) {
+    const cur = states.get(terminalId);
+    if (!cur) return;
+    const wasAgentWorking =
+      cur.activity === "working" && cur.workingSource === "agent";
+    const result = detectFromOscTitle(title, wasAgentWorking);
+    if (!result) return;
+    log(
+      `title-seed "${title.slice(0, 40)}" → ${result.status}/${result.source}` +
+        ` tid=…${terminalId.slice(-8)}`,
+    );
+    if (result.timer === "schedule") scheduleShellIdle(terminalId);
+    else if (result.timer === "clear") clearShellIdleTimer(terminalId);
+    clearAgentIdleTimer(terminalId);
+    // Title seed counts as confirmation so a late storage hydrate can't
+    // stomp a corrected waiting state with an older persisted "working".
+    confirmed.add(terminalId);
+    suppressTransitionSound = true;
+    try {
+      dispatch(
+        terminalId,
+        detectedEvent(terminalId, result.status, result.source),
+      );
+    } finally {
+      suppressTransitionSound = false;
+    }
+  }
+
   function subscribeTerminalOsc(terminalId: string, sessionId: string) {
     const prevSessionId = oscSubSessionIds.get(terminalId);
     // Skip if we already have a live sub for this exact session. If sessionId
@@ -325,9 +378,28 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     oscSubSessionIds.delete(terminalId);
     states.delete(terminalId);
     lastSeenAt.delete(terminalId);
+    confirmed.delete(terminalId);
     clearShellIdleTimer(terminalId);
     clearAgentIdleTimer(terminalId);
     if (opts.clearStorage) storage.set(stateStorageKey(terminalId), undefined);
+  }
+
+  function adoptTerminal(t: {
+    id: string;
+    kind: TerminalAgentState["kind"];
+    title: string;
+    sessionId: string;
+  }) {
+    const stored = storage.get<StoredTerminalState>(stateStorageKey(t.id));
+    const gapMs = stored
+      ? Date.now() - new Date(stored.lastSeenAt).getTime()
+      : 0;
+    states.set(t.id, restoreState(t.kind, stored?.state, gapMs));
+    if (stored) lastSeenAt.set(t.id, stored.lastSeenAt);
+    // Host title is often fresher than persisted state after a reload —
+    // agent may have finished (✳ / plain Codex title) while we were down.
+    seedFromTitle(t.id, t.title);
+    subscribeTerminalOsc(t.id, t.sessionId);
   }
 
   function syncOscSubscriptions() {
@@ -336,22 +408,40 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
     for (const workspace of ws.all) {
       for (const t of workspace.terminals) {
         live.add(t.id);
-        if (!states.has(t.id)) {
-          const stored = storage.get<StoredTerminalState>(
-            stateStorageKey(t.id),
-          );
-          const gapMs = stored
-            ? Date.now() - new Date(stored.lastSeenAt).getTime()
-            : 0;
-          states.set(t.id, restoreState(t.kind, stored?.state, gapMs));
-          if (stored) lastSeenAt.set(t.id, stored.lastSeenAt);
-        }
-        subscribeTerminalOsc(t.id, t.sessionId);
+        if (!states.has(t.id)) adoptTerminal(t);
+        else subscribeTerminalOsc(t.id, t.sessionId);
       }
     }
     // Clean up state for terminals that no longer exist.
     for (const id of [...oscSubs.keys()]) {
       if (!live.has(id)) teardownTerminal(id, { clearStorage: true });
+    }
+  }
+
+  /**
+   * `ctx.storage` hydrates asynchronously — the first sync at activate may
+   * see an empty bag and fall back to initialState. When persisted blobs
+   * arrive, re-adopt any terminal that hasn't been confirmed by a live
+   * signal or title seed yet (same pattern as settings-store.ts).
+   */
+  function rehydrateFromStorage() {
+    const ws = ctx.workspaces.getState();
+    let changed = false;
+    for (const workspace of ws.all) {
+      for (const t of workspace.terminals) {
+        if (confirmed.has(t.id)) continue;
+        const stored = storage.get<StoredTerminalState>(stateStorageKey(t.id));
+        if (!stored) continue;
+        const gapMs = Date.now() - new Date(stored.lastSeenAt).getTime();
+        states.set(t.id, restoreState(t.kind, stored.state, gapMs));
+        lastSeenAt.set(t.id, stored.lastSeenAt);
+        seedFromTitle(t.id, t.title);
+        changed = true;
+      }
+    }
+    if (changed) {
+      ctx.workspaces.invalidateStatus();
+      ctx.terminals.invalidateTabDecorations();
     }
   }
 
@@ -375,6 +465,7 @@ export function createTerminalTracker(ctx: ExtensionContext): TerminalTracker {
       // when the dispatch above was a no-op.
       ctx.workspaces.invalidateStatus();
     }),
+    storage.subscribe(rehydrateFromStorage),
   ];
 
   // Subscribe to any terminals already open at activation time.
