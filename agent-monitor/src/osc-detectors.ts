@@ -302,3 +302,22 @@ export const AGENT_DETECTORS = [
   detectCodexCLI,
   detectShellIntegration,
 ];
+
+/**
+ * Re-run the OSC 0 detectors against a terminal's current title. Used at
+ * activation/restore: the host keeps {@link TerminalRecord.title} up to date
+ * from OSC 0 even while our `subscribeOsc` was down (extension reload) or
+ * paused (background tab), so the title is often fresher than persisted
+ * "working" state. `wasAgentWorking` gates the Codex plain-title idle
+ * fallback the same way live OSC dispatch does.
+ */
+export function detectFromOscTitle(
+  title: string,
+  wasAgentWorking: boolean,
+): DetectionResult | null {
+  for (const detect of AGENT_DETECTORS) {
+    const result = detect(0, title);
+    if (result) return result;
+  }
+  return detectCodexIdleAfterWorking(0, title, wasAgentWorking);
+}

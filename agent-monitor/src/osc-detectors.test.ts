@@ -6,6 +6,7 @@ import {
   detectCopilotCLI,
   detectCodexCLI,
   detectCodexIdleAfterWorking,
+  detectFromOscTitle,
   detectShellIntegration,
   CURSOR_SPINNER_FRAMES,
 } from "./osc-detectors";
@@ -333,5 +334,46 @@ describe("detectShellIntegration", () => {
   it("returns null for non-OSC-133 codes", () => {
     expect(detectShellIntegration(0, "C")).toBeNull();
     expect(detectShellIntegration(9, "C")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectFromOscTitle — restore-time seed from TerminalRecord.title
+// ---------------------------------------------------------------------------
+describe("detectFromOscTitle", () => {
+  it("maps Claude idle title to waiting (reload correction)", () => {
+    expect(detectFromOscTitle("✳ silo-extensions", false)).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+  });
+
+  it("maps Claude/Codex braille spinner title to working", () => {
+    expect(detectFromOscTitle("⠋ silo-extensions", false)).toEqual({
+      status: "working",
+      source: "agent",
+      timer: "schedule",
+    });
+  });
+
+  it("maps Codex plain project title to waiting when was agent-working", () => {
+    expect(detectFromOscTitle("silo-extensions", true)).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
+  });
+
+  it("returns null for a plain title when not agent-working", () => {
+    expect(detectFromOscTitle("silo-extensions", false)).toBeNull();
+  });
+
+  it("maps Cursor Agent Ready title to waiting", () => {
+    expect(detectFromOscTitle("my-agent - ✅ Ready", false)).toEqual({
+      status: "waiting",
+      source: "agent",
+      timer: "clear",
+    });
   });
 });
