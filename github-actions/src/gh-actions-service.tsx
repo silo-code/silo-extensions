@@ -16,6 +16,7 @@ import {
 import type { WorkspaceBadge, WorkspaceStatusRow, Disposable } from "@silo-code/sdk";
 import { AuthHelpModal } from "./auth-help-modal";
 import { getTooltip, getRichTooltip } from "./status-labels";
+import { takeUnseenFailedRuns, formatFailureToastMessage } from "./failure-notifications";
 
 const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
@@ -442,35 +443,33 @@ export class GhActionsService {
     workspaceId: string,
     runs: WorkflowRun[],
   ): void {
-    for (const run of runs) {
-      if (run.status === "completed" && run.conclusion === "failure") {
-        if (!this._seenFailedRuns.has(run.id)) {
-          this._seenFailedRuns.add(run.id);
-          const ws = ctx.workspaces.get(workspaceId);
-          const branch = run.head_branch || "unknown branch";
-          ctx.log.warn(`New workflow failure detected: "${run.name}" on ${branch} in ${ws?.name}`, {
-            runId: run.id,
-            url: run.html_url,
-            branch,
-          });
-          ctx.ui.notify(
-            "error",
-            `"${run.name}" failed on ${branch}`,
-            {
-              title: ws?.name
-                ? `GitHub Actions: ${ws.name}`
-                : "GitHub Actions: workflow failed",
-              actions: [
-                {
-                  label: "View",
-                  run: () => ctx.ui.openExternal(run.html_url),
-                },
-              ],
-            },
-          );
-        }
-      }
+    const fresh = takeUnseenFailedRuns(runs, this._seenFailedRuns);
+    if (fresh.length === 0) return;
+
+    const ws = ctx.workspaces.get(workspaceId);
+    for (const run of fresh) {
+      const branch = run.head_branch || "unknown branch";
+      ctx.log.warn(`New workflow failure detected: "${run.name}" on ${branch} in ${ws?.name}`, {
+        runId: run.id,
+        url: run.html_url,
+        branch,
+      });
     }
+
+    // One toast per poll batch — a stack of identical error toasts is noise when
+    // several workflows fail in the same refresh window.
+    const primary = fresh[0]!;
+    ctx.ui.notify("error", formatFailureToastMessage(fresh), {
+      title: ws?.name
+        ? `GitHub Actions: ${ws.name}`
+        : "GitHub Actions: workflow failed",
+      actions: [
+        {
+          label: "View",
+          run: () => ctx.ui.openExternal(primary.html_url),
+        },
+      ],
+    });
   }
 
   private _clearTimer(workspaceId: string): void {
