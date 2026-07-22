@@ -1,5 +1,5 @@
 import { Globe } from "@phosphor-icons/react";
-import type { DockPanelProps, Extension } from "@silo-code/sdk";
+import type { DockPanelProps, Extension, MenuContext } from "@silo-code/sdk";
 import { LocalWebViewerPanel } from "./WebViewerPanel";
 
 /* -------------------------------------------------------------------------- */
@@ -389,6 +389,23 @@ export const extension: Extension = {
       id: "silo.local-web-viewer.open",
       label: "Local Web Viewer: Open",
       run: () => ctx.layout.openPanel("local-web-viewer", { title: "Web View" }),
+    });
+
+    ctx.registerCommand({
+      id: "silo.local-web-viewer.openLink",
+      label: "Local Web Viewer: Open Link",
+      run: (...args) => {
+        const target = args[0] as MenuContext["terminal/link"];
+        ctx.layout.openPanel("local-web-viewer", { url: target.text });
+      },
+    });
+
+    ctx.registerContextMenuItem({
+      surface: "terminal/link",
+      command: "silo.local-web-viewer.openLink",
+      label: "Open in Local Web Viewer",
+      icon: <Globe size={14} weight="regular" />,
+      when: (_, target) => target.kind === "url",
     });
   },
 };
