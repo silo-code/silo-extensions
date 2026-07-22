@@ -10,7 +10,7 @@
   ],
   "silo": {
     "id": "silo.local-web-viewer",
-    "engine": "^0.34.0",
+    "engine": "^0.35.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": [
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "^0.29.0",
+    "@silo-code/sdk": "^0.30.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",
