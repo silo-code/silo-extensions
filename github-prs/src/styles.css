@@ -216,11 +216,20 @@
   font-size: 1em;
   line-height: 1.5;
 }
-.ghpr-empty__title,
+.ghpr-empty {
+  gap: 2px;
+  font-size: calc(1em - 1px);
+  font-style: italic;
+}
 .ghpr-gate__title {
   font-weight: 600;
   color: var(--silo-color-text);
   font-size: 1em;
+}
+.ghpr-empty__title {
+  font-weight: 400;
+  color: var(--silo-color-text-lo);
+  font-size: inherit;
 }
 .ghpr-link {
   background: none;

@@ -13,6 +13,8 @@ export interface PrListViewProps {
   viewerLogin: string | null;
   /** False until the service finishes its first probe of this workspace's remotes. */
   workspaceReady: boolean;
+  /** True while the service is fetching this workspace — suppresses "no results" flashes. */
+  refreshing: boolean;
   onOpenPr: (repoKey: string, number: number) => void;
 }
 
@@ -41,6 +43,7 @@ export function PrListView({
   filter,
   viewerLogin,
   workspaceReady,
+  refreshing,
   onOpenPr,
 }: PrListViewProps) {
   const withRepo = useMemo(
@@ -117,12 +120,7 @@ export function PrListView({
 
   if (withRepo.length === 0) {
     if (!workspaceReady) {
-      return (
-        <div className="ghpr-empty">
-          <div className="ghpr-empty__title">Loading pull requests…</div>
-          <div>Detecting GitHub remotes in this workspace.</div>
-        </div>
-      );
+      return null;
     }
     return (
       <div className="ghpr-empty">
@@ -150,10 +148,12 @@ export function PrListView({
       return (
         <>
           {singleError && <div className="ghpr-error-banner">{singleError}</div>}
-          <div className="ghpr-empty">
-            <div className="ghpr-empty__title">No pull requests</div>
-            <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
-          </div>
+          {!refreshing && (
+            <div className="ghpr-empty">
+              <div className="ghpr-empty__title">No pull requests</div>
+              <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
+            </div>
+          )}
         </>
       );
     }
@@ -177,7 +177,7 @@ export function PrListView({
 
   return (
     <div {...group.containerProps}>
-      {!anyPrs && (
+      {!anyPrs && !refreshing && (
         <div className="ghpr-empty">
           <div className="ghpr-empty__title">No pull requests</div>
           <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
@@ -206,7 +206,9 @@ export function PrListView({
                 <div className="ghpr-error-banner ghpr-error-banner--inline">{errorMessage}</div>
               )}
               {prs.length === 0 ? (
-                <div className="ghpr-repo__empty">No matching PRs</div>
+                refreshing ? null : (
+                  <div className="ghpr-repo__empty">No matching PRs</div>
+                )
               ) : (
                 <ul className="ghpr-list" role="listbox">
                   {prs.map((pr) => {

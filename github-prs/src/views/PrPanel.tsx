@@ -71,7 +71,6 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const workspaceId = wsState.activeId ?? "";
   const store = usePrStore();
 
-  const [refreshing, setRefreshing] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [merging, setMerging] = useState(false);
 
@@ -79,6 +78,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const enabled = workspaceId ? store.getWorkspaceEnabled(workspaceId) : true;
   const repoStates = workspaceId ? store.getRepoStates(workspaceId) : [];
   const workspaceReady = workspaceId ? store.isWorkspaceReady(workspaceId) : false;
+  const refreshing = workspaceId ? store.isWorkspaceRefreshing(workspaceId) : false;
   const viewerLogin = store.viewerLogin;
   const authState = store.authState;
   const initialized = store.initialized;
@@ -123,9 +123,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   const handleRefresh = useCallback(async () => {
     if (!workspaceId) return;
-    setRefreshing(true);
     await service.refreshWorkspace(workspaceId);
-    setRefreshing(false);
   }, [service, workspaceId]);
 
   const handleFilter = useCallback(
@@ -410,6 +408,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
             filter={filter}
             viewerLogin={viewerLogin}
             workspaceReady={workspaceReady}
+            refreshing={refreshing}
             onOpenPr={openPr}
           />
         ) : detailPr ? (

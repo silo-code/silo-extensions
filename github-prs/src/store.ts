@@ -85,6 +85,7 @@ export class PrStore {
   private _detailErrors = new Map<string, DetailErrorEntry>();
   private _workspaceEnabled = new Map<string, boolean>();
   private _workspaceFilter = new Map<string, PrFilter>();
+  private _refreshingWorkspaces = new Set<string>();
   private _authState: AuthState | null = null;
   private _viewerLogin: string | null = null;
   private _initialized = false;
@@ -242,6 +243,18 @@ export class PrStore {
       record[id] = val;
     }
     this._storage?.set("workspaceFilter", record);
+    this._notify();
+  }
+
+  isWorkspaceRefreshing(workspaceId: string): boolean {
+    return this._refreshingWorkspaces.has(workspaceId);
+  }
+
+  setWorkspaceRefreshing(workspaceId: string, value: boolean): void {
+    const was = this._refreshingWorkspaces.has(workspaceId);
+    if (was === value) return;
+    if (value) this._refreshingWorkspaces.add(workspaceId);
+    else this._refreshingWorkspaces.delete(workspaceId);
     this._notify();
   }
 
