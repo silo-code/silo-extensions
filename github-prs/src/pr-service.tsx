@@ -310,40 +310,45 @@ export class PrService {
     const ws = ctx.workspaces.get(workspaceId);
     if (!ws) return;
 
-    if (!prStore.authenticated) {
-      ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
-      this._maybeMarkWorkspaceReady(workspaceId);
-      return;
-    }
-
-    const folderPaths = [ws.folder, ...(ws.extraFolders ?? [])];
-    const resolved = await Promise.all(
-      folderPaths.map(async (path) => {
-        const [repoInfo, headBranch] = await Promise.all([
-          resolveRemote(ctx, path),
-          resolveHeadBranch(ctx, path),
-        ]);
-        if (!repoInfo) return null;
-        return { path, repoInfo, branch: headBranch ?? "main" } satisfies ResolvedCheckout;
-      }),
-    );
-    const checkouts = resolved.filter((c): c is ResolvedCheckout => c !== null);
-    const byRemote = groupByRemote(checkouts);
-
-    for (const state of prStore.getRepoStates(workspaceId)) {
-      if (!state.repoInfo) continue;
-      const key = repoStateKey(state.repoInfo.owner, state.repoInfo.repo);
-      if (!byRemote.has(key)) {
-        prStore.removeRepoState(workspaceId, state.repoInfo.owner, state.repoInfo.repo);
+    prStore.setWorkspaceRefreshing(workspaceId, true);
+    try {
+      if (!prStore.authenticated) {
+        ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
+        this._maybeMarkWorkspaceReady(workspaceId);
+        return;
       }
-    }
 
-    await Promise.all(
-      [...byRemote.values()].map((group) =>
-        this._refreshRemote(ctx, workspaceId, ws.folder, group.repoInfo, group.folders),
-      ),
-    );
-    this._maybeMarkWorkspaceReady(workspaceId);
+      const folderPaths = [ws.folder, ...(ws.extraFolders ?? [])];
+      const resolved = await Promise.all(
+        folderPaths.map(async (path) => {
+          const [repoInfo, headBranch] = await Promise.all([
+            resolveRemote(ctx, path),
+            resolveHeadBranch(ctx, path),
+          ]);
+          if (!repoInfo) return null;
+          return { path, repoInfo, branch: headBranch ?? "main" } satisfies ResolvedCheckout;
+        }),
+      );
+      const checkouts = resolved.filter((c): c is ResolvedCheckout => c !== null);
+      const byRemote = groupByRemote(checkouts);
+
+      for (const state of prStore.getRepoStates(workspaceId)) {
+        if (!state.repoInfo) continue;
+        const key = repoStateKey(state.repoInfo.owner, state.repoInfo.repo);
+        if (!byRemote.has(key)) {
+          prStore.removeRepoState(workspaceId, state.repoInfo.owner, state.repoInfo.repo);
+        }
+      }
+
+      await Promise.all(
+        [...byRemote.values()].map((group) =>
+          this._refreshRemote(ctx, workspaceId, ws.folder, group.repoInfo, group.folders),
+        ),
+      );
+      this._maybeMarkWorkspaceReady(workspaceId);
+    } finally {
+      prStore.setWorkspaceRefreshing(workspaceId, false);
+    }
   }
 
   private async _refreshRemote(
