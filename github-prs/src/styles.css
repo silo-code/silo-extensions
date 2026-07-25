@@ -159,12 +159,12 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 2px 6px 2px 2px;
-  margin: 0 0 0 -2px;
+  padding: 3px 6px;
+  margin-left: -6px;
   border-radius: var(--silo-radius-sm);
   color: var(--silo-color-accent);
   font-family: inherit;
-  font-size: 1em;
+  font-size: var(--silo-font-size-sm);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -183,8 +183,8 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--silo-radius-sm);
   color: var(--silo-color-text-lo);
   flex-shrink: 0;

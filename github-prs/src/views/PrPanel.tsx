@@ -350,7 +350,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 disabled={refreshing}
                 aria-label="Refresh"
               >
-                <ArrowsClockwise size={16} />
+                <ArrowsClockwise size={14} />
               </button>
             </Tooltip>
           </div>
@@ -375,7 +375,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
               <div className="ghpr-header ghpr-header--detail">
                 <div className="ghpr-header__toolbar">
                   <button type="button" className="ghpr-header__back" onClick={pop}>
-                    <CaretLeft size={16} />
+                    <CaretLeft size={14} weight="bold" />
                     <span className="ghpr-header__back-label">Back</span>
                   </button>
                   {detailPr && (
@@ -387,7 +387,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                           aria-label="Open on GitHub"
                           onClick={() => void ctx.ui.openExternal(detailPr.url)}
                         >
-                          <ArrowSquareOut size={16} />
+                          <ArrowSquareOut size={14} />
                         </button>
                       </Tooltip>
                       <Tooltip content="Copy…">
@@ -397,7 +397,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                           aria-label="Copy actions"
                           onClick={(e) => openOverflowMenu(e.currentTarget)}
                         >
-                          <DotsThreeVertical size={18} weight="bold" />
+                          <DotsThreeVertical size={14} />
                         </button>
                       </Tooltip>
                     </div>
