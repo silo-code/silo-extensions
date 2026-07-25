@@ -32,6 +32,8 @@ import {
 import { useViewStack } from "./use-view-stack";
 import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
+import { detailPageSlot, listPageSlot } from "./page-slots";
+import type { PanelView } from "../view-stack";
 
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
@@ -83,15 +85,29 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const authState = store.authState;
   const initialized = store.initialized;
 
-  const detailPr = useMemo(() => {
-    if (view.kind !== "detail") return null;
-    return findPrInRepoStates(repoStates, view.repoKey, view.number);
-  }, [view, repoStates]);
+  // The detail page keeps rendering its last-open PR while it's parked
+  // off-screen mid-slide (see the render below) — tracked separately from
+  // `view` so popping back to "list" doesn't blank it the instant Back is
+  // pressed, before the slide-out transition finishes.
+  const [lastDetailView, setLastDetailView] = useState<Extract<
+    PanelView,
+    { kind: "detail" }
+  > | null>(view.kind === "detail" ? view : null);
+  useEffect(() => {
+    if (view.kind === "detail") setLastDetailView(view);
+  }, [view]);
 
-  const detailEntry =
-    view.kind === "detail" ? store.getDetail(view.repoKey, view.number) : undefined;
-  const detailError =
-    view.kind === "detail" ? store.getDetailError(view.repoKey, view.number) : undefined;
+  const detailPr = useMemo(() => {
+    if (!lastDetailView) return null;
+    return findPrInRepoStates(repoStates, lastDetailView.repoKey, lastDetailView.number);
+  }, [lastDetailView, repoStates]);
+
+  const detailEntry = lastDetailView
+    ? store.getDetail(lastDetailView.repoKey, lastDetailView.number)
+    : undefined;
+  const detailError = lastDetailView
+    ? store.getDetailError(lastDetailView.repoKey, lastDetailView.number)
+    : undefined;
 
   useEffect(() => {
     if (view.kind !== "detail" || !active) {
@@ -315,9 +331,9 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   return (
     <div className="ghpr">
-      <div className="ghpr-header">
-        {view.kind === "list" ? (
-          <>
+      <div className="ghpr-viewport">
+        <div className={`ghpr-page ghpr-page--${listPageSlot(view)}`}>
+          <div className="ghpr-header">
             <button
               type="button"
               className="ghpr-filter-btn"
@@ -337,97 +353,105 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 <ArrowsClockwise size={16} />
               </button>
             </Tooltip>
-          </>
-        ) : (
-          <div className="ghpr-header__detail">
-            <div className="ghpr-header__toolbar">
-              <button type="button" className="ghpr-header__back" onClick={pop}>
-                <CaretLeft size={16} />
-                <span className="ghpr-header__back-label">Back</span>
-              </button>
-              {detailPr && (
-                <div className="ghpr-header__actions">
-                  <Tooltip content="Open on GitHub">
-                    <button
-                      type="button"
-                      className="ghpr-icon-btn"
-                      aria-label="Open on GitHub"
-                      onClick={() => void ctx.ui.openExternal(detailPr.url)}
-                    >
-                      <ArrowSquareOut size={16} />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Copy…">
-                    <button
-                      type="button"
-                      className="ghpr-icon-btn"
-                      aria-label="Copy actions"
-                      onClick={(e) => openOverflowMenu(e.currentTarget)}
-                    >
-                      <DotsThreeVertical size={18} weight="bold" />
-                    </button>
-                  </Tooltip>
-                </div>
-              )}
-            </div>
-            <div className="ghpr-header__title-row">
-              <div className="ghpr-header__title">
-                #{view.number}
-                {detailPr ? ` · ${detailPr.title}` : ""}
-              </div>
-              {detailPr && (
-                <div className="ghpr-header__cta">
-                  <button
-                    type="button"
-                    className="ghpr-open-btn"
-                    aria-label="Open on GitHub"
-                    onClick={() => void ctx.ui.openExternal(detailPr.url)}
-                  >
-                    Open
+          </div>
+          <div className="ghpr-body">
+            <PrListView
+              storage={storage}
+              repoStates={repoStates}
+              filter={filter}
+              viewerLogin={viewerLogin}
+              workspaceReady={workspaceReady}
+              refreshing={refreshing}
+              onOpenPr={openPr}
+            />
+          </div>
+        </div>
+
+        {/* Lazily mounted on first open, then left mounted (see lastDetailView)
+            so Back's slide-out shows the PR that was open, not a blank page. */}
+        <div className={`ghpr-page ghpr-page--${detailPageSlot(view)}`}>
+          {lastDetailView && (
+            <>
+              <div className="ghpr-header ghpr-header--detail">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={16} />
+                    <span className="ghpr-header__back-label">Back</span>
                   </button>
-                  {offersMerge(detailPr) && (
-                    <MergeButton
-                      reason={mergeBlockReason(detailPr)}
-                      enabled={isMergeReady(detailPr)}
-                      merging={merging}
-                      onMerge={(anchor) => void handleMergeClick(anchor)}
-                    />
+                  {detailPr && (
+                    <div className="ghpr-header__actions">
+                      <Tooltip content="Open on GitHub">
+                        <button
+                          type="button"
+                          className="ghpr-icon-btn"
+                          aria-label="Open on GitHub"
+                          onClick={() => void ctx.ui.openExternal(detailPr.url)}
+                        >
+                          <ArrowSquareOut size={16} />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="Copy…">
+                        <button
+                          type="button"
+                          className="ghpr-icon-btn"
+                          aria-label="Copy actions"
+                          onClick={(e) => openOverflowMenu(e.currentTarget)}
+                        >
+                          <DotsThreeVertical size={18} weight="bold" />
+                        </button>
+                      </Tooltip>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="ghpr-body">
-        {view.kind === "list" ? (
-          <PrListView
-            storage={storage}
-            repoStates={repoStates}
-            filter={filter}
-            viewerLogin={viewerLogin}
-            workspaceReady={workspaceReady}
-            refreshing={refreshing}
-            onOpenPr={openPr}
-          />
-        ) : detailPr ? (
-          <PrDetailView
-            ctx={ctx}
-            pr={detailPr}
-            detailEntry={detailEntry}
-            detailError={detailError}
-            loadingDetail={loadingDetail}
-          />
-        ) : (
-          <div className="ghpr-empty">
-            <div className="ghpr-empty__title">Pull request not found</div>
-            <div>It may have been closed or is outside the current filter.</div>
-            <button type="button" className="ghpr-link" onClick={pop}>
-              Back to list
-            </button>
-          </div>
-        )}
+                <div className="ghpr-header__title-row">
+                  <div className="ghpr-header__title">
+                    #{lastDetailView.number}
+                    {detailPr ? ` · ${detailPr.title}` : ""}
+                  </div>
+                  {detailPr && (
+                    <div className="ghpr-header__cta">
+                      <button
+                        type="button"
+                        className="ghpr-open-btn"
+                        aria-label="Open on GitHub"
+                        onClick={() => void ctx.ui.openExternal(detailPr.url)}
+                      >
+                        Open
+                      </button>
+                      {offersMerge(detailPr) && (
+                        <MergeButton
+                          reason={mergeBlockReason(detailPr)}
+                          enabled={isMergeReady(detailPr)}
+                          merging={merging}
+                          onMerge={(anchor) => void handleMergeClick(anchor)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="ghpr-body">
+                {detailPr ? (
+                  <PrDetailView
+                    ctx={ctx}
+                    pr={detailPr}
+                    detailEntry={detailEntry}
+                    detailError={detailError}
+                    loadingDetail={loadingDetail}
+                  />
+                ) : (
+                  <div className="ghpr-empty">
+                    <div className="ghpr-empty__title">Pull request not found</div>
+                    <div>It may have been closed or is outside the current filter.</div>
+                    <button type="button" className="ghpr-link" onClick={pop}>
+                      Back to list
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

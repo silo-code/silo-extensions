@@ -11,6 +11,38 @@
   color: var(--silo-color-text);
 }
 
+/* Positioned ancestor for the sliding list/detail pages below. */
+.ghpr-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Each page owns its own header + body and is always mounted (see PrPanel's
+ * `lastDetailView`), sliding horizontally between list and detail — same
+ * full-page-takeover pattern as Silo's git-explorer "View Commits". */
+.ghpr-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: transform 220ms ease;
+}
+
+.ghpr-page--current {
+  transform: translateX(0);
+}
+
+.ghpr-page--parked-left {
+  transform: translateX(-100%);
+}
+
+.ghpr-page--parked-right {
+  transform: translateX(100%);
+}
+
 .ghpr-header {
   display: flex;
   align-items: center;
@@ -20,16 +52,10 @@
   flex-shrink: 0;
   min-height: calc(1em + 20px);
 }
-.ghpr-header:has(.ghpr-header__detail) {
-  align-items: stretch;
-}
 
-.ghpr-header__detail {
-  display: flex;
+.ghpr-header--detail {
   flex-direction: column;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
+  align-items: stretch;
 }
 
 .ghpr-header__toolbar {
@@ -124,6 +150,8 @@
   margin-left: auto;
 }
 
+/* Accent-colored at rest (not just on hover) so it reads as an interactive
+ * control immediately, rather than blending into the surrounding text. */
 .ghpr-header__back {
   display: inline-flex;
   align-items: center;
@@ -134,13 +162,13 @@
   padding: 2px 6px 2px 2px;
   margin: 0 0 0 -2px;
   border-radius: var(--silo-radius-sm);
-  color: var(--silo-color-text-lo);
+  color: var(--silo-color-accent);
   font-family: inherit;
   font-size: 1em;
+  font-weight: 600;
   flex-shrink: 0;
 }
 .ghpr-header__back:hover {
-  color: var(--silo-color-text-hi);
   background: var(--silo-color-bg-hover);
 }
 .ghpr-header__back-label {
