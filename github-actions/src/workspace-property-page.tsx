@@ -59,6 +59,7 @@ export function GhActionsWorkspaceSettings({ ws, service }: Props) {
           <Switch
             checked={branchOnly}
             onChange={(v) => void handleToggleBranchOnly(v)}
+            disabled={!enabled}
             aria-label="Only monitor checked-out branches"
           />
         </SettingRow>
@@ -66,16 +67,22 @@ export function GhActionsWorkspaceSettings({ ws, service }: Props) {
           <Switch
             checked={dismissOnSuccess}
             onChange={(v) => ghStore.setWorkspaceDismissOnSuccess(ws.id, v)}
+            disabled={!enabled}
             aria-label="Auto-dismiss alerts when workflows pass"
           />
         </SettingRow>
       </Section>
 
+      {/* Everything below depends on monitoring actually running — no runs
+          are fetched while disabled, so the settings above are inert and
+          there's nothing here to clear. */}
       <Section label="Alerts">
         <p className="gha-ws-props__status">
           {clearedAt ? `All alerts cleared ${formatElapsed(clearedAt)}.` : "No alerts."}
         </p>
-        <Button onClick={() => ghStore.clearAlerts(ws.id)}>Clear alerts</Button>
+        <Button onClick={() => ghStore.clearAlerts(ws.id)} disabled={!enabled}>
+          Clear alerts
+        </Button>
       </Section>
 
       {states.map(

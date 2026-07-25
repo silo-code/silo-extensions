@@ -239,29 +239,34 @@ export class GhActionsService {
         this._startPolling(ctx, ws.id, mode === "inactive");
       }
 
-      // Fetch immediately only when the workspace just became active or a
-      // folder is newly seen; otherwise let the poll timer drive fetches.
-      // Activation fetches are throttled: skip if we fetched this workspace
-      // within the last MIN_FETCH_INTERVAL_MS (rapid workspace-switching).
+      // Detect/fetch immediately only when the workspace just became active
+      // or a folder is newly seen; otherwise let the poll timer drive
+      // fetches. Activation is throttled: skip if we processed this
+      // workspace within the last MIN_FETCH_INTERVAL_MS (rapid
+      // workspace-switching).
       const becameActive = modeChanged && mode === "active";
       const sinceLastFetch = Date.now() - (this._lastFetchedAt.get(ws.id) ?? 0);
       const activationThrottled = becameActive && sinceLastFetch < MIN_FETCH_INTERVAL_MS;
-      // Disabled workspaces get no fetches at all — new-folder detection and
-      // became-active immediate fetches included, not just the poll timer
-      // (gated separately in _startPolling). Suppression, not pause: a
-      // disabled workspace shouldn't make network calls just because a
-      // folder was added or the user switched to it.
+      // Repo detection itself (local `git config`, no network) always runs,
+      // even for a disabled workspace — it's what populates repoInfo, and
+      // repoInfo is what registerPropertyPage's `visible` and the context
+      // menu's hasDetectedRepo() key off of. Without it, a disabled
+      // workspace would never show the GitHub Actions tab (or the
+      // "Enabled"/"Refresh" context-menu items), so there'd be no way back
+      // to the "Monitor this workspace" toggle to re-enable it. Only the
+      // network fetch of workflow runs stays gated on `enabled`, inside
+      // _refreshWorkspaceRepos.
       const enabled = ghStore.getWorkspaceEnabled(ws.id);
       let willFetch = false;
       for (const folder of folders) {
         const isNewFolder = !known.has(folder);
         known.add(folder);
-        if (enabled && (isNewFolder || (becameActive && !activationThrottled))) {
+        if (isNewFolder || (becameActive && !activationThrottled)) {
           willFetch = true;
         }
       }
       if (willFetch) {
-        this._refreshWorkspaceRepos(ctx, ws.id);
+        this._refreshWorkspaceRepos(ctx, ws.id, enabled);
         this._lastFetchedAt.set(ws.id, Date.now());
       }
     }
@@ -327,18 +332,25 @@ export class GhActionsService {
     }
   }
 
-  /** Resolve all workspace folders, group by remote, fetch each remote once. */
+  /**
+   * Resolve all workspace folders, group by remote, fetch each remote once.
+   *
+   * `fetchRuns` defaults to true for callers that always want a real fetch
+   * (the manual "Refresh" command, the branch-only toggle) — those bypass
+   * the disabled gate intentionally, same as before this param existed. The
+   * auto-reconcile path in _reconcileWorkspaces passes the workspace's
+   * `enabled` flag explicitly: remote detection (local `git config`, no
+   * network) always happens either way, but the GitHub API fetch is skipped
+   * when false, so a disabled workspace still gets its repoInfo populated
+   * without making network calls.
+   */
   private async _refreshWorkspaceRepos(
     ctx: ExtensionContext,
     workspaceId: string,
+    fetchRuns: boolean = true,
   ): Promise<void> {
     const ws = ctx.workspaces.get(workspaceId);
     if (!ws) return;
-
-    if (!ghStore.authenticated) {
-      ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
-      return;
-    }
 
     const folderPaths = [ws.folder, ...(ws.extraFolders ?? [])];
     const resolved = await Promise.all(
@@ -361,6 +373,30 @@ export class GhActionsService {
       if (!byRemote.has(key)) {
         ghStore.removeRepoState(workspaceId, state.repoInfo.owner, state.repoInfo.repo);
       }
+    }
+
+    if (!fetchRuns) {
+      // Detection-only: seed/refresh repoInfo + folders so the tab and its
+      // checkout list stay accurate, preserving any previously-fetched runs
+      // rather than wiping them out just because monitoring is off.
+      for (const group of byRemote.values()) {
+        const prev = ghStore.getRepoStates(workspaceId).find(
+          (s) => s.repoInfo?.owner === group.repoInfo.owner && s.repoInfo?.repo === group.repoInfo.repo,
+        );
+        ghStore.setRepoState(workspaceId, group.repoInfo.owner, group.repoInfo.repo, {
+          folders: group.folders,
+          repoInfo: group.repoInfo,
+          runs: prev?.runs ?? [],
+          lastFetched: prev?.lastFetched ?? null,
+          error: prev?.error ?? null,
+        });
+      }
+      return;
+    }
+
+    if (!ghStore.authenticated) {
+      ctx.log.debug(`Skipping refresh for workspace ${workspaceId} — not authenticated`);
+      return;
     }
 
     await Promise.all(
