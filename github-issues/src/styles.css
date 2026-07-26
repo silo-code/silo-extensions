@@ -1,0 +1,643 @@
+/* GitHub Issues side panel — all classes prefixed ghi-; tokens only.
+   Root inherits the column font size from `.side-pane` (right = base+2px) —
+   same contract as file explorer / git. Don't set an absolute font-size here. */
+
+.ghi {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--silo-font-ui);
+  color: var(--silo-color-text);
+}
+
+/* Positioned ancestor for the sliding list/detail pages below. */
+.ghi-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Each page owns its own header + body and is always mounted (see IssuePanel's
+ * `lastDetailView`), sliding horizontally between list and detail — same
+ * full-page-takeover pattern as Silo's git-explorer "View Commits". */
+.ghi-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: transform 220ms ease;
+}
+
+.ghi-page--current {
+  transform: translateX(0);
+}
+
+.ghi-page--parked-left {
+  transform: translateX(-100%);
+}
+
+.ghi-page--parked-right {
+  transform: translateX(100%);
+}
+
+.ghi-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--silo-color-border);
+  flex-shrink: 0;
+  min-height: calc(1em + 20px);
+}
+
+.ghi-header--detail {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ghi-header__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ghi-header__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.ghi-header__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ghi-header__title {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+  line-height: 1.35;
+  padding: 0 2px;
+}
+
+.ghi-header__cta {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.ghi-open-btn,
+.ghi-status-btn {
+  appearance: none;
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--silo-button-border, var(--silo-color-border));
+  border-radius: var(--silo-radius-sm);
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.ghi-open-btn {
+  background: var(--silo-button-bg, var(--silo-color-input-bg));
+  color: var(--silo-button-text, var(--silo-color-text-hi));
+}
+
+.ghi-open-btn:hover {
+  background: color-mix(
+    in srgb,
+    var(--silo-button-bg, var(--silo-color-input-bg)) 85%,
+    #000
+  );
+}
+
+.ghi-status-btn {
+  background: var(--silo-button-primary-bg, var(--silo-button-bg, var(--silo-color-input-bg)));
+  color: var(--silo-button-primary-text, var(--silo-button-text, var(--silo-color-text-hi)));
+}
+
+.ghi-status-btn:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--silo-button-primary-bg, var(--silo-button-bg, var(--silo-color-input-bg))) 85%,
+    #000
+  );
+}
+
+.ghi-status-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Push list-view refresh to the trailing edge. Tooltip wraps the button in a
+   host, so target that host — only when the filter control is present. */
+.ghi-header:has(.ghi-filter-btn) > .silo-tooltip-host:last-child {
+  margin-left: auto;
+}
+
+/* Accent-colored at rest (not just on hover) so it reads as an interactive
+ * control immediately, rather than blending into the surrounding text. */
+.ghi-header__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border-radius: var(--silo-radius-sm);
+  color: var(--silo-color-accent);
+  font-family: inherit;
+  font-size: var(--silo-font-size-sm);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.ghi-header__back:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghi-header__back-label {
+  white-space: nowrap;
+}
+
+.ghi-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--silo-radius-sm);
+  color: var(--silo-color-text-lo);
+  flex-shrink: 0;
+  line-height: 1;
+}
+.ghi-icon-btn:hover:not(:disabled) {
+  color: var(--silo-color-text-hi);
+  background: var(--silo-color-bg-hover);
+}
+.ghi-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ghi-icon-btn--spinning svg {
+  animation: ghi-spin 0.8s linear infinite;
+}
+
+.ghi-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: var(--silo-radius-sm);
+  color: var(--silo-color-text);
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 500;
+  max-width: 55%;
+  min-width: 0;
+}
+.ghi-filter-btn:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghi-filter-btn__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghi-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ghi-empty,
+.ghi-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 14px;
+  color: var(--silo-color-text-lo);
+  font-size: 1em;
+  line-height: 1.5;
+}
+.ghi-empty {
+  gap: 2px;
+  font-size: calc(1em - 1px);
+  font-style: italic;
+}
+.ghi-gate__title {
+  font-weight: 600;
+  color: var(--silo-color-text);
+  font-size: 1em;
+}
+.ghi-empty__title {
+  font-weight: 400;
+  color: var(--silo-color-text-lo);
+  font-size: inherit;
+}
+.ghi-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--silo-color-accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.ghi-gate__action {
+  margin-top: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--silo-color-border-strong);
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text-hi);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ghi-gate__action:hover {
+  background: color-mix(in srgb, var(--silo-color-text) 12%, transparent);
+}
+
+.ghi-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 10px;
+  padding: 8px 10px;
+  border-radius: var(--silo-radius-md);
+  background: color-mix(in srgb, var(--silo-color-err) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--silo-color-err) 25%, transparent);
+  color: var(--silo-color-err);
+  font-size: 1em;
+  line-height: 1.4;
+}
+.ghi-error-banner--inline {
+  margin: 4px 8px 8px;
+}
+
+.ghi-repo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 4px 8px;
+}
+.ghi-repo + .ghi-repo {
+  border-top: 1px solid var(--silo-color-border);
+  padding-top: 8px;
+}
+
+/* Match .git-root-label / .tree-row.root */
+.ghi-root-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 4px;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  font-family: var(--silo-font-ui);
+  font-size: calc(1em - 2px);
+  font-weight: 700;
+  color: var(--silo-color-text-hi);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--silo-radius-sm);
+}
+.ghi-root-label:hover {
+  color: var(--silo-color-text-hi);
+  background: transparent;
+}
+.ghi-root-chev {
+  display: inline-flex;
+  align-items: center;
+  color: var(--silo-color-text-hi);
+  flex-shrink: 0;
+}
+.ghi-root-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ghi-repo__empty {
+  padding: 4px 12px 8px;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+}
+
+.ghi-list {
+  list-style: none;
+  margin: 0;
+  /* Small horizontal inset so a row's focus ring floats off the panel edges
+     instead of being clipped flush against them (same pattern as .file-tree
+     in the file explorer panel). */
+  padding: 0 4px;
+}
+
+.ghi-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  border-radius: var(--silo-radius-sm);
+  outline: none;
+}
+.ghi-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghi-row[data-focus-visible] {
+  background: var(--silo-color-bg-hover);
+  box-shadow: inset 0 0 0 1px var(--silo-color-accent);
+}
+
+.ghi-row__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: inline-flex;
+  line-height: 1;
+}
+.ghi-row__icon--ok { color: var(--silo-color-ok); }
+.ghi-row__icon--accent { color: var(--silo-color-accent); }
+.ghi-row__icon--muted { color: var(--silo-color-text-lo); opacity: 0.7; }
+
+.ghi-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ghi-row__title {
+  white-space: normal;
+  overflow-wrap: break-word;
+  font-weight: 500;
+  color: var(--silo-color-text-hi);
+}
+.ghi-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  min-width: 0;
+}
+.ghi-row__num {
+  font-family: var(--silo-font-mono);
+  opacity: 0.85;
+}
+
+.ghi-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: var(--silo-radius-sm);
+  font-size: calc(1em - 2px);
+  line-height: 1.6;
+  background: color-mix(in srgb, var(--silo-color-text) 8%, transparent);
+  color: var(--silo-color-text-lo);
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ghi-chip--muted {
+  opacity: 0.75;
+}
+/* Colored label chips get their background/text color inline (from the
+   label's GitHub hex + labelTextColor's contrast pick) — this just supplies
+   the shape and sizing on top. */
+.ghi-chip--label {
+  font-weight: 500;
+}
+
+.ghi-detail {
+  padding: 0 0 16px;
+}
+.ghi-detail__section {
+  padding: 12px 12px 4px;
+}
+.ghi-detail__section-title {
+  margin: 0 0 8px;
+  font-size: calc(1em - 2px);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--silo-color-text-lo);
+}
+.ghi-detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  font-size: 1em;
+  color: var(--silo-color-text-lo);
+  margin-bottom: 8px;
+}
+.ghi-detail__meta strong {
+  color: var(--silo-color-text);
+  font-weight: 500;
+}
+
+.ghi-detail__body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 1em;
+  line-height: 1.5;
+  color: var(--silo-color-text);
+}
+.ghi-detail__body--empty {
+  color: var(--silo-color-text-lo);
+  font-style: italic;
+}
+.ghi-detail__loading {
+  font-size: 1em;
+  color: var(--silo-color-text-lo);
+  padding: 4px 0;
+}
+
+/* Issue description markdown — compact, token-only, mirrors host README styling. */
+.ghi-md {
+  font-size: 1em;
+  line-height: 1.55;
+  color: var(--silo-color-text);
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ghi-md > :first-child {
+  margin-top: 0;
+}
+.ghi-md > :last-child {
+  margin-bottom: 0;
+}
+.ghi-md p,
+.ghi-md ul,
+.ghi-md ol,
+.ghi-md blockquote,
+.ghi-md pre,
+.ghi-md table {
+  margin: 0.65em 0;
+}
+.ghi-md h1,
+.ghi-md h2,
+.ghi-md h3,
+.ghi-md h4,
+.ghi-md h5,
+.ghi-md h6 {
+  color: var(--silo-color-text-hi);
+  line-height: 1.25;
+  margin: 1em 0 0.4em;
+  font-weight: 600;
+}
+.ghi-md h1 { font-size: 1.25em; }
+.ghi-md h2 { font-size: 1.15em; }
+.ghi-md h3 { font-size: 1.05em; }
+.ghi-md h1,
+.ghi-md h2 {
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--silo-color-border);
+}
+.ghi-md a {
+  color: var(--silo-color-accent);
+  text-decoration: none;
+}
+.ghi-md a:hover {
+  text-decoration: underline;
+}
+.ghi-md code {
+  font-family: var(--silo-font-mono);
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--silo-color-text) 8%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: var(--silo-radius-sm);
+}
+.ghi-md pre {
+  background: color-mix(in srgb, var(--silo-color-text) 8%, transparent);
+  padding: 8px 10px;
+  border-radius: var(--silo-radius-md);
+  overflow: auto;
+}
+.ghi-md pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.9em;
+}
+.ghi-md blockquote {
+  margin: 0.65em 0;
+  padding: 0 0.85em;
+  color: var(--silo-color-text-lo);
+  border-left: 3px solid var(--silo-color-border-strong);
+}
+.ghi-md hr {
+  height: 1px;
+  border: none;
+  background: var(--silo-color-border);
+  margin: 1em 0;
+}
+.ghi-md table {
+  border-collapse: collapse;
+  width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+.ghi-md th,
+.ghi-md td {
+  border: 1px solid var(--silo-color-border);
+  padding: 4px 8px;
+}
+.ghi-md th {
+  color: var(--silo-color-text-hi);
+  font-weight: 600;
+}
+.ghi-md img {
+  max-width: 100%;
+  border-radius: var(--silo-radius-sm);
+}
+.ghi-md ul,
+.ghi-md ol {
+  padding-left: 1.4em;
+}
+.ghi-md li + li {
+  margin-top: 0.2em;
+}
+.ghi-md input[type="checkbox"] {
+  margin-right: 0.4em;
+}
+
+.ghi-timeline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--silo-color-border);
+  font-size: 1em;
+}
+.ghi-timeline-row:last-child {
+  border-bottom: none;
+}
+
+.ghi-timeline-row__content {
+  flex: 1;
+  min-width: 0;
+}
+.ghi-timeline-row__who {
+  font-weight: 500;
+  color: var(--silo-color-text-hi);
+}
+.ghi-timeline-row__when {
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  flex-shrink: 0;
+}
+.ghi-timeline-row__body {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--silo-color-text);
+  line-height: 1.45;
+}
+
+@keyframes ghi-spin {
+  to { transform: rotate(360deg); }
+}
