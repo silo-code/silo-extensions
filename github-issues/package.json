@@ -12,10 +12,7 @@
     "id": "silo.github-issues",
     "engine": "^0.34.0",
     "main": "dist/index.js",
-    "publisher": "Silo",
-    "permissions": [
-      "process"
-    ]
+    "publisher": "Silo"
   },
   "scripts": {
     "build": "node build.mjs",

@@ -131,13 +131,15 @@ describe("normalizeIssueDetail", () => {
 });
 
 describe("checkAuth", () => {
-  function mockCtx(exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>) {
+  function mockCtx(
+    exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>,
+    workspaces: import("@silo-code/sdk").ExtensionContext["workspaces"] = {
+      getState: () => ({ activeId: "ws", open: [{ id: "ws", folder: "/repo" }], all: [] }),
+      get: () => ({ id: "ws", folder: "/repo" }),
+    } as unknown as import("@silo-code/sdk").ExtensionContext["workspaces"],
+  ) {
     return {
-      workspaces: {
-        getState: () => ({ activeId: "ws", open: [{ id: "ws", folder: "/repo" }], all: [] }),
-        get: () => ({ id: "ws", folder: "/repo" }),
-      },
-      system: { getInfo: async () => ({ os: "darwin" }) },
+      workspaces,
       process: { exec },
       log: { debug: () => {}, info: () => {}, warn: () => {} },
     } as unknown as import("@silo-code/sdk").ExtensionContext;
@@ -169,5 +171,22 @@ describe("checkAuth", () => {
       throw err;
     });
     expect(await checkAuth(ctx, "gh")).toBe("deferred");
+  });
+
+  it("returns deferred without running gh when no workspace folder is available", async () => {
+    const { checkAuth } = await import("./github-issue-api");
+    let execCalled = false;
+    const ctx = mockCtx(
+      async () => {
+        execCalled = true;
+        return { code: 0, stdout: "", stderr: "" };
+      },
+      {
+        getState: () => ({ activeId: null, open: [], all: [] }),
+        get: () => undefined,
+      } as unknown as import("@silo-code/sdk").ExtensionContext["workspaces"],
+    );
+    expect(await checkAuth(ctx, "gh")).toBe("deferred");
+    expect(execCalled).toBe(false);
   });
 });

@@ -26,7 +26,7 @@ export const extension: Extension = {
       ctx.registerSidePanel({
         id: "github-issues",
         location: "right",
-        title: "ISSUES",
+        title: "Issues",
         order: 31,
         lazyMount: true,
         component: (props: SidePanelProps) => (
