@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/github-issues",
   "displayName": "GitHub Issues",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "GitHub issues for workspace repos in a side panel — status, labels, assignees, and drill-in details, with quick copy for handing work to an agent.",
   "type": "module",
   "files": [
