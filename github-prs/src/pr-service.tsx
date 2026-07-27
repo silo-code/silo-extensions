@@ -158,6 +158,7 @@ export class PrService {
   private async _ensureViewerLogin(ctx: ExtensionContext): Promise<void> {
     if (prStore.viewerLogin) return;
     const cwd = await probeCwd(ctx);
+    if (!cwd) return; // no workspace folder — skip until one opens
     const login = await fetchViewerLogin(ctx, cwd, this._ghBin);
     prStore.setViewerLogin(login);
   }
