@@ -143,6 +143,7 @@ export class IssueService {
   private async _ensureViewerLogin(ctx: ExtensionContext): Promise<void> {
     if (issueStore.viewerLogin) return;
     const cwd = await probeCwd(ctx);
+    if (!cwd) return; // no workspace folder — skip until one opens
     const login = await fetchViewerLogin(ctx, cwd, this._ghBin);
     issueStore.setViewerLogin(login);
   }

@@ -16,12 +16,13 @@ const GH_CANDIDATE_PATHS = [
   "/home/linuxbrew/.linuxbrew/bin/gh", // Linux Homebrew
 ];
 
-// Host `ctx.process.exec` defaults cwd to the active workspace root. With no
-// workspace open that throws PathDeniedError — even with the `process`
-// permission — which callers used to misreport as "gh CLI not found". Auth and
-// version probes don't need a repo, so pick any available folder, else a
-// platform root the `process` permission allows.
-export async function probeCwd(ctx: ExtensionContext): Promise<string> {
+// Host `ctx.process.exec` defaults cwd to the active workspace root and denies
+// paths outside any open workspace. Auth and version probes don't need a repo,
+// but we still run them from a real workspace folder so we never execute `gh`
+// outside the workspace sandbox. When no folder is available yet, return
+// undefined — callers skip the probe and let the retry loop pick it up once a
+// workspace opens.
+export async function probeCwd(ctx: ExtensionContext): Promise<string | undefined> {
   const state = ctx.workspaces.getState();
   if (state.activeId) {
     const active = ctx.workspaces.get(state.activeId);
@@ -29,8 +30,7 @@ export async function probeCwd(ctx: ExtensionContext): Promise<string> {
   }
   const open = state.open[0] ?? state.all[0];
   if (open?.folder) return open.folder;
-  const { os } = await ctx.system.getInfo();
-  return os === "windows" ? "C:\\" : "/";
+  return undefined;
 }
 
 function isPathDenied(err: unknown): boolean {
@@ -43,6 +43,7 @@ function isPathDenied(err: unknown): boolean {
 
 export async function resolveGhBin(ctx: ExtensionContext): Promise<string> {
   const cwd = await probeCwd(ctx);
+  if (!cwd) return "gh"; // no workspace yet — defer probing to the retry loop
   for (const bin of GH_CANDIDATE_PATHS) {
     try {
       const r = await ctx.process.exec(bin, ["--version"], { cwd });
@@ -64,6 +65,12 @@ export type AuthState = "ok" | "unauthenticated" | "missing" | "deferred";
 export async function checkAuth(ctx: ExtensionContext, ghBin: string): Promise<AuthState> {
   ctx.log.debug("Checking gh CLI authentication");
   const cwd = await probeCwd(ctx);
+  if (!cwd) {
+    // No workspace folder yet — don't run gh outside the workspace. The retry
+    // loop re-checks once a workspace opens.
+    ctx.log.debug("gh auth check deferred (no workspace folder yet)");
+    return "deferred";
+  }
   try {
     const result = await ctx.process.exec(ghBin, ["auth", "status"], { cwd });
     if (result.code === 0) {
