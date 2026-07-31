@@ -13,6 +13,7 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 | [GitHub Pull Requests](./github-prs/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=github-prs*&label=)](https://github.com/silo-code/silo-extensions/releases?q=github-prs) | Side panel of workspace PRs with review/CI status, filters, and in-panel detail navigation (requires `gh` CLI) |
 | [GitHub Issues](./github-issues/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=github-issues*&label=)](https://github.com/silo-code/silo-extensions/releases?q=github-issues) | Side panel of workspace issues with labels, assignees, status updates, and quick copy for handing work to an agent (requires `gh` CLI) |
 | [Agent Monitor](./agent-monitor/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=agent-monitor*&label=)](https://github.com/silo-code/silo-extensions/releases?q=agent-monitor) | At-a-glance status rows and tab badges for coding agents running in your terminals |
+| [Follow-ups](./follow-ups/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=follow-ups*&label=)](https://github.com/silo-code/silo-extensions/releases?q=follow-ups) | Mark editor and terminal tabs to come back to later — toolbar toggle, tab flag, and Workspaces rollup |
 
 ## Installing an extension
 

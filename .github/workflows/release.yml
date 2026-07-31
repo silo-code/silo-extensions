@@ -79,6 +79,7 @@ jobs:
           EXTENSIONS=(
             "agent-monitor:true"
             "docs-panel:false"
+            "follow-ups:true"
             "github-actions:false"
             "github-issues:true"
             "github-prs:true"
