@@ -1,8 +1,8 @@
 /**
  * Plays the working → waiting notification sound, gated on the user's
  * settings and debounced so several terminals finishing at once don't stack
- * overlapping tones. Kept separate from `terminal-tracker.ts` so the
- * debounce logic is unit-testable without the SDK.
+ * overlapping tones. Kept separate from `index.tsx` so the debounce logic is
+ * unit-testable without the SDK.
  */
 
 import { play, type SoundName } from "./synth";
