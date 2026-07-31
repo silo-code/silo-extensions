@@ -9,14 +9,14 @@
  *   or an agent-specific OSC detector fires in it (covers typing `claude` into
  *   a plain shell). Plain shell-integration traffic (OSC 133) on a kind-`"shell"`
  *   terminal demotes it again once the agent process is gone.
- * - While an agent is **working** it shows a busy row (with a start timestamp
- *   so the host renders elapsed time).
+ * - While an agent is **working** it shows a working Activity row (with a start
+ *   timestamp so the host renders elapsed time).
  * - When work stops (working → waiting) the terminal is **finished, unseen**
- *   (green "ok" row + attention badge) — sticky until the user views it.
+ *   (`"ready"` Activity row + ready tab glyph) — sticky until the user views it.
  *   If the user was already viewing it, it skips straight to done.
  * - **Activation** (the user views the terminal) acknowledges a finished run:
- *   waiting → **done**, which keeps its row (status-less → grey dot) but drops
- *   the tab badge. Done is sticky against the agent's recurring idle signal;
+ *   waiting → **done**, which keeps its row (no activity → grey glyph) but drops
+ *   the tab Activity. Done is sticky against the agent's recurring idle signal;
  *   only a new working/error signal moves it.
  *
  * Non-agent terminals derive no row and no badge, whatever their activity.
@@ -309,20 +309,21 @@ export function stripStatusMarker(title: string): string {
 
 /**
  * The Workspaces-panel row for a terminal, or `null` for no row.
- * Working → busy (blue); finished-unseen → "ok" (green); done (acknowledged)
- * → a row with **no status**, which the host renders as a neutral/grey dot.
- * The row itself never disappears once an agent has finished — only the
- * focus-suppression setting (applied by the provider, not here) hides it.
+ * Working → `"working"`; finished-unseen → `"ready"`; done (acknowledged)
+ * → a row with **no activity**, which the host renders as a neutral/grey glyph
+ * (ADR 0030). The row itself never disappears once an agent has finished —
+ * only the focus-suppression setting (applied by the provider, not here)
+ * hides it.
  */
 export function deriveStatusRow(
   s: TerminalAgentState,
-): { status?: "ok" | "busy"; startedAt?: string } | null {
+): { activity?: "working" | "ready"; startedAt?: string } | null {
   if (!s.isAgent) return null;
   if (s.activity === "working") {
-    return { status: "busy", startedAt: s.workingSince ?? undefined };
+    return { activity: "working", startedAt: s.workingSince ?? undefined };
   }
   if (s.needsAttention) {
-    return { status: "ok", startedAt: s.attentionSince ?? undefined };
+    return { activity: "ready", startedAt: s.attentionSince ?? undefined };
   }
   if (s.activity === "done") {
     return {};

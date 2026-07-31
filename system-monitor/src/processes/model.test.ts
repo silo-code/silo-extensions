@@ -337,7 +337,7 @@ describe("computeStatusRows", () => {
       }),
     ]);
     const [row] = computeStatusRows(rows, THRESHOLDS);
-    expect(row.status).toBe("warn");
+    expect(row.activity).toBe("warn");
     expect(row.label).toBe("node: 40% CPU");
   });
 
@@ -350,7 +350,7 @@ describe("computeStatusRows", () => {
         stats: { pid: 100, cpuPercent: 80, memoryMb: 100 },
       }),
     ]);
-    expect(computeStatusRows(rows, THRESHOLDS)[0].status).toBe("error");
+    expect(computeStatusRows(rows, THRESHOLDS)[0].activity).toBe("error");
   });
 
   it("includes both CPU and memory in the label when both warn", () => {

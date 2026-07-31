@@ -316,21 +316,21 @@ describe("needs attention", () => {
 });
 
 describe("deriveStatusRow", () => {
-  it("returns a busy row with startedAt while an agent works", () => {
+  it("returns a working row with startedAt while an agent works", () => {
     const s = run(initialState("claude"), detected("working", "agent"));
-    expect(deriveStatusRow(s)).toEqual({ status: "busy", startedAt: T0 });
+    expect(deriveStatusRow(s)).toEqual({ activity: "working", startedAt: T0 });
   });
 
-  it("returns an ok row with startedAt when waiting and attention is pending", () => {
+  it("returns a ready row with startedAt when waiting and attention is pending", () => {
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
       detected("waiting", "agent", { now: T1 }),
     );
-    expect(deriveStatusRow(s)).toEqual({ status: "ok", startedAt: T1 });
+    expect(deriveStatusRow(s)).toEqual({ activity: "ready", startedAt: T1 });
   });
 
-  it("returns a status-less (grey) row once a finished run is acknowledged", () => {
+  it("returns an activity-less (grey) row once a finished run is acknowledged", () => {
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
@@ -341,7 +341,7 @@ describe("deriveStatusRow", () => {
     expect(deriveStatusRow(s)).toEqual({});
   });
 
-  it("returns a status-less (grey) row when work finished while focused", () => {
+  it("returns an activity-less (grey) row when work finished while focused", () => {
     const s = run(
       initialState("claude"),
       detected("working", "agent"),
