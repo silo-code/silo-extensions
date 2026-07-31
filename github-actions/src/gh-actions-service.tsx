@@ -589,14 +589,14 @@ export class GhActionsService {
     if (failed > 0) {
       return [{
         id: "gh-actions",
-        status: "error",
+        activity: "error",
         label: failed === 1 ? "1 workflow failed" : `${failed} workflows failed`,
         startedAt: mostRecentFailed?.created_at,
       }];
     }
 
     if (running > 0) {
-      return [{ id: "gh-actions", status: "busy", label: running === 1 ? "1 workflow running" : `${running} workflows running` }];
+      return [{ id: "gh-actions", activity: "working", label: running === 1 ? "1 workflow running" : `${running} workflows running` }];
     }
 
     return [];

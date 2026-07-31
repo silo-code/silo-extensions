@@ -1,11 +1,18 @@
 import type {
+  Activity,
   Extension,
   ExtensionContext,
-  TerminalTabDecoration,
   WorkspaceStatusRow,
 } from "@silo-code/sdk";
 import { createTerminalTracker } from "./terminal-tracker";
-import { deriveStatusRow, deriveTabBadge, stripStatusMarker, staleSuffix, isSuppressedByFocus } from "./agent-status";
+import {
+  deriveStatusRow,
+  deriveTabBadge,
+  stripStatusMarker,
+  staleSuffix,
+  isSuppressedByFocus,
+  type TabBadge,
+} from "./agent-status";
 import {
   initSettings,
   clearSettingsListeners,
@@ -16,6 +23,32 @@ import styles from "./styles.css";
 
 const STYLE_ID = "silo-agent-monitor-styles";
 
+function tabBadgeToActivity(badge: TabBadge): Activity {
+  switch (badge) {
+    case "working":
+      return "working";
+    case "attention":
+      return "ready";
+    case "waiting":
+      return "warn";
+    case "error":
+      return "error";
+  }
+}
+
+function tabBadgeTooltip(badge: TabBadge): string {
+  switch (badge) {
+    case "working":
+      return "Agent working";
+    case "attention":
+      return "Finished";
+    case "waiting":
+      return "Waiting for input";
+    case "error":
+      return "Error";
+  }
+}
+
 function activate(ctx: ExtensionContext) {
   ctx.subscriptions.push(initSettings(ctx.storage.global));
 
@@ -23,7 +56,7 @@ function activate(ctx: ExtensionContext) {
   ctx.subscriptions.push({ dispose: tracker.dispose });
 
   ctx.subscriptions.push(
-    ctx.workspaces.registerStatus({
+    ctx.workspaces.bindStatus({
       id: "silo.agent-monitor.status",
       provide(workspaceId): WorkspaceStatusRow[] {
         const ws = ctx.workspaces.get(workspaceId);
@@ -44,7 +77,7 @@ function activate(ctx: ExtensionContext) {
             // observing it — flag the duration as unconfirmed rather than
             // silently show it as if freshly confirmed.
             label: `${label}${staleSuffix(s, "label")}`,
-            status: row.status,
+            activity: row.activity,
             startedAt: row.startedAt,
           });
         }
@@ -54,36 +87,17 @@ function activate(ctx: ExtensionContext) {
   );
 
   ctx.subscriptions.push(
-    ctx.terminals.registerTabDecoration({
+    ctx.terminals.bindActivity({
       id: "silo.agent-monitor.tab",
-      provide(terminalId): TerminalTabDecoration | null {
+      provide(terminalId) {
         const s = tracker.states.get(terminalId);
         if (!s) return null;
-        const tooltipSuffix = staleSuffix(s, "tooltip");
-        switch (deriveTabBadge(s)) {
-          case "working":
-            return {
-              icon: <SpinnerIcon />,
-              color: "accent",
-              tooltip: `Agent working${tooltipSuffix}`,
-            };
-          case "attention":
-            return {
-              icon: <FinishedIcon />,
-              color: "ok",
-              tooltip: `Finished${tooltipSuffix}`,
-            };
-          case "waiting":
-            return {
-              icon: <WaitingIcon />,
-              color: "muted",
-              tooltip: "Waiting for input",
-            };
-          case "error":
-            return { icon: <ErrorIcon />, color: "error", tooltip: "Error" };
-          default:
-            return null;
-        }
+        const badge = deriveTabBadge(s);
+        if (!badge) return null;
+        return {
+          activity: tabBadgeToActivity(badge),
+          tooltip: `${tabBadgeTooltip(badge)}${staleSuffix(s, "tooltip")}`,
+        };
       },
     }),
   );
@@ -111,51 +125,6 @@ function injectStyles() {
   style.id = STYLE_ID;
   style.textContent = styles;
   document.head.appendChild(style);
-}
-
-function SpinnerIcon() {
-  return <div className="am-spinner" aria-hidden="true" />;
-}
-function WaitingIcon() {
-  return (
-    <div className="am-waiting-icon" aria-hidden="true">
-      <span />
-      <span />
-    </div>
-  );
-}
-function FinishedIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path
-        d="M10 3L5 9 2 6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
-  );
-}
-function ErrorIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M6 1a5 5 0 1 0 0 10A5 5 0 0 0 6 1zm-.5 2.5h1v4h-1v-4zm0 5h1v1h-1v-1z" />
-    </svg>
-  );
 }
 
 export const extension: Extension = {

@@ -217,7 +217,7 @@ export function computeStatusRows(
     const memWarn = mem >= thresholds.memWarnMb;
     if (!cpuWarn && !memWarn) continue;
 
-    const status =
+    const activity =
       cpu >= thresholds.cpuDangerPercent || mem >= thresholds.memDangerMb
         ? "error"
         : "warn";
@@ -226,7 +226,7 @@ export function computeStatusRows(
     if (memWarn) parts.push(formatMem(row.totalMemoryMb));
     result.push({
       id: row.sessionId,
-      status,
+      activity,
       label: `${displayName(row.leader)}: ${parts.join(" · ")}`,
     });
   }
