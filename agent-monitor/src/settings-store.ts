@@ -2,9 +2,9 @@
  * The extension's own settings — a tiny reactive store implementing the SDK's
  * ReactiveService, mirroring the pattern used by the clock-extension example
  * (and, for the host's own settings pages, the terminal/editor settings
- * stores). `terminal-tracker.ts` and `index.tsx` read
- * `settingsService.getState()` when deciding what focusing a terminal does to
- * its status.
+ * stores). `index.tsx` reads `settingsService.getState()` when deciding what
+ * focusing a terminal does to its status (whether to `ctx.agents.acknowledge`
+ * it, and whether to hide its row).
  *
  * Persisted via `ctx.storage.global` (shared across workspaces — this is a
  * general behavior preference, not per-project) so it survives an app
