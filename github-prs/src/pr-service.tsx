@@ -4,6 +4,7 @@ import {
   checkAuth,
   fetchMergedPrs,
   fetchOpenPrs,
+  fetchPrCommitDetail,
   fetchPrDetail,
   fetchRepoMergeMethods,
   fetchViewerLogin,
@@ -480,6 +481,41 @@ export class PrService {
       this._ctx.log.warn(`Failed to fetch PR detail #${number}`, { error: result.error });
       prStore.setDetailError(repoKey, number, result.error);
     }
+  }
+
+  async fetchCommitDetail(repoKey: string, sha: string): Promise<void> {
+    if (!this._ctx || !prStore.authenticated) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
+
+    prStore.clearCommitDetailError(repoKey, sha);
+    const result = await fetchPrCommitDetail(
+      this._ctx,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
+      sha,
+      resolved.cwd,
+      this._ghBin,
+    );
+    if (result.ok) {
+      prStore.setCommitDetail(repoKey, sha, result.detail);
+    } else {
+      this._ctx.log.warn(`Failed to fetch commit ${sha.slice(0, 7)} detail`, { error: result.error });
+      prStore.setCommitDetailError(repoKey, sha, result.error);
+    }
+  }
+
+  /** The resolved `gh` binary path — the diff content provider needs it to
+   * fetch blob content outside the normal fetch/detail flow above. */
+  get ghBin(): string {
+    return this._ghBin;
+  }
+
+  /** A workspace-scoped cwd for `repoKey`, for callers (the diff content
+   * provider) that need to run `gh` but aren't already holding one — `null`
+   * if no open workspace currently resolves to this remote. */
+  resolveCwd(repoKey: string): string | null {
+    return this._resolveRepo(repoKey)?.cwd ?? null;
   }
 
   /** Resolve a collapsed remote by owner/repo across open workspaces. */

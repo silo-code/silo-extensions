@@ -1,5 +1,6 @@
 import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import GLOBAL_STYLES from "./styles.css";
+import { createGithubDiffProvider } from "./diff-provider";
 import { PrService } from "./pr-service";
 import { PrPanel } from "./views/PrPanel";
 import { PrSettingsPage } from "./settings-page";
@@ -41,6 +42,10 @@ export const extension: Extension = {
         order: 2,
         component: () => <PrSettingsPage ctx={ctx} />,
       }),
+      ctx.editors.registerDiffContentProvider(
+        "silo.github-prs",
+        createGithubDiffProvider(ctx, service),
+      ),
       { dispose: () => service.dispose() },
     );
 

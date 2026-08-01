@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  CaretRight,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
@@ -33,6 +34,7 @@ export interface PrDetailViewProps {
   detailEntry: DetailCacheEntry | undefined;
   detailError: DetailErrorEntry | undefined;
   loadingDetail: boolean;
+  onViewCommits: () => void;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -65,6 +67,7 @@ export function PrDetailView({
   detailEntry,
   detailError,
   loadingDetail,
+  onViewCommits,
 }: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
@@ -102,6 +105,18 @@ export function PrDetailView({
       {showDetailError && (
         <div className="ghpr-error-banner">{detailError.error.message}</div>
       )}
+
+      <section className="ghpr-detail__section">
+        <h3 className="ghpr-detail__section-title">Commits</h3>
+        <button type="button" className="ghpr-nav-row" onClick={onViewCommits}>
+          <span className="ghpr-nav-row__label">
+            {detail
+              ? `${detail.commits.length} commit${detail.commits.length === 1 ? "" : "s"}`
+              : "View commits"}
+          </span>
+          <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
+        </button>
+      </section>
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Checks</h3>

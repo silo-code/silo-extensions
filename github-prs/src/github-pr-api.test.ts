@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { classifyFetchError, normalizePrItem, normalizePrDetail } from "./github-pr-api";
+import {
+  classifyFetchError,
+  normalizePrCommitDetail,
+  normalizePrItem,
+  normalizePrDetail,
+} from "./github-pr-api";
 
 describe("classifyFetchError", () => {
   it("classifies auth failures", () => {
@@ -163,6 +168,145 @@ describe("normalizePrDetail", () => {
     expect(detail.comments).toEqual([]);
     expect(detail.reviews).toEqual([]);
     expect(detail.body).toBe("");
+  });
+});
+
+// Captured from a real `gh pr view --json commits` invocation (trimmed).
+const COMMITS_FIXTURE = [
+  {
+    oid: "3f1b638a55da2d177fb23d9e6b6188640db9e9ca",
+    messageHeadline: "fix(terminal): detect delimited file paths that contain spaces",
+    messageBody: "FILE_PATH_RE excluded spaces from the path character class…",
+    authoredDate: "2026-08-01T12:50:51Z",
+    committedDate: "2026-08-01T12:50:51Z",
+    authors: [
+      { id: "u1", name: "davideweaver", email: "davideweaver@users.noreply.github.com", login: "davideweaver" },
+      { id: "u2", name: "Claude Sonnet 5", email: "noreply@anthropic.com", login: "claude" },
+    ],
+  },
+];
+
+describe("normalizePrDetail commits", () => {
+  it("normalizes the commit list, using only the first (co-)author", () => {
+    const detail = normalizePrDetail({ number: 1, commits: COMMITS_FIXTURE });
+    expect(detail.commits).toEqual([
+      {
+        sha: "3f1b638a55da2d177fb23d9e6b6188640db9e9ca",
+        shortSha: "3f1b638",
+        subject: "fix(terminal): detect delimited file paths that contain spaces",
+        authorName: "davideweaver",
+        authorLogin: "davideweaver",
+        date: "2026-08-01T12:50:51Z",
+      },
+    ]);
+  });
+
+  it("defaults commits to an empty array when the field is absent", () => {
+    expect(normalizePrDetail({ number: 1 }).commits).toEqual([]);
+  });
+});
+
+// Captured from a real `gh api repos/{owner}/{repo}/commits/{sha}` invocation (trimmed).
+const COMMIT_DETAIL_FIXTURE = {
+  sha: "3f1b638a55da2d177fb23d9e6b6188640db9e9ca",
+  commit: {
+    author: {
+      name: "davideweaver",
+      email: "davideweaver@users.noreply.github.com",
+      date: "2026-08-01T12:50:51Z",
+    },
+    message:
+      "fix(terminal): detect delimited file paths that contain spaces\n\nFILE_PATH_RE excluded spaces from the path character class.\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>",
+  },
+  author: { login: "davideweaver" },
+  parents: [{ sha: "4329f879cc75c0c0ffcd581793686fd283706f18" }],
+  files: [
+    {
+      filename: "packages/extensions-core/src/terminal/terminal-link-match.test.ts",
+      status: "modified",
+      additions: 32,
+      deletions: 0,
+      previous_filename: null,
+    },
+    {
+      filename: "packages/extensions-core/src/terminal/terminal-link-match.ts",
+      status: "modified",
+      additions: 36,
+      deletions: 2,
+      previous_filename: null,
+    },
+  ],
+};
+
+describe("normalizePrCommitDetail", () => {
+  it("normalizes message, author, parent, and files from a real REST response", () => {
+    const detail = normalizePrCommitDetail(COMMIT_DETAIL_FIXTURE);
+    expect(detail.sha).toBe("3f1b638a55da2d177fb23d9e6b6188640db9e9ca");
+    expect(detail.shortSha).toBe("3f1b638");
+    expect(detail.subject).toBe("fix(terminal): detect delimited file paths that contain spaces");
+    expect(detail.body).toContain("Co-Authored-By");
+    expect(detail.body).not.toMatch(/^\n/);
+    expect(detail.authorLogin).toBe("davideweaver");
+    expect(detail.parentSha).toBe("4329f879cc75c0c0ffcd581793686fd283706f18");
+    expect(detail.files).toEqual([
+      {
+        path: "packages/extensions-core/src/terminal/terminal-link-match.test.ts",
+        origPath: undefined,
+        status: "M",
+        additions: 32,
+        deletions: 0,
+      },
+      {
+        path: "packages/extensions-core/src/terminal/terminal-link-match.ts",
+        origPath: undefined,
+        status: "M",
+        additions: 36,
+        deletions: 2,
+      },
+    ]);
+  });
+
+  it("treats a root commit (no parents) as parentSha: null", () => {
+    const detail = normalizePrCommitDetail({
+      sha: "abc123",
+      commit: { author: {}, message: "root" },
+      author: null,
+      parents: [],
+      files: [],
+    });
+    expect(detail.parentSha).toBeNull();
+    expect(detail.authorLogin).toBeNull();
+  });
+
+  it("keeps the previous filename for a rename", () => {
+    const detail = normalizePrCommitDetail({
+      sha: "abc123",
+      commit: { author: {}, message: "rename" },
+      parents: [],
+      files: [{ filename: "new.ts", previous_filename: "old.ts", status: "renamed", additions: 0, deletions: 0 }],
+    });
+    expect(detail.files[0]).toEqual({
+      path: "new.ts",
+      origPath: "old.ts",
+      status: "R",
+      additions: 0,
+      deletions: 0,
+    });
+  });
+
+  it("maps every GitHub file status to Silo's single-letter convention", () => {
+    const detail = normalizePrCommitDetail({
+      sha: "s",
+      commit: { author: {}, message: "m" },
+      parents: [],
+      files: [
+        { filename: "a", status: "added", additions: 1, deletions: 0 },
+        { filename: "b", status: "removed", additions: 0, deletions: 1 },
+        { filename: "c", status: "copied", additions: 0, deletions: 0 },
+        { filename: "d", status: "mystery-future-status", additions: 0, deletions: 0 },
+      ],
+    });
+    expect(detail.files.map((f) => f.status)).toEqual(["A", "D", "C", "M"]);
   });
 });
 

@@ -177,12 +177,51 @@ export interface PrComment {
   url: string;
 }
 
+/** One commit, as listed by `PrDetail.commits` — enough to render a commit
+ * list row. A commit with multiple co-authors (e.g. paired with a bot) only
+ * surfaces the first; good enough for a row, not worth a multi-author UI. */
+export interface PrCommitListItem {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  authorName: string;
+  authorLogin: string | null;
+  date: string;
+}
+
+/** Single-letter file status, matching Silo's git-explorer convention
+ * (see `CommitFileChange` in packages/extensions-silo/src/git/git-api.ts)
+ * so the two commit-detail UIs read the same status glyphs. */
+export type CommitFileStatus = "A" | "M" | "D" | "R" | "C" | "T" | "U" | "X";
+
+export interface PrCommitFileChange {
+  path: string;
+  /** Original path for a rename/copy. */
+  origPath?: string;
+  status: CommitFileStatus;
+  /** `null` when GitHub reports no line counts for this path. */
+  additions: number | null;
+  deletions: number | null;
+}
+
+/** A single commit's full message and changed files — fetched lazily (one
+ * REST call per commit) only when a commit is opened, unlike the cheap
+ * `PrDetail.commits` list. */
+export interface PrCommitDetail extends PrCommitListItem {
+  body: string;
+  /** First parent's sha, or `null` for a root commit. Feeds the diff
+   * provider's "original" side. */
+  parentSha: string | null;
+  files: PrCommitFileChange[];
+}
+
 export interface PrDetail extends PrListItem {
   body: string;
   reviews: PrReview[];
   comments: PrComment[];
   changedFiles: number;
   closedAt: string | null;
+  commits: PrCommitListItem[];
 }
 
 export interface GitHubApiError {
@@ -196,6 +235,10 @@ export type PrListResult =
 
 export type PrDetailResult =
   | { ok: true; detail: PrDetail }
+  | { ok: false; error: GitHubApiError };
+
+export type PrCommitDetailResult =
+  | { ok: true; detail: PrCommitDetail }
   | { ok: false; error: GitHubApiError };
 
 // Maps a failed `gh` invocation's stderr to a typed error. Pure so the
@@ -268,6 +311,23 @@ function asLabels(raw: unknown): PrLabel[] {
     .map((l: RawRecord) => ({ name: l.name as string }));
 }
 
+function asCommits(raw: unknown): PrCommitListItem[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawRecord[]).map((c) => {
+    const sha = typeof c.oid === "string" ? c.oid : "";
+    const authors = Array.isArray(c.authors) ? (c.authors as RawRecord[]) : [];
+    const first = authors[0];
+    return {
+      sha,
+      shortSha: sha.slice(0, 7),
+      subject: typeof c.messageHeadline === "string" ? c.messageHeadline : "",
+      authorName: typeof first?.name === "string" ? first.name : "",
+      authorLogin: typeof first?.login === "string" ? first.login : null,
+      date: typeof c.authoredDate === "string" ? c.authoredDate : "",
+    };
+  });
+}
+
 export function normalizePrItem(raw: RawRecord, fallbackState: PrListItem["state"]): PrListItem {
   return {
     number: typeof raw.number === "number" ? raw.number : 0,
@@ -313,6 +373,63 @@ export function normalizePrDetail(raw: RawRecord): PrDetail {
     comments,
     changedFiles: typeof raw.changedFiles === "number" ? raw.changedFiles : 0,
     closedAt: typeof raw.closedAt === "string" ? raw.closedAt : null,
+    commits: asCommits(raw.commits),
+  };
+}
+
+const FILE_STATUS_MAP: Record<string, CommitFileStatus> = {
+  added: "A",
+  removed: "D",
+  modified: "M",
+  renamed: "R",
+  copied: "C",
+  changed: "M",
+  unchanged: "M",
+};
+
+function mapFileStatus(raw: string): CommitFileStatus {
+  return FILE_STATUS_MAP[raw] ?? "M";
+}
+
+/** Split a raw commit message into its subject line and body, the way
+ * `git log`'s `%s`/`%b` do. */
+function splitCommitMessage(message: string): { subject: string; body: string } {
+  const idx = message.indexOf("\n");
+  if (idx === -1) return { subject: message, body: "" };
+  return { subject: message.slice(0, idx), body: message.slice(idx + 1).replace(/^\n+/, "").trim() };
+}
+
+/** Normalizes `gh api repos/{owner}/{repo}/commits/{sha}` (REST, unlike the
+ * GraphQL-backed `pr view --json commits`) — chosen for this call because it's
+ * the only endpoint that reports a commit's changed files and first parent in
+ * one request. */
+export function normalizePrCommitDetail(raw: RawRecord): PrCommitDetail {
+  const sha = typeof raw.sha === "string" ? raw.sha : "";
+  const commit = (raw.commit as RawRecord) ?? {};
+  const author = (commit.author as RawRecord) ?? {};
+  const ghAuthor = raw.author as RawRecord | null;
+  const message = typeof commit.message === "string" ? commit.message : "";
+  const { subject, body } = splitCommitMessage(message);
+  const parents = Array.isArray(raw.parents) ? (raw.parents as RawRecord[]) : [];
+  const parentSha = typeof parents[0]?.sha === "string" ? (parents[0]!.sha as string) : null;
+  const filesRaw = Array.isArray(raw.files) ? (raw.files as RawRecord[]) : [];
+  const files: PrCommitFileChange[] = filesRaw.map((f) => ({
+    path: typeof f.filename === "string" ? f.filename : "",
+    origPath: typeof f.previous_filename === "string" ? f.previous_filename : undefined,
+    status: mapFileStatus(typeof f.status === "string" ? f.status : ""),
+    additions: typeof f.additions === "number" ? f.additions : null,
+    deletions: typeof f.deletions === "number" ? f.deletions : null,
+  }));
+  return {
+    sha,
+    shortSha: sha.slice(0, 7),
+    subject,
+    body,
+    authorName: typeof author.name === "string" ? author.name : "",
+    authorLogin: ghAuthor && typeof ghAuthor.login === "string" ? ghAuthor.login : null,
+    date: typeof author.date === "string" ? author.date : "",
+    parentSha,
+    files,
   };
 }
 
@@ -338,7 +455,7 @@ const DETAIL_PR_FIELDS = [
   "reviewDecision", "latestReviews", "reviews", "reviewRequests",
   "statusCheckRollup", "comments", "labels", "headRefName", "baseRefName",
   "mergeable", "mergeStateStatus", "additions", "deletions", "changedFiles",
-  "createdAt", "updatedAt", "mergedAt", "closedAt",
+  "createdAt", "updatedAt", "mergedAt", "closedAt", "commits",
 ].join(",");
 
 async function runPrList(
@@ -423,6 +540,81 @@ export async function fetchPrDetail(
   } catch {
     ctx.log.error(`Failed to parse gh pr view response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
     return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
+/** Full detail for one commit — message body, first parent, and changed
+ * files. Lazy (a separate REST call per commit), unlike `PrDetail.commits`
+ * which comes free with the PR detail fetch. */
+export async function fetchPrCommitDetail(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  sha: string,
+  cwd: string,
+  ghBin: string,
+): Promise<PrCommitDetailResult> {
+  ctx.log.debug(`Fetching commit ${sha.slice(0, 7)} detail for ${owner}/${repo}`);
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/commits/${sha}`,
+  ], { cwd });
+  if (result.code !== 0) {
+    const error = classifyFetchError(result.stderr);
+    ctx.log.warn(`gh api commit error (${error.kind}) for ${owner}/${repo}@${sha}`, { stderr: result.stderr.trim() });
+    return { ok: false, error };
+  }
+  try {
+    return { ok: true, detail: normalizePrCommitDetail(JSON.parse(result.stdout) as RawRecord) };
+  } catch {
+    ctx.log.error(`Failed to parse gh api commit response for ${owner}/${repo}@${sha}`, { stdout: result.stdout.slice(0, 200) });
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
+export interface GithubBlobContent {
+  text: string;
+  /** True when the content can't be shown as text — a binary blob, or the
+   * Contents API omitted inline content (a file over its ~1MB cap). */
+  unavailable?: boolean;
+}
+
+function decodeGithubContent(b64: string): { text: string; binary: boolean } {
+  const binaryStr = atob(b64.replace(/\n/g, ""));
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  // A NUL byte in the first chunk is the same heuristic git itself uses to
+  // flag a blob as binary.
+  const binary = bytes.subarray(0, 8000).includes(0);
+  return { text: new TextDecoder("utf-8", { fatal: false }).decode(bytes), binary };
+}
+
+/** A file's content at a specific commit ref, via the Contents API — unlike
+ * local `git show`, this works even when `ref` was never fetched into the
+ * local clone (e.g. a fork PR's head). Resolves to `{ text: "" }` when the
+ * path doesn't exist at `ref` (the add/delete side of a diff). */
+export async function fetchGithubBlobContent(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  cwd: string,
+  ghBin: string,
+): Promise<GithubBlobContent> {
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`,
+  ], { cwd });
+  if (result.code !== 0) return { text: "" };
+  try {
+    const raw = JSON.parse(result.stdout) as RawRecord;
+    if (typeof raw.content !== "string" || raw.encoding !== "base64") {
+      return { text: "", unavailable: true };
+    }
+    const { text, binary } = decodeGithubContent(raw.content);
+    return binary ? { text: "", unavailable: true } : { text };
+  } catch {
+    return { text: "" };
   }
 }
 
