@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  CaretRight,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
@@ -107,12 +108,13 @@ export function PrDetailView({
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Commits</h3>
-        <button type="button" className="ghpr-check-row" onClick={onViewCommits}>
-          <span className="ghpr-check-row__name">
+        <button type="button" className="ghpr-nav-row" onClick={onViewCommits}>
+          <span className="ghpr-nav-row__label">
             {detail
               ? `${detail.commits.length} commit${detail.commits.length === 1 ? "" : "s"}`
               : "View commits"}
           </span>
+          <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
         </button>
       </section>
 

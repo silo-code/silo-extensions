@@ -675,6 +675,40 @@
   white-space: nowrap;
 }
 
+/* A row that navigates to another page (currently just "Commits"), as
+   opposed to .ghpr-check-row's rows which open an external URL — bordered
+   top/bottom plus a trailing chevron so it reads as "drill in", not just
+   another list item, even without hovering it. */
+.ghpr-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--silo-color-border);
+  border-bottom: 1px solid var(--silo-color-border);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 1em;
+  color: inherit;
+  padding: 8px 4px;
+  margin: 0 -4px;
+}
+.ghpr-nav-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghpr-nav-row__label {
+  flex: 1;
+  min-width: 0;
+  color: var(--silo-color-text);
+}
+.ghpr-nav-row__chevron {
+  flex-shrink: 0;
+  color: var(--silo-color-text-lo);
+}
+
 .ghpr-timeline-row__content {
   flex: 1;
   min-width: 0;
