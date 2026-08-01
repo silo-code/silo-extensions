@@ -31,6 +31,18 @@ describe("pushView / popView / currentView", () => {
     stack = popView(stack);
     expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/a", number: 1 });
   });
+
+  it("drills from detail through commits to a single commit", () => {
+    let stack: ViewStack = ROOT_STACK;
+    stack = pushView(stack, { kind: "detail", repoKey: "o/r", number: 42 });
+    stack = pushView(stack, { kind: "commits", repoKey: "o/r", number: 42 });
+    stack = pushView(stack, { kind: "commit", repoKey: "o/r", number: 42, sha: "abc123" });
+    expect(currentView(stack)).toEqual({ kind: "commit", repoKey: "o/r", number: 42, sha: "abc123" });
+    stack = popView(stack);
+    expect(currentView(stack)).toEqual({ kind: "commits", repoKey: "o/r", number: 42 });
+    stack = popView(stack);
+    expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/r", number: 42 });
+  });
 });
 
 describe("serializeStack / restoreStack round-trip", () => {
@@ -46,6 +58,18 @@ describe("serializeStack / restoreStack round-trip", () => {
 
   it("round-trips the root stack", () => {
     expect(restoreStack(serializeStack(ROOT_STACK))).toEqual(ROOT_STACK);
+  });
+
+  it("round-trips a stack drilled into commits and a commit", () => {
+    const stack = pushView(
+      pushView(pushView(ROOT_STACK, { kind: "detail", repoKey: "o/a", number: 1 }), {
+        kind: "commits",
+        repoKey: "o/a",
+        number: 1,
+      }),
+      { kind: "commit", repoKey: "o/a", number: 1, sha: "deadbeef" },
+    );
+    expect(restoreStack(serializeStack(stack))).toEqual(stack);
   });
 });
 
@@ -75,5 +99,12 @@ describe("restoreStack garbage handling", () => {
   it("falls back to root when an entry is malformed", () => {
     expect(restoreStack([{ kind: "list" }, { kind: "detail", repoKey: "o/a" }])).toBe(ROOT_STACK);
     expect(restoreStack([{ kind: "list" }, { kind: "mystery" }])).toBe(ROOT_STACK);
+  });
+
+  it("falls back to root for a malformed commits/commit entry", () => {
+    expect(restoreStack([{ kind: "list" }, { kind: "commits", repoKey: "o/a" }])).toBe(ROOT_STACK);
+    expect(
+      restoreStack([{ kind: "list" }, { kind: "commit", repoKey: "o/a", number: 1 }]),
+    ).toBe(ROOT_STACK);
   });
 });

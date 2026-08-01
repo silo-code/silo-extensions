@@ -99,6 +99,7 @@ describe("uniqueReviewers", () => {
       changedFiles: 0,
       closedAt: null,
       comments: [],
+      commits: [],
       reviews: [
         { author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-03T00:00:00Z", body: "" },
       ],
@@ -114,6 +115,7 @@ describe("buildTimeline", () => {
       body: "",
       changedFiles: 0,
       closedAt: null,
+      commits: [],
       comments: [
         {
           author: { login: "dave" },
@@ -143,6 +145,7 @@ describe("buildTimeline", () => {
       body: "",
       changedFiles: 0,
       closedAt: null,
+      commits: [],
       comments: [],
       reviews: [
         { author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },

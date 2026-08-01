@@ -1,5 +1,5 @@
 import type { ExtensionStorage } from "@silo-code/sdk";
-import type { AuthState, GitHubApiError, PrDetail, PrListItem } from "./github-pr-api";
+import type { AuthState, GitHubApiError, PrCommitDetail, PrDetail, PrListItem } from "./github-pr-api";
 import { DEFAULT_FILTER, type PrFilter } from "./filters";
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -73,6 +73,26 @@ function detailKey(repoKey: string, number: number): string {
   return `${repoKey}:${number}`;
 }
 
+// ─── Commit detail cache ──────────────────────────────────────────────────────
+// The commit *list* rides along with PrDetail.commits (cheap, same fetch); only
+// a single commit's full detail (message body, files) is fetched lazily and
+// needs its own cache, keyed by repo + sha (shas are unique repo-wide, but the
+// prefix keeps entries tidy alongside the repo's other cache keys).
+
+export interface CommitDetailCacheEntry {
+  detail: PrCommitDetail;
+  fetchedAt: Date;
+}
+
+export interface CommitDetailErrorEntry {
+  error: GitHubApiError;
+  fetchedAt: Date;
+}
+
+function commitDetailKey(repoKey: string, sha: string): string {
+  return `${repoKey}:${sha}`;
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 type Listener = () => void;
@@ -83,6 +103,8 @@ export class PrStore {
   private _repoStates = new Map<string, WorkspacePrState>();
   private _detailCache = new Map<string, DetailCacheEntry>();
   private _detailErrors = new Map<string, DetailErrorEntry>();
+  private _commitDetailCache = new Map<string, CommitDetailCacheEntry>();
+  private _commitDetailErrors = new Map<string, CommitDetailErrorEntry>();
   private _workspaceEnabled = new Map<string, boolean>();
   private _workspaceFilter = new Map<string, PrFilter>();
   private _refreshingWorkspaces = new Set<string>();
@@ -214,6 +236,30 @@ export class PrStore {
 
   clearDetailError(repoKey: string, number: number): void {
     if (this._detailErrors.delete(detailKey(repoKey, number))) this._notify();
+  }
+
+  getCommitDetail(repoKey: string, sha: string): CommitDetailCacheEntry | undefined {
+    return this._commitDetailCache.get(commitDetailKey(repoKey, sha));
+  }
+
+  getCommitDetailError(repoKey: string, sha: string): CommitDetailErrorEntry | undefined {
+    return this._commitDetailErrors.get(commitDetailKey(repoKey, sha));
+  }
+
+  setCommitDetail(repoKey: string, sha: string, detail: PrCommitDetail): void {
+    const key = commitDetailKey(repoKey, sha);
+    this._commitDetailCache.set(key, { detail, fetchedAt: new Date() });
+    this._commitDetailErrors.delete(key);
+    this._notify();
+  }
+
+  setCommitDetailError(repoKey: string, sha: string, error: GitHubApiError): void {
+    this._commitDetailErrors.set(commitDetailKey(repoKey, sha), { error, fetchedAt: new Date() });
+    this._notify();
+  }
+
+  clearCommitDetailError(repoKey: string, sha: string): void {
+    if (this._commitDetailErrors.delete(commitDetailKey(repoKey, sha))) this._notify();
   }
 
   // Defaults true (opt-out) — same rationale as github-actions: monitoring

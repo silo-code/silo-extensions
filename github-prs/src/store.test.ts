@@ -158,7 +158,15 @@ describe("PrStore repo state + detail cache", () => {
 
   it("caches PR detail by repoKey+number", () => {
     const store = new PrStore();
-    const detail = { ...pr(), body: "hi", reviews: [], comments: [], changedFiles: 2, closedAt: null } as PrDetail;
+    const detail = {
+      ...pr(),
+      body: "hi",
+      reviews: [],
+      comments: [],
+      commits: [],
+      changedFiles: 2,
+      closedAt: null,
+    } as PrDetail;
     store.setDetail("o/r", 42, detail);
     expect(store.getDetail("o/r", 42)?.detail.body).toBe("hi");
     expect(store.getDetail("o/r", 99)).toBeUndefined();
@@ -212,6 +220,7 @@ describe("PrStore repo state + detail cache", () => {
       body: "ok",
       reviews: [],
       comments: [],
+      commits: [],
       changedFiles: 1,
       closedAt: null,
     } as PrDetail);

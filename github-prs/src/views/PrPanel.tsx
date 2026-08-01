@@ -32,8 +32,19 @@ import {
 import { useViewStack } from "./use-view-stack";
 import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
-import { detailPageSlot, listPageSlot } from "./page-slots";
+import { PrCommitsView } from "./PrCommitsView";
+import { PrCommitView } from "./PrCommitView";
+import {
+  commitPageSlot,
+  commitsPageSlot,
+  detailPageSlot,
+  listPageSlot,
+} from "./page-slots";
 import type { PanelView } from "../view-stack";
+
+/** Any view that carries a `repoKey`/`number` — the detail, commits, and
+ * commit pages all show data for the same underlying PR. */
+type PrContextView = Extract<PanelView, { kind: "detail" | "commits" | "commit" }>;
 
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
@@ -74,6 +85,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const store = usePrStore();
 
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingCommitDetail, setLoadingCommitDetail] = useState(false);
   const [merging, setMerging] = useState(false);
 
   const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
@@ -85,32 +97,48 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const authState = store.authState;
   const initialized = store.initialized;
 
-  // The detail page keeps rendering its last-open PR while it's parked
-  // off-screen mid-slide (see the render below) — tracked separately from
-  // `view` so popping back to "list" doesn't blank it the instant Back is
-  // pressed, before the slide-out transition finishes.
-  const [lastDetailView, setLastDetailView] = useState<Extract<
-    PanelView,
-    { kind: "detail" }
-  > | null>(view.kind === "detail" ? view : null);
+  // The detail/commits/commit pages keep rendering their last-open PR while
+  // parked off-screen mid-slide (see the render below) — tracked separately
+  // from `view` so popping back doesn't blank a page the instant Back is
+  // pressed, before the slide-out transition finishes. All three pages show
+  // data for the same PR, so one repoKey/number tracker covers them.
+  const [lastPrView, setLastPrView] = useState<PrContextView | null>(
+    view.kind !== "list" ? view : null,
+  );
   useEffect(() => {
-    if (view.kind === "detail") setLastDetailView(view);
+    if (view.kind !== "list") setLastPrView(view);
+  }, [view]);
+
+  const [lastCommitView, setLastCommitView] = useState<Extract<
+    PanelView,
+    { kind: "commit" }
+  > | null>(view.kind === "commit" ? view : null);
+  useEffect(() => {
+    if (view.kind === "commit") setLastCommitView(view);
   }, [view]);
 
   const detailPr = useMemo(() => {
-    if (!lastDetailView) return null;
-    return findPrInRepoStates(repoStates, lastDetailView.repoKey, lastDetailView.number);
-  }, [lastDetailView, repoStates]);
+    if (!lastPrView) return null;
+    return findPrInRepoStates(repoStates, lastPrView.repoKey, lastPrView.number);
+  }, [lastPrView, repoStates]);
 
-  const detailEntry = lastDetailView
-    ? store.getDetail(lastDetailView.repoKey, lastDetailView.number)
+  const detailEntry = lastPrView
+    ? store.getDetail(lastPrView.repoKey, lastPrView.number)
     : undefined;
-  const detailError = lastDetailView
-    ? store.getDetailError(lastDetailView.repoKey, lastDetailView.number)
+  const detailError = lastPrView
+    ? store.getDetailError(lastPrView.repoKey, lastPrView.number)
     : undefined;
+
+  const commitDetailEntry = lastCommitView
+    ? store.getCommitDetail(lastCommitView.repoKey, lastCommitView.sha)
+    : undefined;
+  const commitDetailError = lastCommitView
+    ? store.getCommitDetailError(lastCommitView.repoKey, lastCommitView.sha)
+    : undefined;
+  const commitCwd = lastCommitView ? service.resolveCwd(lastCommitView.repoKey) : null;
 
   useEffect(() => {
-    if (view.kind !== "detail" || !active) {
+    if (view.kind === "list" || !active) {
       setLoadingDetail(false);
       return;
     }
@@ -126,9 +154,25 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   }, [view, service, active]);
 
   useEffect(() => {
+    if (view.kind !== "commit" || !active) {
+      setLoadingCommitDetail(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCommitDetail(true);
+    void service.fetchCommitDetail(view.repoKey, view.sha).finally(() => {
+      if (!cancelled) setLoadingCommitDetail(false);
+    });
+    return () => {
+      cancelled = true;
+      setLoadingCommitDetail(false);
+    };
+  }, [view, service, active]);
+
+  useEffect(() => {
     if (!active) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && view.kind === "detail") {
+      if (e.key === "Escape" && view.kind !== "list") {
         e.stopPropagation();
         pop();
       }
@@ -254,6 +298,20 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     [push],
   );
 
+  const openCommits = useCallback(
+    (repoKey: string, number: number) => {
+      push({ kind: "commits", repoKey, number });
+    },
+    [push],
+  );
+
+  const openCommit = useCallback(
+    (repoKey: string, number: number, sha: string) => {
+      push({ kind: "commit", repoKey, number, sha });
+    },
+    [push],
+  );
+
   if (!workspaceId) {
     return (
       <div className="ghpr">
@@ -367,10 +425,10 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
           </div>
         </div>
 
-        {/* Lazily mounted on first open, then left mounted (see lastDetailView)
+        {/* Lazily mounted on first open, then left mounted (see lastPrView)
             so Back's slide-out shows the PR that was open, not a blank page. */}
         <div className={`ghpr-page ghpr-page--${detailPageSlot(view)}`}>
-          {lastDetailView && (
+          {lastPrView && (
             <>
               <div className="ghpr-header ghpr-header--detail">
                 <div className="ghpr-header__toolbar">
@@ -405,7 +463,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 </div>
                 <div className="ghpr-header__title-row">
                   <div className="ghpr-header__title">
-                    #{lastDetailView.number}
+                    #{lastPrView.number}
                     {detailPr ? ` · ${detailPr.title}` : ""}
                   </div>
                   {detailPr && (
@@ -438,6 +496,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     detailEntry={detailEntry}
                     detailError={detailError}
                     loadingDetail={loadingDetail}
+                    onViewCommits={() => openCommits(lastPrView.repoKey, lastPrView.number)}
                   />
                 ) : (
                   <div className="ghpr-empty">
@@ -448,6 +507,63 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     </button>
                   </div>
                 )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Commits list — pushed from the detail page's "Commits" section. */}
+        <div className={`ghpr-page ghpr-page--${commitsPageSlot(view)}`}>
+          {lastPrView && (
+            <>
+              <div className="ghpr-header">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                </div>
+                <div className="ghpr-header__title">Commits</div>
+              </div>
+              <div className="ghpr-body">
+                <PrCommitsView
+                  commits={detailEntry?.detail.commits ?? []}
+                  loading={loadingDetail}
+                  error={detailError && !detailEntry ? detailError.error.message : null}
+                  onSelectCommit={(sha) => openCommit(lastPrView.repoKey, lastPrView.number, sha)}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* One commit's message + changed files — pushed from the commits list. */}
+        <div className={`ghpr-page ghpr-page--${commitPageSlot(view)}`}>
+          {lastCommitView && (
+            <>
+              <div className="ghpr-header">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                </div>
+                <div className="ghpr-header__title">
+                  {commitDetailEntry?.detail.subject ?? lastCommitView.sha.slice(0, 7)}
+                </div>
+              </div>
+              <div className="ghpr-body">
+                <PrCommitView
+                  ctx={ctx}
+                  owner={lastCommitView.repoKey.split("/")[0] ?? ""}
+                  repo={lastCommitView.repoKey.split("/")[1] ?? ""}
+                  cwd={commitCwd}
+                  detail={commitDetailEntry?.detail}
+                  loading={loadingCommitDetail}
+                  error={
+                    commitDetailError && !commitDetailEntry ? commitDetailError.error.message : null
+                  }
+                />
               </div>
             </>
           )}

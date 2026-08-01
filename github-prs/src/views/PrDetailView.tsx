@@ -33,6 +33,7 @@ export interface PrDetailViewProps {
   detailEntry: DetailCacheEntry | undefined;
   detailError: DetailErrorEntry | undefined;
   loadingDetail: boolean;
+  onViewCommits: () => void;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -65,6 +66,7 @@ export function PrDetailView({
   detailEntry,
   detailError,
   loadingDetail,
+  onViewCommits,
 }: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
@@ -102,6 +104,17 @@ export function PrDetailView({
       {showDetailError && (
         <div className="ghpr-error-banner">{detailError.error.message}</div>
       )}
+
+      <section className="ghpr-detail__section">
+        <h3 className="ghpr-detail__section-title">Commits</h3>
+        <button type="button" className="ghpr-check-row" onClick={onViewCommits}>
+          <span className="ghpr-check-row__name">
+            {detail
+              ? `${detail.commits.length} commit${detail.commits.length === 1 ? "" : "s"}`
+              : "View commits"}
+          </span>
+        </button>
+      </section>
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Checks</h3>

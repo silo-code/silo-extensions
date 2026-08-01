@@ -696,6 +696,147 @@
   line-height: 1.45;
 }
 
+/* Commits list page + commit detail page — ported from Silo's git-explorer
+   "View Commits" flow (packages/extensions-silo/src/git-explorer), same
+   layout/tokens under the ghpr- prefix. */
+.ghpr-commits-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ghpr-commit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.ghpr-commit-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+
+.ghpr-commit-subject {
+  color: var(--silo-color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ghpr-commit-meta {
+  display: flex;
+  gap: 8px;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+}
+
+.ghpr-commit-shortsha {
+  font-family: var(--silo-font-mono);
+}
+
+.ghpr-commit-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.ghpr-commit-detail-message {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--silo-color-border);
+}
+
+.ghpr-commit-detail-subject {
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+  overflow-wrap: anywhere;
+}
+
+.ghpr-commit-detail-body {
+  margin: 6px 0 0;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+}
+
+.ghpr-commit-detail-meta {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  font-family: var(--silo-font-mono);
+}
+
+.ghpr-commit-detail-stats {
+  padding: 8px 12px;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  border-bottom: 1px solid var(--silo-color-border);
+}
+
+.ghpr-commit-detail-files {
+  display: flex;
+  flex-direction: column;
+}
+
+.ghpr-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.ghpr-file-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghpr-file-row .ico.file {
+  color: var(--silo-color-text-lo);
+  flex: 0 0 1.25em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ghpr-file-name {
+  color: var(--silo-color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ghpr-file-dir {
+  color: var(--silo-color-text-lo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  font-size: calc(1em - 1px);
+}
+.ghpr-file-stat {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+}
+
+.ghpr-status-glyph {
+  display: inline-block;
+  min-width: 14px;
+  text-align: right;
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+  font-weight: 700;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+.ghpr-status-M { color: var(--silo-color-warn); }
+.ghpr-status-A { color: var(--silo-color-ok); }
+.ghpr-status-D { color: var(--silo-color-err); }
+.ghpr-status-R,
+.ghpr-status-C { color: var(--silo-color-accent); }
+.ghpr-status-T,
+.ghpr-status-U,
+.ghpr-status-X { color: var(--silo-color-text-lo); }
+
 /* Settings page shell — built locally rather than relying on the host's
    internal .es-* classes (SettingsDialog.css), which aren't part of the
    public extension contract. The pane itself doesn't scroll (each page owns
