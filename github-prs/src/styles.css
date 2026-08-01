@@ -474,9 +474,10 @@
    skips the first section (nothing above it) and any section preceded by
    the error banner (already visually distinct on its own). --silo-color-border
    is "often transparent" by design (it's the resize-handle/hairline token —
-   see theming.md); -strong is the one guaranteed a real, visible color. */
+   see theming.md) so it can't be dialed down further; start from -strong
+   (guaranteed a real color) and fade *that* toward transparent instead. */
 .ghpr-detail__section + .ghpr-detail__section {
-  border-top: 1px solid var(--silo-color-border-strong);
+  border-top: 1px solid color-mix(in srgb, var(--silo-color-border-strong) 40%, transparent);
 }
 .ghpr-detail__section-title {
   margin: 0 0 8px;
