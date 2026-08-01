@@ -469,6 +469,13 @@
 .ghpr-detail__section {
   padding: 12px 12px 4px;
 }
+/* Subtle divider between consecutive sections (meta → Commits → Checks →
+   Reviews → …) so each reads as its own block instead of running together —
+   skips the first section (nothing above it) and any section preceded by
+   the error banner (already visually distinct on its own). */
+.ghpr-detail__section + .ghpr-detail__section {
+  border-top: 1px solid var(--silo-color-border);
+}
 .ghpr-detail__section-title {
   margin: 0 0 8px;
   font-size: calc(1em - 2px);
@@ -673,14 +680,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* A section framed by dividers top and bottom (currently just "Commits"),
-   setting it off from the meta/Checks sections around it — those sections'
-   padding alone doesn't read as a boundary the way an explicit rule does. */
-.ghpr-detail__section--bordered {
-  border-top: 1px solid var(--silo-color-border);
-  border-bottom: 1px solid var(--silo-color-border);
 }
 
 /* A row that navigates to another page (currently just "Commits"), as
