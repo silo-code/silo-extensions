@@ -436,30 +436,43 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     <CaretLeft size={14} weight="bold" />
                     <span className="ghpr-header__back-label">Back</span>
                   </button>
-                  {detailPr && (
-                    <div className="ghpr-header__actions">
-                      <Tooltip content="Open on GitHub">
-                        <button
-                          type="button"
-                          className="ghpr-icon-btn"
-                          aria-label="Open on GitHub"
-                          onClick={() => void ctx.ui.openExternal(detailPr.url)}
-                        >
-                          <ArrowSquareOut size={14} />
-                        </button>
-                      </Tooltip>
-                      <Tooltip content="Copy…">
-                        <button
-                          type="button"
-                          className="ghpr-icon-btn"
-                          aria-label="Copy actions"
-                          onClick={(e) => openOverflowMenu(e.currentTarget)}
-                        >
-                          <DotsThreeVertical size={14} />
-                        </button>
-                      </Tooltip>
-                    </div>
-                  )}
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void service.fetchDetail(lastPrView.repoKey, lastPrView.number)}
+                        disabled={loadingDetail}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                    {detailPr && (
+                      <>
+                        <Tooltip content="Open on GitHub">
+                          <button
+                            type="button"
+                            className="ghpr-icon-btn"
+                            aria-label="Open on GitHub"
+                            onClick={() => void ctx.ui.openExternal(detailPr.url)}
+                          >
+                            <ArrowSquareOut size={14} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="Copy…">
+                          <button
+                            type="button"
+                            className="ghpr-icon-btn"
+                            aria-label="Copy actions"
+                            onClick={(e) => openOverflowMenu(e.currentTarget)}
+                          >
+                            <DotsThreeVertical size={14} />
+                          </button>
+                        </Tooltip>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="ghpr-header__title-row">
                   <div className="ghpr-header__title">
@@ -522,6 +535,19 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     <CaretLeft size={14} weight="bold" />
                     <span className="ghpr-header__back-label">Back</span>
                   </button>
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void service.fetchDetail(lastPrView.repoKey, lastPrView.number)}
+                        disabled={loadingDetail}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
                 </div>
                 <div className="ghpr-header__title">Commits</div>
               </div>
