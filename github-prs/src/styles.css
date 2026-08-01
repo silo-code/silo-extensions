@@ -758,7 +758,8 @@
 }
 
 .ghpr-commit-subject {
-  color: var(--silo-color-text);
+  font-weight: 500;
+  color: var(--silo-color-text-hi);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

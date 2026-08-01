@@ -548,9 +548,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     <span className="ghpr-header__back-label">Back</span>
                   </button>
                 </div>
-                <div className="ghpr-header__title">
-                  {commitDetailEntry?.detail.subject ?? lastCommitView.sha.slice(0, 7)}
-                </div>
+                <div className="ghpr-header__title">Commit</div>
               </div>
               <div className="ghpr-body">
                 <PrCommitView
