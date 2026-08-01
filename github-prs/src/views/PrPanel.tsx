@@ -186,6 +186,21 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     await service.refreshWorkspace(workspaceId);
   }, [service, workspaceId]);
 
+  // Shared by the detail and commits pages' Refresh buttons — both show data
+  // from the same PrDetail fetch. Routed through this (rather than each
+  // button calling service.fetchDetail directly) so loadingDetail — and thus
+  // the button's spin — actually reflects an in-flight manual refresh, not
+  // just the one the view-change effect above tracks.
+  const refreshDetail = useCallback(async () => {
+    if (!lastPrView) return;
+    setLoadingDetail(true);
+    try {
+      await service.fetchDetail(lastPrView.repoKey, lastPrView.number);
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, [lastPrView, service]);
+
   const handleFilter = useCallback(
     (next: PrFilter) => {
       if (!workspaceId) return;
@@ -441,7 +456,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                       <button
                         type="button"
                         className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
-                        onClick={() => void service.fetchDetail(lastPrView.repoKey, lastPrView.number)}
+                        onClick={() => void refreshDetail()}
                         disabled={loadingDetail}
                         aria-label="Refresh"
                       >
@@ -529,7 +544,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
         <div className={`ghpr-page ghpr-page--${commitsPageSlot(view)}`}>
           {lastPrView && (
             <>
-              <div className="ghpr-header">
+              <div className="ghpr-header ghpr-header--detail">
                 <div className="ghpr-header__toolbar">
                   <button type="button" className="ghpr-header__back" onClick={pop}>
                     <CaretLeft size={14} weight="bold" />
@@ -540,7 +555,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                       <button
                         type="button"
                         className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
-                        onClick={() => void service.fetchDetail(lastPrView.repoKey, lastPrView.number)}
+                        onClick={() => void refreshDetail()}
                         disabled={loadingDetail}
                         aria-label="Refresh"
                       >
