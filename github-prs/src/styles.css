@@ -472,9 +472,11 @@
 /* Subtle divider between consecutive sections (meta → Commits → Checks →
    Reviews → …) so each reads as its own block instead of running together —
    skips the first section (nothing above it) and any section preceded by
-   the error banner (already visually distinct on its own). */
+   the error banner (already visually distinct on its own). --silo-color-border
+   is "often transparent" by design (it's the resize-handle/hairline token —
+   see theming.md); -strong is the one guaranteed a real, visible color. */
 .ghpr-detail__section + .ghpr-detail__section {
-  border-top: 1px solid var(--silo-color-border);
+  border-top: 1px solid var(--silo-color-border-strong);
 }
 .ghpr-detail__section-title {
   margin: 0 0 8px;
