@@ -106,7 +106,7 @@ export function PrDetailView({
         <div className="ghpr-error-banner">{detailError.error.message}</div>
       )}
 
-      <section className="ghpr-detail__section">
+      <section className="ghpr-detail__section ghpr-detail__section--bordered">
         <h3 className="ghpr-detail__section-title">Commits</h3>
         <button type="button" className="ghpr-nav-row" onClick={onViewCommits}>
           <span className="ghpr-nav-row__label">
