@@ -8,7 +8,7 @@ Browse open and recently merged pull requests for the GitHub repos in your works
 
 - Side panel listing PRs for every unique GitHub remote in the active workspace (worktrees of the same repo collapse into one list)
 - Filters: My PRs (default), Needs my review, All open, Recently merged
-- Click a row for CI checks, reviews, description, and activity
+- Click a row for CI checks, reviews, description, and activity — failing and still-running checks stay visible, passing ones collapse behind a "Show N more passing" toggle so a PR with dozens of green checks doesn't bury what actually needs a look
 - Drill from a PR into its commits, then a commit's changed files, then open a file's diff — sourced from GitHub directly, so it works even for commits never fetched into your local clone (e.g. a fork PR's head)
 - Or drill straight into every file the PR changes overall (diffed against its merge-base, matching GitHub's own "Files changed" tab) without stepping through individual commits
 - Every review is listed, not just each reviewer's latest — a reviewer can leave several (e.g. commented, then had it auto-dismissed by a later push), and each one is its own clickable row. Click through to read the full write-up on its own page, not just the state icon, including its inline (file/line) conversations shown as full threads — every reply in order, regardless of which review each individual reply happens to be attributed to — which often carry the actual feedback when a review's own summary is empty

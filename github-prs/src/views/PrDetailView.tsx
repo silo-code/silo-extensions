@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
+  CaretDown,
   CaretRight,
   CheckCircle,
   CircleNotch,
@@ -15,6 +16,7 @@ import {
   classifyCheck,
   deriveReviewState,
   hasConflicts,
+  splitChecksByOutcome,
   type CheckOutcome,
 } from "../status";
 import { formatElapsed } from "../format-elapsed";
@@ -49,6 +51,30 @@ function checkIcon(outcome: CheckOutcome) {
   }
 }
 
+function renderCheckRow(check: CheckContext, ctx: ExtensionContext) {
+  const outcome = classifyCheck(check);
+  const url = checkUrl(check);
+  const name = checkName(check);
+  const workflow = check.__typename === "CheckRun" && check.workflowName ? check.workflowName : null;
+  return (
+    <button
+      key={checkKey(check)}
+      type="button"
+      className="ghpr-check-row"
+      disabled={!url}
+      onClick={() => {
+        if (url) void ctx.ui.openExternal(url);
+      }}
+    >
+      {checkIcon(outcome)}
+      <span className="ghpr-check-row__name">
+        {name}
+        {workflow && <span className="ghpr-check-row__workflow">{workflow}</span>}
+      </span>
+    </button>
+  );
+}
+
 export function reviewStateIcon(state: string) {
   switch (state) {
     case "APPROVED":
@@ -75,6 +101,15 @@ export function PrDetailView({
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
   const checks = pr.statusCheckRollup;
+  // Passing checks are collapsed behind a toggle by default — a big PR can
+  // carry dozens of them, and the ones that actually need a look (failing,
+  // still running) are what should be visible without scrolling past a wall
+  // of green.
+  const [showPassingChecks, setShowPassingChecks] = useState(false);
+  const { passing: passingChecks, other: otherChecks } = useMemo(
+    () => splitChecksByOutcome(checks),
+    [checks],
+  );
   const reviews = useMemo(() => resolvedReviews(pr, detail), [pr, detail]);
   const timeline = useMemo(() => (detail ? buildTimeline(detail) : []), [detail]);
   const requested = pr.reviewRequests
@@ -135,32 +170,27 @@ export function PrDetailView({
         {checks.length === 0 ? (
           <div className="ghpr-detail__loading">No checks reported.</div>
         ) : (
-          checks.map((check: CheckContext) => {
-            const outcome = classifyCheck(check);
-            const url = checkUrl(check);
-            const name = checkName(check);
-            const workflow =
-              check.__typename === "CheckRun" && check.workflowName
-                ? check.workflowName
-                : null;
-            return (
+          <>
+            {otherChecks.map((check) => renderCheckRow(check, ctx))}
+            {passingChecks.length > 0 && (
               <button
-                key={checkKey(check)}
                 type="button"
-                className="ghpr-check-row"
-                disabled={!url}
-                onClick={() => {
-                  if (url) void ctx.ui.openExternal(url);
-                }}
+                className="ghpr-checks-toggle"
+                onClick={() => setShowPassingChecks((v) => !v)}
+                aria-expanded={showPassingChecks}
               >
-                {checkIcon(outcome)}
-                <span className="ghpr-check-row__name">
-                  {name}
-                  {workflow && <span className="ghpr-check-row__workflow">{workflow}</span>}
-                </span>
+                {showPassingChecks ? (
+                  <CaretDown size={12} weight="bold" />
+                ) : (
+                  <CaretRight size={12} weight="bold" />
+                )}
+                {showPassingChecks
+                  ? `Hide ${passingChecks.length} passing`
+                  : `Show ${passingChecks.length} more passing`}
               </button>
-            );
-          })
+            )}
+            {showPassingChecks && passingChecks.map((check) => renderCheckRow(check, ctx))}
+          </>
         )}
       </section>
 

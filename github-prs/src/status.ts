@@ -30,6 +30,21 @@ export function classifyCheck(check: CheckContext): CheckOutcome {
   }
 }
 
+// Splits a rollup into what needs a look (failing/pending) and what doesn't
+// (passing), preserving each group's relative order — used to collapse the
+// passing checks behind a "Show more" toggle on the detail page's Checks
+// section without hiding a failure that happens to sort after them.
+export function splitChecksByOutcome(
+  checks: CheckContext[],
+): { passing: CheckContext[]; other: CheckContext[] } {
+  const passing: CheckContext[] = [];
+  const other: CheckContext[] = [];
+  for (const check of checks) {
+    (classifyCheck(check) === "passing" ? passing : other).push(check);
+  }
+  return { passing, other };
+}
+
 export interface CheckSummary {
   passing: number;
   failing: number;

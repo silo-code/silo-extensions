@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   classifyCheck,
+  splitChecksByOutcome,
   summarizeChecks,
   checkSummaryLabel,
   checkName,
@@ -83,6 +84,29 @@ describe("classifyCheck", () => {
     expect(classifyCheck(statusContext({ state: "EXPECTED" }))).toBe("pending");
     expect(classifyCheck(statusContext({ state: "FAILURE" }))).toBe("failing");
     expect(classifyCheck(statusContext({ state: "ERROR" }))).toBe("failing");
+  });
+});
+
+describe("splitChecksByOutcome", () => {
+  it("separates passing from failing/pending, preserving relative order in each group", () => {
+    const passingA = checkRun({ name: "a", conclusion: "SUCCESS" });
+    const failing = checkRun({ name: "b", conclusion: "FAILURE" });
+    const passingB = statusContext({ context: "c", state: "SUCCESS" });
+    const pending = checkRun({ name: "d", status: "IN_PROGRESS", conclusion: "" });
+    const { passing, other } = splitChecksByOutcome([passingA, failing, passingB, pending]);
+    expect(passing).toEqual([passingA, passingB]);
+    expect(other).toEqual([failing, pending]);
+  });
+
+  it("returns two empty arrays for an empty rollup", () => {
+    expect(splitChecksByOutcome([])).toEqual({ passing: [], other: [] });
+  });
+
+  it("puts an all-passing rollup entirely in `passing`", () => {
+    const checks = [checkRun({ conclusion: "SUCCESS" }), statusContext({ state: "SUCCESS" })];
+    const { passing, other } = splitChecksByOutcome(checks);
+    expect(passing).toHaveLength(2);
+    expect(other).toHaveLength(0);
   });
 });
 

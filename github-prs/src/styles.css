@@ -737,6 +737,28 @@
   white-space: nowrap;
 }
 
+/* Expands/collapses the passing-checks group in the Checks section. */
+.ghpr-checks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  border-radius: var(--silo-radius-sm);
+  padding: 6px 4px;
+  margin: 0 -4px;
+}
+.ghpr-checks-toggle:hover {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text);
+}
+
 /* A row that navigates to another page (currently just "Commits"), as
    opposed to .ghpr-check-row's rows which open an external URL — a trailing
    chevron so it reads as "drill in", not just another list item, even
