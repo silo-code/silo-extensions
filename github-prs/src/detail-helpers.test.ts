@@ -4,8 +4,8 @@ import {
   checkKey,
   findPrInRepoStates,
   folderRootName,
+  resolvedReviews,
   reviewKindLabel,
-  uniqueReviewers,
 } from "./detail-helpers";
 import type { PrDetail, PrListItem } from "./github-pr-api";
 
@@ -73,8 +73,8 @@ describe("checkKey", () => {
   });
 });
 
-describe("uniqueReviewers", () => {
-  it("keeps the latest review per login", () => {
+describe("resolvedReviews", () => {
+  it("keeps every review — including several from the same reviewer — sorted newest first", () => {
     const item = pr({
       latestReviews: [
         { id: "r1", author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
@@ -82,9 +82,8 @@ describe("uniqueReviewers", () => {
         { id: "r3", author: { login: "b" }, state: "CHANGES_REQUESTED", submittedAt: "2026-01-01T12:00:00Z", body: "" },
       ],
     });
-    const reviewers = uniqueReviewers(item);
-    expect(reviewers).toHaveLength(2);
-    expect(reviewers.find((r) => r.author?.login === "a")?.state).toBe("APPROVED");
+    const reviews = resolvedReviews(item);
+    expect(reviews.map((r) => r.id)).toEqual(["r2", "r3", "r1"]);
   });
 
   it("prefers detail.reviews when present", () => {
@@ -106,7 +105,17 @@ describe("uniqueReviewers", () => {
         { id: "r2", author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-03T00:00:00Z", body: "" },
       ],
     } as PrDetail;
-    expect(uniqueReviewers(item, detail)[0]?.state).toBe("APPROVED");
+    expect(resolvedReviews(item, detail)[0]?.state).toBe("APPROVED");
+  });
+
+  it("sorts a null submittedAt (e.g. a pending review) last", () => {
+    const item = pr({
+      latestReviews: [
+        { id: "r1", author: { login: "a" }, state: "PENDING", submittedAt: null, body: "" },
+        { id: "r2", author: { login: "b" }, state: "APPROVED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
+      ],
+    });
+    expect(resolvedReviews(item).map((r) => r.id)).toEqual(["r2", "r1"]);
   });
 });
 

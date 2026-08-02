@@ -53,18 +53,20 @@ export function buildTimeline(detail: PrDetail): TimelineItem[] {
   });
 }
 
-export function uniqueReviewers(pr: PrListItem, detail?: PrDetail): PrReview[] {
+/** Every review for the PR, newest first — prefers `detail.reviews` (loaded
+ * once the detail page's lazy fetch resolves) over the cheaper
+ * `pr.latestReviews` (one per reviewer, available immediately from the list
+ * fetch) when available. Deliberately NOT deduped to one-per-reviewer: the
+ * same person can leave several reviews over a PR's life (e.g. commented,
+ * then had that review auto-dismissed by a later push) — collapsing to just
+ * the latest hid the earlier ones (and their comments) entirely. */
+export function resolvedReviews(pr: PrListItem, detail?: PrDetail): PrReview[] {
   const reviews = detail?.reviews?.length ? detail.reviews : pr.latestReviews;
-  const byLogin = new Map<string, PrReview>();
-  for (const r of reviews) {
-    const login = r.author?.login;
-    if (!login) continue;
-    const prev = byLogin.get(login);
-    if (!prev || (r.submittedAt && (!prev.submittedAt || r.submittedAt > prev.submittedAt))) {
-      byLogin.set(login, r);
-    }
-  }
-  return [...byLogin.values()];
+  return [...reviews].sort((a, b) => {
+    const at = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+    const bt = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+    return bt - at;
+  });
 }
 
 export function findPrInRepoStates(

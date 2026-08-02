@@ -21,8 +21,8 @@ import { formatElapsed } from "../format-elapsed";
 import {
   buildTimeline,
   checkKey,
+  resolvedReviews,
   reviewKindLabel,
-  uniqueReviewers,
 } from "../detail-helpers";
 import type { DetailCacheEntry, DetailErrorEntry } from "../store";
 import { GithubMarkdown } from "./GithubMarkdown";
@@ -75,7 +75,7 @@ export function PrDetailView({
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
   const checks = pr.statusCheckRollup;
-  const reviewers = useMemo(() => uniqueReviewers(pr, detail), [pr, detail]);
+  const reviews = useMemo(() => resolvedReviews(pr, detail), [pr, detail]);
   const timeline = useMemo(() => (detail ? buildTimeline(detail) : []), [detail]);
   const requested = pr.reviewRequests
     .map((r) => r.login ?? r.name)
@@ -166,11 +166,11 @@ export function PrDetailView({
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Reviews</h3>
-        {reviewers.length === 0 && requested.length === 0 ? (
+        {reviews.length === 0 && requested.length === 0 ? (
           <div className="ghpr-detail__loading">No reviewers yet.</div>
         ) : (
           <>
-            {reviewers.map((r) => (
+            {reviews.map((r) => (
               <div
                 key={r.id || (r.author?.login ?? r.submittedAt)}
                 className="ghpr-review-row"
