@@ -1,5 +1,13 @@
 import type { ExtensionStorage } from "@silo-code/sdk";
-import type { AuthState, GitHubApiError, PrCommitDetail, PrDetail, PrListItem } from "./github-pr-api";
+import type {
+  AuthState,
+  GitHubApiError,
+  PrCommitDetail,
+  PrDetail,
+  PrFileChange,
+  PrListItem,
+  PrReviewThread,
+} from "./github-pr-api";
 import { DEFAULT_FILTER, type PrFilter } from "./filters";
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -93,6 +101,45 @@ function commitDetailKey(repoKey: string, sha: string): string {
   return `${repoKey}:${sha}`;
 }
 
+// ─── Review comments cache ────────────────────────────────────────────────────
+// A review's file/line-scoped inline comments — fetched lazily (REST, two
+// calls to correlate the review) only when its Review page is opened. Keyed
+// by the review's GraphQL id (PrReview.id), same as the review itself.
+
+export interface ReviewCommentsCacheEntry {
+  threads: PrReviewThread[];
+  fetchedAt: Date;
+}
+
+export interface ReviewCommentsErrorEntry {
+  error: GitHubApiError;
+  fetchedAt: Date;
+}
+
+function reviewCommentsKey(repoKey: string, reviewId: string): string {
+  return `${repoKey}:${reviewId}`;
+}
+
+// ─── PR files cache ───────────────────────────────────────────────────────────
+// The PR's overall changed-file list, plus the base/head shas the diff
+// provider needs — fetched lazily (files list + a merge-base lookup) only
+// when the Files page is opened. Keyed like the detail cache (PR-scoped, not
+// sha-scoped, unlike commit detail).
+
+export interface FilesCacheEntry {
+  files: PrFileChange[];
+  /** Merge-base sha (falls back to baseRefOid if that lookup failed) — the
+   * diff provider's "original" side for every file in this list. */
+  baseSha: string;
+  headSha: string;
+  fetchedAt: Date;
+}
+
+export interface FilesErrorEntry {
+  error: GitHubApiError;
+  fetchedAt: Date;
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 type Listener = () => void;
@@ -105,6 +152,10 @@ export class PrStore {
   private _detailErrors = new Map<string, DetailErrorEntry>();
   private _commitDetailCache = new Map<string, CommitDetailCacheEntry>();
   private _commitDetailErrors = new Map<string, CommitDetailErrorEntry>();
+  private _filesCache = new Map<string, FilesCacheEntry>();
+  private _filesErrors = new Map<string, FilesErrorEntry>();
+  private _reviewCommentsCache = new Map<string, ReviewCommentsCacheEntry>();
+  private _reviewCommentsErrors = new Map<string, ReviewCommentsErrorEntry>();
   private _workspaceEnabled = new Map<string, boolean>();
   private _workspaceFilter = new Map<string, PrFilter>();
   private _refreshingWorkspaces = new Set<string>();
@@ -260,6 +311,54 @@ export class PrStore {
 
   clearCommitDetailError(repoKey: string, sha: string): void {
     if (this._commitDetailErrors.delete(commitDetailKey(repoKey, sha))) this._notify();
+  }
+
+  getReviewComments(repoKey: string, reviewId: string): ReviewCommentsCacheEntry | undefined {
+    return this._reviewCommentsCache.get(reviewCommentsKey(repoKey, reviewId));
+  }
+
+  getReviewCommentsError(repoKey: string, reviewId: string): ReviewCommentsErrorEntry | undefined {
+    return this._reviewCommentsErrors.get(reviewCommentsKey(repoKey, reviewId));
+  }
+
+  setReviewComments(repoKey: string, reviewId: string, threads: PrReviewThread[]): void {
+    const key = reviewCommentsKey(repoKey, reviewId);
+    this._reviewCommentsCache.set(key, { threads, fetchedAt: new Date() });
+    this._reviewCommentsErrors.delete(key);
+    this._notify();
+  }
+
+  setReviewCommentsError(repoKey: string, reviewId: string, error: GitHubApiError): void {
+    this._reviewCommentsErrors.set(reviewCommentsKey(repoKey, reviewId), { error, fetchedAt: new Date() });
+    this._notify();
+  }
+
+  clearReviewCommentsError(repoKey: string, reviewId: string): void {
+    if (this._reviewCommentsErrors.delete(reviewCommentsKey(repoKey, reviewId))) this._notify();
+  }
+
+  getFiles(repoKey: string, number: number): FilesCacheEntry | undefined {
+    return this._filesCache.get(detailKey(repoKey, number));
+  }
+
+  getFilesError(repoKey: string, number: number): FilesErrorEntry | undefined {
+    return this._filesErrors.get(detailKey(repoKey, number));
+  }
+
+  setFiles(repoKey: string, number: number, entry: Omit<FilesCacheEntry, "fetchedAt">): void {
+    const key = detailKey(repoKey, number);
+    this._filesCache.set(key, { ...entry, fetchedAt: new Date() });
+    this._filesErrors.delete(key);
+    this._notify();
+  }
+
+  setFilesError(repoKey: string, number: number, error: GitHubApiError): void {
+    this._filesErrors.set(detailKey(repoKey, number), { error, fetchedAt: new Date() });
+    this._notify();
+  }
+
+  clearFilesError(repoKey: string, number: number): void {
+    if (this._filesErrors.delete(detailKey(repoKey, number))) this._notify();
   }
 
   // Defaults true (opt-out) — same rationale as github-actions: monitoring

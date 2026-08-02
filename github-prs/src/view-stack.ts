@@ -6,7 +6,9 @@ export type PanelView =
   | { kind: "list" }
   | { kind: "detail"; repoKey: string; number: number }
   | { kind: "commits"; repoKey: string; number: number }
-  | { kind: "commit"; repoKey: string; number: number; sha: string };
+  | { kind: "commit"; repoKey: string; number: number; sha: string }
+  | { kind: "files"; repoKey: string; number: number }
+  | { kind: "review"; repoKey: string; number: number; reviewId: string };
 
 export interface ViewStack {
   // Invariant: views[0] is always the list root.
@@ -37,11 +39,14 @@ function isPanelView(raw: unknown): raw is PanelView {
   if (!raw || typeof raw !== "object") return false;
   const v = raw as Record<string, unknown>;
   if (v.kind === "list") return true;
-  if (v.kind === "detail" || v.kind === "commits") {
+  if (v.kind === "detail" || v.kind === "commits" || v.kind === "files") {
     return typeof v.repoKey === "string" && typeof v.number === "number";
   }
   if (v.kind === "commit") {
     return typeof v.repoKey === "string" && typeof v.number === "number" && typeof v.sha === "string";
+  }
+  if (v.kind === "review") {
+    return typeof v.repoKey === "string" && typeof v.number === "number" && typeof v.reviewId === "string";
   }
   return false;
 }
@@ -53,4 +58,18 @@ export function restoreStack(raw: unknown): ViewStack {
   if (!raw.every(isPanelView)) return ROOT_STACK;
   if ((raw[0] as PanelView).kind !== "list") return ROOT_STACK;
   return { views: raw as PanelView[] };
+}
+
+// `SidePanelProps.storage` is a stable object across workspace switches (the
+// host swaps the underlying bag it reads from, not the wrapper) — so a plain
+// "have I restored yet" boolean only ever fires once per panel mount, not
+// once per workspace. This gates the restore effect on *which* workspace was
+// last restored, so switching workspaces re-reads the newly-active one's
+// stack instead of leaving the previous workspace's view stuck on screen.
+export function shouldRestoreStack(
+  hydrated: boolean,
+  restoredFor: string | null,
+  workspaceId: string,
+): boolean {
+  return hydrated && restoredFor !== workspaceId;
 }

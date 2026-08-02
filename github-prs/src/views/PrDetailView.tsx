@@ -1,13 +1,12 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
+  CaretDown,
   CaretRight,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
   XCircle,
 } from "@phosphor-icons/react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { CheckContext, PrListItem } from "../github-pr-api";
 import {
@@ -17,16 +16,18 @@ import {
   classifyCheck,
   deriveReviewState,
   hasConflicts,
+  splitChecksByOutcome,
   type CheckOutcome,
 } from "../status";
 import { formatElapsed } from "../format-elapsed";
 import {
   buildTimeline,
   checkKey,
+  resolvedReviews,
   reviewKindLabel,
-  uniqueReviewers,
 } from "../detail-helpers";
 import type { DetailCacheEntry, DetailErrorEntry } from "../store";
+import { GithubMarkdown } from "./GithubMarkdown";
 
 export interface PrDetailViewProps {
   ctx: ExtensionContext;
@@ -35,6 +36,8 @@ export interface PrDetailViewProps {
   detailError: DetailErrorEntry | undefined;
   loadingDetail: boolean;
   onViewCommits: () => void;
+  onViewFiles: () => void;
+  onSelectReview: (reviewId: string) => void;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -48,7 +51,31 @@ function checkIcon(outcome: CheckOutcome) {
   }
 }
 
-function reviewStateIcon(state: string) {
+function renderCheckRow(check: CheckContext, ctx: ExtensionContext) {
+  const outcome = classifyCheck(check);
+  const url = checkUrl(check);
+  const name = checkName(check);
+  const workflow = check.__typename === "CheckRun" && check.workflowName ? check.workflowName : null;
+  return (
+    <button
+      key={checkKey(check)}
+      type="button"
+      className="ghpr-check-row"
+      disabled={!url}
+      onClick={() => {
+        if (url) void ctx.ui.openExternal(url);
+      }}
+    >
+      {checkIcon(outcome)}
+      <span className="ghpr-check-row__name">
+        {name}
+        {workflow && <span className="ghpr-check-row__workflow">{workflow}</span>}
+      </span>
+    </button>
+  );
+}
+
+export function reviewStateIcon(state: string) {
   switch (state) {
     case "APPROVED":
       return <CheckCircle size={14} weight="fill" className="ghpr-row__icon--ok" />;
@@ -68,11 +95,22 @@ export function PrDetailView({
   detailError,
   loadingDetail,
   onViewCommits,
+  onViewFiles,
+  onSelectReview,
 }: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
   const checks = pr.statusCheckRollup;
-  const reviewers = useMemo(() => uniqueReviewers(pr, detail), [pr, detail]);
+  // Passing checks are collapsed behind a toggle by default — a big PR can
+  // carry dozens of them, and the ones that actually need a look (failing,
+  // still running) are what should be visible without scrolling past a wall
+  // of green.
+  const [showPassingChecks, setShowPassingChecks] = useState(false);
+  const { visible: visibleChecks, collapsed: collapsedChecks } = useMemo(
+    () => splitChecksByOutcome(checks),
+    [checks],
+  );
+  const reviews = useMemo(() => resolvedReviews(pr, detail), [pr, detail]);
   const timeline = useMemo(() => (detail ? buildTimeline(detail) : []), [detail]);
   const requested = pr.reviewRequests
     .map((r) => r.login ?? r.name)
@@ -95,9 +133,6 @@ export function PrDetailView({
           <span className="ghpr-detail__stats">
             <span className="ghpr-detail__add">+{pr.additions}</span>{" "}
             <span className="ghpr-detail__del">−{pr.deletions}</span>
-            {detail?.changedFiles != null && detail.changedFiles > 0 && (
-              <> · {detail.changedFiles} files</>
-            )}
           </span>
         </div>
       </section>
@@ -119,49 +154,68 @@ export function PrDetailView({
       </section>
 
       <section className="ghpr-detail__section">
+        <h3 className="ghpr-detail__section-title">Files changed</h3>
+        <button type="button" className="ghpr-nav-row" onClick={onViewFiles}>
+          <span className="ghpr-nav-row__label">
+            {detail?.changedFiles != null
+              ? `${detail.changedFiles} file${detail.changedFiles === 1 ? "" : "s"}`
+              : "View files"}
+          </span>
+          <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
+        </button>
+      </section>
+
+      <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Checks</h3>
         {checks.length === 0 ? (
           <div className="ghpr-detail__loading">No checks reported.</div>
         ) : (
-          checks.map((check: CheckContext) => {
-            const outcome = classifyCheck(check);
-            const url = checkUrl(check);
-            const name = checkName(check);
-            const workflow =
-              check.__typename === "CheckRun" && check.workflowName
-                ? check.workflowName
-                : null;
-            return (
+          <>
+            {visibleChecks.map((check) => renderCheckRow(check, ctx))}
+            {collapsedChecks.length > 0 && (
               <button
-                key={checkKey(check)}
                 type="button"
-                className="ghpr-check-row"
-                disabled={!url}
-                onClick={() => {
-                  if (url) void ctx.ui.openExternal(url);
-                }}
+                className="ghpr-checks-toggle"
+                onClick={() => setShowPassingChecks((v) => !v)}
+                aria-expanded={showPassingChecks}
               >
-                {checkIcon(outcome)}
-                <span className="ghpr-check-row__name">
-                  {name}
-                  {workflow && <span className="ghpr-check-row__workflow">{workflow}</span>}
-                </span>
+                {showPassingChecks ? (
+                  <CaretDown size={12} weight="bold" />
+                ) : (
+                  <CaretRight size={12} weight="bold" />
+                )}
+                {showPassingChecks
+                  ? `Hide ${collapsedChecks.length} passing`
+                  : `Show ${collapsedChecks.length} more passing`}
               </button>
-            );
-          })
+            )}
+            {showPassingChecks && collapsedChecks.map((check) => renderCheckRow(check, ctx))}
+          </>
         )}
       </section>
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Reviews</h3>
-        {reviewers.length === 0 && requested.length === 0 ? (
+        {reviews.length === 0 && requested.length === 0 ? (
           <div className="ghpr-detail__loading">No reviewers yet.</div>
         ) : (
           <>
-            {reviewers.map((r) => (
-              <div key={r.author?.login ?? r.submittedAt} className="ghpr-review-row">
+            {reviews.map((r) => (
+              <div
+                key={r.id || (r.author?.login ?? r.submittedAt)}
+                className="ghpr-review-row"
+                role="button"
+                tabIndex={0}
+                onClick={() => r.id && onSelectReview(r.id)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && r.id) {
+                    e.preventDefault();
+                    onSelectReview(r.id);
+                  }
+                }}
+              >
                 {reviewStateIcon(r.state)}
-                <span>
+                <span className="ghpr-review-row__label">
                   <span className="ghpr-timeline-row__who">{r.author?.login ?? "unknown"}</span>
                   {" · "}
                   {reviewKindLabel(r.state)}
@@ -172,6 +226,7 @@ export function PrDetailView({
                     </span>
                   )}
                 </span>
+                <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
               </div>
             ))}
             {requested.length > 0 && (
@@ -190,30 +245,7 @@ export function PrDetailView({
         ) : loadingDetail && !detail ? (
           <div className="ghpr-detail__loading">Loading description…</div>
         ) : detail?.body ? (
-          <div className="ghpr-md">
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (href) void ctx.ui.openExternal(href);
-                    }}
-                  >
-                    {children}
-                  </a>
-                ),
-                img: ({ src, alt }) =>
-                  typeof src === "string" && /^https?:\/\//.test(src) ? (
-                    <img src={src} alt={alt ?? ""} />
-                  ) : null,
-              }}
-            >
-              {detail.body}
-            </Markdown>
-          </div>
+          <GithubMarkdown ctx={ctx}>{detail.body}</GithubMarkdown>
         ) : (
           <p className="ghpr-detail__body ghpr-detail__body--empty">No description.</p>
         )}

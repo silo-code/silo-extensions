@@ -668,6 +668,63 @@
 .ghpr-check-row:hover {
   background: var(--silo-color-bg-hover);
 }
+/* Unlike .ghpr-check-row (a <button>) and .ghpr-timeline-row (not
+   interactive), .ghpr-review-row is a clickable <div role="button"> — drills
+   into that one review's full body, same pattern as a commit row. */
+.ghpr-review-row {
+  align-items: center;
+  cursor: pointer;
+  border-radius: var(--silo-radius-sm);
+  padding: 6px 4px;
+  margin: 0 -4px;
+}
+.ghpr-review-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+.ghpr-review-row__label {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A review's inline (file/line-scoped) conversations, on the Review page —
+   each .ghpr-review-thread is the full conversation at one file/line (root
+   comment + every reply, regardless of which review contributed each one —
+   see fetchPrReviewComments), not just this review's own comment. */
+.ghpr-review-comments {
+  display: flex;
+  flex-direction: column;
+}
+.ghpr-review-thread {
+  padding: 10px 12px;
+}
+.ghpr-review-thread + .ghpr-review-thread {
+  border-top: 1px solid color-mix(in srgb, var(--silo-color-border-strong) 40%, transparent);
+}
+.ghpr-review-thread__path {
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.ghpr-review-thread__message {
+  padding: 6px 10px;
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-bg-hover);
+}
+.ghpr-review-thread__message + .ghpr-review-thread__message {
+  margin-top: 6px;
+}
+.ghpr-review-thread__message-meta {
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  margin-bottom: 4px;
+}
+.ghpr-review-thread__message-meta strong {
+  color: var(--silo-color-text-hi);
+  font-weight: 500;
+}
+
 .ghpr-check-row__name {
   flex: 1;
   min-width: 0;
@@ -682,6 +739,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Expands/collapses the passing-checks group in the Checks section. */
+.ghpr-checks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  border-radius: var(--silo-radius-sm);
+  padding: 6px 4px;
+  margin: 0 -4px;
+}
+.ghpr-checks-toggle:hover {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text);
 }
 
 /* A row that navigates to another page (currently just "Commits"), as

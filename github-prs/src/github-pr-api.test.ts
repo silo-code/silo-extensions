@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   classifyFetchError,
   normalizePrCommitDetail,
+  normalizePrFiles,
   normalizePrItem,
   normalizePrDetail,
 } from "./github-pr-api";
@@ -59,7 +60,7 @@ const OPEN_PR_FIXTURE = JSON.parse(`{
   "headRefName": "feat/rfc-0015-polling-gate-suppression",
   "isDraft": false,
   "labels": [{ "id": "L1", "name": "minor", "color": "d73a4a" }],
-  "latestReviews": [{ "author": { "login": "reviewer1" }, "state": "APPROVED", "submittedAt": "2026-07-17T02:35:00Z" }],
+  "latestReviews": [{ "id": "PRR_kwABC123", "author": { "login": "reviewer1" }, "state": "APPROVED", "submittedAt": "2026-07-17T02:35:00Z" }],
   "mergeStateStatus": "UNKNOWN",
   "mergeable": "UNKNOWN",
   "number": 53,
@@ -99,6 +100,7 @@ describe("normalizePrItem", () => {
     expect(pr.labels).toEqual([{ name: "minor" }]);
     expect(pr.statusCheckRollup).toHaveLength(2);
     expect(pr.latestReviews[0]).toEqual({
+      id: "PRR_kwABC123",
       author: { login: "reviewer1" },
       state: "APPROVED",
       submittedAt: "2026-07-17T02:35:00Z",
@@ -148,12 +150,13 @@ describe("normalizePrDetail", () => {
       body: "PR description here",
       changedFiles: 4,
       closedAt: null,
-      reviews: [{ author: { login: "reviewer1" }, state: "APPROVED", submittedAt: "2026-07-17T02:35:00Z", body: "LGTM" }],
+      reviews: [{ id: "PRR_kwXYZ789", author: { login: "reviewer1" }, state: "APPROVED", submittedAt: "2026-07-17T02:35:00Z", body: "LGTM" }],
       comments: [{ author: { login: "davideweaver" }, body: "ping", createdAt: "2026-07-17T01:00:00Z", url: "https://github.com/x" }],
     });
     expect(detail.body).toBe("PR description here");
     expect(detail.changedFiles).toBe(4);
     expect(detail.closedAt).toBeNull();
+    expect(detail.reviews[0].id).toBe("PRR_kwXYZ789");
     expect(detail.reviews[0].body).toBe("LGTM");
     expect(detail.comments[0]).toEqual({
       author: { login: "davideweaver" },
@@ -203,6 +206,24 @@ describe("normalizePrDetail commits", () => {
 
   it("defaults commits to an empty array when the field is absent", () => {
     expect(normalizePrDetail({ number: 1 }).commits).toEqual([]);
+  });
+});
+
+describe("normalizePrDetail headRefOid/baseRefOid", () => {
+  it("normalizes both shas — the diff provider's base/head for the Files page", () => {
+    const detail = normalizePrDetail({
+      number: 1,
+      headRefOid: "4f66d144ee145947ec144d22d3ab758628a9e946",
+      baseRefOid: "cc4f4b9c1e21020a4fb1699091a183e3291d2612",
+    });
+    expect(detail.headRefOid).toBe("4f66d144ee145947ec144d22d3ab758628a9e946");
+    expect(detail.baseRefOid).toBe("cc4f4b9c1e21020a4fb1699091a183e3291d2612");
+  });
+
+  it("defaults both to empty strings when absent", () => {
+    const detail = normalizePrDetail({ number: 1 });
+    expect(detail.headRefOid).toBe("");
+    expect(detail.baseRefOid).toBe("");
   });
 });
 
@@ -310,6 +331,36 @@ describe("normalizePrCommitDetail", () => {
   });
 });
 
+// Captured from a real `gh api repos/{owner}/{repo}/pulls/{number}/files` invocation.
+describe("normalizePrFiles", () => {
+  it("normalizes the same shape as a commit's files (shared REST fields)", () => {
+    const files = normalizePrFiles([
+      {
+        additions: 2,
+        deletions: 3,
+        filename: "github-prs/src/styles.css",
+        previous_filename: null,
+        status: "modified",
+      },
+    ]);
+    expect(files).toEqual([
+      { path: "github-prs/src/styles.css", origPath: undefined, status: "M", additions: 2, deletions: 3 },
+    ]);
+  });
+
+  it("keeps the previous filename for a rename", () => {
+    const files = normalizePrFiles([
+      { filename: "new.ts", previous_filename: "old.ts", status: "renamed", additions: 0, deletions: 0 },
+    ]);
+    expect(files[0]?.origPath).toBe("old.ts");
+  });
+
+  it("returns an empty array for a non-array response", () => {
+    expect(normalizePrFiles(undefined)).toEqual([]);
+    expect(normalizePrFiles({})).toEqual([]);
+  });
+});
+
 describe("checkAuth", () => {
   function mockCtx(
     exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>,
@@ -368,5 +419,199 @@ describe("checkAuth", () => {
     );
     expect(await checkAuth(ctx, "gh")).toBe("deferred");
     expect(execCalled).toBe(false);
+  });
+});
+
+// Captured from real `gh api repos/{owner}/{repo}/pulls/{number}/reviews` and
+// `.../comments` calls against one full thread: hprutsman left an inline
+// question on a review with an empty GraphQL body, and PR author
+// ani-mehrabyan replied to it twice — each reply as part of one of *her own*
+// reviews, not hprutsman's (GitHub attributes a reply to whichever review the
+// replier submits it under). This is the exact shape that motivated
+// fetchPrReviewComments's two REST calls (see its doc comment) and its
+// thread-grouping: opening any one of the three reviews should surface the
+// same full three-message conversation, not just that review's own comment.
+const REST_REVIEWS_FIXTURE = [
+  { id: 4828430073, user: { login: "hprutsman" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T12:23:45Z" },
+  { id: 4829159578, user: { login: "ani-mehrabyan" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T14:03:34Z" },
+  { id: 4831029177, user: { login: "ani-mehrabyan" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T18:04:00Z" },
+];
+const REST_COMMENTS_FIXTURE = [
+  {
+    id: 3690389630,
+    in_reply_to_id: null,
+    pull_request_review_id: 4828430073,
+    path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+    line: null,
+    body: "Just confirming if we have a ticket tracking this to not lose sight of it?",
+    user: { login: "hprutsman" },
+    created_at: "2026-07-31T12:23:40Z",
+  },
+  {
+    id: 3690956831,
+    in_reply_to_id: 3690389630,
+    pull_request_review_id: 4829159578,
+    path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+    line: null,
+    body: "No filed ticket yet for this specific gap.",
+    user: { login: "ani-mehrabyan" },
+    created_at: "2026-07-31T14:03:30Z",
+  },
+  {
+    id: 3692413472,
+    in_reply_to_id: 3690389630,
+    pull_request_review_id: 4831029177,
+    path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+    line: 42,
+    body: "Added a ticket for it",
+    user: { login: "ani-mehrabyan" },
+    created_at: "2026-07-31T18:03:55Z",
+  },
+];
+
+describe("fetchPrReviewComments", () => {
+  function mockCtx(
+    exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>,
+  ) {
+    return {
+      process: { exec },
+      log: { debug: () => {}, warn: () => {}, error: () => {} },
+    } as unknown as import("@silo-code/sdk").ExtensionContext;
+  }
+
+  function restFetchStub(bin: string, args: string[]) {
+    const endpoint = args[1] ?? "";
+    if (endpoint.endsWith("/reviews")) {
+      return Promise.resolve({ code: 0, stdout: JSON.stringify(REST_REVIEWS_FIXTURE), stderr: "" });
+    }
+    if (endpoint.endsWith("/comments")) {
+      return Promise.resolve({ code: 0, stdout: JSON.stringify(REST_COMMENTS_FIXTURE), stderr: "" });
+    }
+    throw new Error(`unexpected endpoint: ${endpoint}`);
+  }
+
+  it("matches a review by author+submittedAt and returns its thread in full", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "hprutsman", "2026-07-31T12:23:45Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]).toEqual({
+      path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+      line: null,
+      comments: [
+        {
+          id: "3690389630",
+          authorLogin: "hprutsman",
+          createdAt: "2026-07-31T12:23:40Z",
+          body: "Just confirming if we have a ticket tracking this to not lose sight of it?",
+        },
+        {
+          id: "3690956831",
+          authorLogin: "ani-mehrabyan",
+          createdAt: "2026-07-31T14:03:30Z",
+          body: "No filed ticket yet for this specific gap.",
+        },
+        {
+          id: "3692413472",
+          authorLogin: "ani-mehrabyan",
+          createdAt: "2026-07-31T18:03:55Z",
+          body: "Added a ticket for it",
+        },
+      ],
+    });
+  });
+
+  it("returns the same full thread when opened from either reply's own review, not just the root's", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T14:03:34Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]?.comments.map((c) => c.id)).toEqual([
+      "3690389630",
+      "3690956831",
+      "3692413472",
+    ]);
+  });
+
+  it("resolves to an empty list (not an error) when no REST review matches", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "someone-else", "2026-01-01T00:00:00Z", "/repo", "gh",
+    );
+    expect(result).toEqual({ ok: true, threads: [] });
+  });
+
+  it("returns multiple unrelated threads sorted by each thread's start time", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx((bin, args) => {
+      const endpoint = args[1] ?? "";
+      if (endpoint.endsWith("/reviews")) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify([{ id: 1, user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" }]),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({
+        code: 0,
+        stdout: JSON.stringify([
+          // Two comments from the same review, on two different files — two
+          // separate threads, the second one started earlier.
+          { id: 20, in_reply_to_id: null, pull_request_review_id: 1, path: "b.ts", body: "later thread", user: { login: "a" }, created_at: "2026-01-01T01:00:00Z" },
+          { id: 10, in_reply_to_id: null, pull_request_review_id: 1, path: "a.ts", body: "earlier thread", user: { login: "a" }, created_at: "2026-01-01T00:00:00Z" },
+        ]),
+        stderr: "",
+      });
+    });
+    const result = await fetchPrReviewComments(ctx, "o", "r", 1, "a", "2026-01-01T00:00:00Z", "/repo", "gh");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads.map((t) => t.path)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("treats a comment as its own thread root when its parent is missing (e.g. deleted)", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx((bin, args) => {
+      const endpoint = args[1] ?? "";
+      if (endpoint.endsWith("/reviews")) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify([{ id: 1, user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" }]),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({
+        code: 0,
+        // in_reply_to_id points at a comment id (999) not present anywhere
+        // in this list.
+        stdout: JSON.stringify([
+          { id: 10, in_reply_to_id: 999, pull_request_review_id: 1, path: "a.ts", body: "orphaned reply", user: { login: "a" }, created_at: "2026-01-01T00:00:00Z" },
+        ]),
+        stderr: "",
+      });
+    });
+    const result = await fetchPrReviewComments(ctx, "o", "r", 1, "a", "2026-01-01T00:00:00Z", "/repo", "gh");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]?.comments.map((c) => c.id)).toEqual(["10"]);
+  });
+
+  it("returns an error when the reviews call fails", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => ({ code: 1, stdout: "", stderr: "HTTP 404: Not Found" }));
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T18:04:00Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(false);
   });
 });

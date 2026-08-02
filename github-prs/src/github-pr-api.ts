@@ -128,6 +128,9 @@ export interface StatusContextEntry {
 export type CheckContext = CheckRunContext | StatusContextEntry;
 
 export interface PrReview {
+  /** GraphQL node id (e.g. "PRR_kw…") — stable, unique per review. Used to
+   * key the Review drill-down page. */
+  id: string;
   author: PrActor | null;
   state: string;       // "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING"
   submittedAt: string | null;
@@ -191,10 +194,13 @@ export interface PrCommitListItem {
 
 /** Single-letter file status, matching Silo's git-explorer convention
  * (see `CommitFileChange` in packages/extensions-silo/src/git/git-api.ts)
- * so the two commit-detail UIs read the same status glyphs. */
+ * so the commit-detail and PR-files UIs read the same status glyphs. */
 export type CommitFileStatus = "A" | "M" | "D" | "R" | "C" | "T" | "U" | "X";
 
-export interface PrCommitFileChange {
+/** One changed file — shared shape for a single commit's files
+ * (`PrCommitDetail.files`) and the PR's overall changed-file list
+ * (`fetchPrFiles`), since both REST endpoints return the same fields. */
+export interface PrFileChange {
   path: string;
   /** Original path for a rename/copy. */
   origPath?: string;
@@ -212,7 +218,7 @@ export interface PrCommitDetail extends PrCommitListItem {
   /** First parent's sha, or `null` for a root commit. Feeds the diff
    * provider's "original" side. */
   parentSha: string | null;
-  files: PrCommitFileChange[];
+  files: PrFileChange[];
 }
 
 export interface PrDetail extends PrListItem {
@@ -222,6 +228,11 @@ export interface PrDetail extends PrListItem {
   changedFiles: number;
   closedAt: string | null;
   commits: PrCommitListItem[];
+  /** Head/base commit shas — used (with `fetchPrMergeBase`) to diff the PR's
+   * overall changed files against the merge-base, not the base branch's
+   * live tip (which would show unrelated commits if it's moved since). */
+  headRefOid: string;
+  baseRefOid: string;
 }
 
 export interface GitHubApiError {
@@ -282,6 +293,7 @@ function asActor(raw: unknown): PrActor | null {
 function asReviews(raw: unknown): PrReview[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((r: RawRecord) => ({
+    id: typeof r.id === "string" ? r.id : "",
     author: asActor(r.author),
     state: typeof r.state === "string" ? r.state : "",
     submittedAt: typeof r.submittedAt === "string" ? r.submittedAt : null,
@@ -374,6 +386,8 @@ export function normalizePrDetail(raw: RawRecord): PrDetail {
     changedFiles: typeof raw.changedFiles === "number" ? raw.changedFiles : 0,
     closedAt: typeof raw.closedAt === "string" ? raw.closedAt : null,
     commits: asCommits(raw.commits),
+    headRefOid: typeof raw.headRefOid === "string" ? raw.headRefOid : "",
+    baseRefOid: typeof raw.baseRefOid === "string" ? raw.baseRefOid : "",
   };
 }
 
@@ -389,6 +403,19 @@ const FILE_STATUS_MAP: Record<string, CommitFileStatus> = {
 
 function mapFileStatus(raw: string): CommitFileStatus {
   return FILE_STATUS_MAP[raw] ?? "M";
+}
+
+/** Shared row mapping for both REST "changed files" shapes — a single
+ * commit's files (`GET commits/{sha}`) and a PR's overall files
+ * (`GET pulls/{number}/files`) — which return identical field names. */
+function normalizeFileChange(f: RawRecord): PrFileChange {
+  return {
+    path: typeof f.filename === "string" ? f.filename : "",
+    origPath: typeof f.previous_filename === "string" ? f.previous_filename : undefined,
+    status: mapFileStatus(typeof f.status === "string" ? f.status : ""),
+    additions: typeof f.additions === "number" ? f.additions : null,
+    deletions: typeof f.deletions === "number" ? f.deletions : null,
+  };
 }
 
 /** Split a raw commit message into its subject line and body, the way
@@ -413,13 +440,7 @@ export function normalizePrCommitDetail(raw: RawRecord): PrCommitDetail {
   const parents = Array.isArray(raw.parents) ? (raw.parents as RawRecord[]) : [];
   const parentSha = typeof parents[0]?.sha === "string" ? (parents[0]!.sha as string) : null;
   const filesRaw = Array.isArray(raw.files) ? (raw.files as RawRecord[]) : [];
-  const files: PrCommitFileChange[] = filesRaw.map((f) => ({
-    path: typeof f.filename === "string" ? f.filename : "",
-    origPath: typeof f.previous_filename === "string" ? f.previous_filename : undefined,
-    status: mapFileStatus(typeof f.status === "string" ? f.status : ""),
-    additions: typeof f.additions === "number" ? f.additions : null,
-    deletions: typeof f.deletions === "number" ? f.deletions : null,
-  }));
+  const files: PrFileChange[] = filesRaw.map(normalizeFileChange);
   return {
     sha,
     shortSha: sha.slice(0, 7),
@@ -456,6 +477,7 @@ const DETAIL_PR_FIELDS = [
   "statusCheckRollup", "comments", "labels", "headRefName", "baseRefName",
   "mergeable", "mergeStateStatus", "additions", "deletions", "changedFiles",
   "createdAt", "updatedAt", "mergedAt", "closedAt", "commits",
+  "headRefOid", "baseRefOid",
 ].join(",");
 
 async function runPrList(
@@ -567,6 +589,229 @@ export async function fetchPrCommitDetail(
     return { ok: true, detail: normalizePrCommitDetail(JSON.parse(result.stdout) as RawRecord) };
   } catch {
     ctx.log.error(`Failed to parse gh api commit response for ${owner}/${repo}@${sha}`, { stdout: result.stdout.slice(0, 200) });
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
+export function normalizePrFiles(raw: unknown): PrFileChange[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawRecord[]).map(normalizeFileChange);
+}
+
+export type PrFilesResult =
+  | { ok: true; files: PrFileChange[] }
+  | { ok: false; error: GitHubApiError };
+
+/** The PR's overall changed files — unlike a single commit's files, this is
+ * already scoped to the PR's merge-base by GitHub itself (the same list
+ * shown in the PR's "Files changed" tab), so no separate range computation
+ * is needed for the *list*. Paginated: a large PR's file count can exceed
+ * the REST default page size. */
+export async function fetchPrFiles(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  number: number,
+  cwd: string,
+  ghBin: string,
+): Promise<PrFilesResult> {
+  ctx.log.debug(`Fetching changed files for ${owner}/${repo}#${number}`);
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/pulls/${number}/files`, "--paginate",
+  ], { cwd });
+  if (result.code !== 0) {
+    const error = classifyFetchError(result.stderr);
+    ctx.log.warn(`gh api pulls/files error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: result.stderr.trim() });
+    return { ok: false, error };
+  }
+  try {
+    return { ok: true, files: normalizePrFiles(JSON.parse(result.stdout)) };
+  } catch {
+    ctx.log.error(`Failed to parse gh api pulls/files response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
+/** The commit both `baseSha` and `headSha` descend from — the correct
+ * "before" side for diffing a PR's *overall* changes. Diffing against
+ * `baseSha` directly would show every commit landed on the base branch
+ * since the PR forked as part of the PR's own change, same mistake as a
+ * plain `git diff base head` instead of `git diff base...head`. Resolves to
+ * `null` on any failure — callers fall back to `baseSha` (a less accurate
+ * but still-functional diff origin) rather than blocking the page. */
+export async function fetchPrMergeBase(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  baseSha: string,
+  headSha: string,
+  cwd: string,
+  ghBin: string,
+): Promise<string | null> {
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/compare/${baseSha}...${headSha}`,
+    "--jq", ".merge_base_commit.sha",
+  ], { cwd });
+  if (result.code !== 0) {
+    ctx.log.debug(`Merge-base lookup failed for ${owner}/${repo} (${baseSha.slice(0, 7)}...${headSha.slice(0, 7)}) — falling back to baseSha`, {
+      stderr: result.stderr.trim(),
+    });
+    return null;
+  }
+  const sha = result.stdout.trim();
+  return sha || null;
+}
+
+/** One message within a review thread — GitHub's PR "Files changed"
+ * inline annotations, distinct from a review's own summary body
+ * (`PrReview.body`, often empty when a reviewer only left inline
+ * comments). */
+export interface PrReviewComment {
+  id: string;
+  authorLogin: string | null;
+  createdAt: string;
+  body: string;
+}
+
+/** A full inline conversation at one file/line — the root comment plus
+ * every reply, in chronological order, regardless of which review each
+ * reply happens to be individually attributed to (see `fetchPrReviewComments`
+ * for why that attribution doesn't line up with the thread itself). This is
+ * what GitHub's own "Files changed" tab shows as one thread block. */
+export interface PrReviewThread {
+  path: string;
+  /** `null` for a thread on an outdated diff position (the line it was
+   * left on no longer exists in the current diff). */
+  line: number | null;
+  /** Root comment first, replies after. */
+  comments: PrReviewComment[];
+}
+
+export type PrReviewCommentsResult =
+  | { ok: true; threads: PrReviewThread[] }
+  | { ok: false; error: GitHubApiError };
+
+function normalizeReviewComment(c: RawRecord): PrReviewComment {
+  const user = c.user as RawRecord | null;
+  return {
+    id: typeof c.id === "number" ? String(c.id) : "",
+    authorLogin: user && typeof user.login === "string" ? user.login : null,
+    createdAt: typeof c.created_at === "string" ? c.created_at : "",
+    body: typeof c.body === "string" ? c.body : "",
+  };
+}
+
+// GitHub reply chains are short in practice; this is a defensive bound
+// against a malformed or (in principle) cyclic in_reply_to_id chain, not a
+// real depth limit — GitHub's own UI doesn't nest threads this deep either.
+const MAX_THREAD_DEPTH = 50;
+
+/** Walks a comment's `in_reply_to_id` chain up to the thread's root (the
+ * top-most comment with no parent, or whose parent isn't in `byId` — e.g.
+ * a reply to a comment GitHub no longer returns). Returns the comment's own
+ * id when it's already a root. */
+function threadRootId(id: number, byId: Map<number, RawRecord>): number {
+  let current = id;
+  for (let i = 0; i < MAX_THREAD_DEPTH; i++) {
+    const c = byId.get(current);
+    const parentId = c && typeof c.in_reply_to_id === "number" ? c.in_reply_to_id : null;
+    if (parentId === null || !byId.has(parentId)) return current;
+    current = parentId;
+  }
+  return current;
+}
+
+function commentCreatedAt(c: RawRecord): number {
+  return typeof c.created_at === "string" ? new Date(c.created_at).getTime() : 0;
+}
+
+/** The full threads a review participated in, fetched via REST and matched
+ * to it by author + submittedAt — the only key both API shapes share. `gh
+ * pr view --json reviews` (GraphQL, what `PrDetail.reviews` comes from)
+ * never exposes a review's file/line-scoped comments, only its own summary
+ * body, and never exposes the plain-integer id that `pull_request_review_id`
+ * (on REST comments) references — GraphQL's `id` is an unrelated opaque
+ * node id. So fetching a review's comments means first re-finding it in the
+ * REST reviews list to recover that integer id.
+ *
+ * A review's *own* comments (by that integer id) are only the entry point:
+ * GitHub attributes each reply to whichever review the replier submitted it
+ * as part of, not the thread's original review, so a thread this review
+ * merely replied within would otherwise show only that one reply with no
+ * surrounding conversation. Every comment sharing the same thread root
+ * (via `in_reply_to_id`) is included instead, regardless of which review
+ * contributed it — matching what GitHub's own "Files changed" tab shows.
+ *
+ * Resolves to an empty list (not an error) when no REST review matches —
+ * a defensive fallback, not an expected case, since the same review
+ * necessarily exists in both API shapes. */
+export async function fetchPrReviewComments(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  number: number,
+  authorLogin: string | null,
+  submittedAt: string | null,
+  cwd: string,
+  ghBin: string,
+): Promise<PrReviewCommentsResult> {
+  const [reviewsResult, commentsResult] = await Promise.all([
+    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/reviews`, "--paginate"], { cwd }),
+    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/comments`, "--paginate"], { cwd }),
+  ]);
+  if (reviewsResult.code !== 0) {
+    const error = classifyFetchError(reviewsResult.stderr);
+    ctx.log.warn(`gh api pulls/reviews error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: reviewsResult.stderr.trim() });
+    return { ok: false, error };
+  }
+  if (commentsResult.code !== 0) {
+    const error = classifyFetchError(commentsResult.stderr);
+    ctx.log.warn(`gh api pulls/comments error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: commentsResult.stderr.trim() });
+    return { ok: false, error };
+  }
+  try {
+    const restReviews = JSON.parse(reviewsResult.stdout) as RawRecord[];
+    const match = restReviews.find((r) => {
+      const user = r.user as RawRecord | null;
+      const login = user && typeof user.login === "string" ? user.login : null;
+      return login === authorLogin && r.submitted_at === submittedAt;
+    });
+    if (!match || typeof match.id !== "number") return { ok: true, threads: [] };
+
+    const allComments = JSON.parse(commentsResult.stdout) as RawRecord[];
+    const byId = new Map<number, RawRecord>();
+    for (const c of allComments) {
+      if (typeof c.id === "number") byId.set(c.id, c);
+    }
+
+    const ownRootIds = new Set(
+      allComments
+        .filter((c) => c.pull_request_review_id === match.id && typeof c.id === "number")
+        .map((c) => threadRootId(c.id as number, byId)),
+    );
+
+    const threads: PrReviewThread[] = [];
+    for (const rootId of ownRootIds) {
+      const members = allComments
+        .filter((c) => typeof c.id === "number" && threadRootId(c.id as number, byId) === rootId)
+        .sort((a, b) => commentCreatedAt(a) - commentCreatedAt(b));
+      if (members.length === 0) continue;
+      const root = byId.get(rootId) ?? members[0]!;
+      threads.push({
+        path: typeof root.path === "string" ? root.path : "",
+        line: typeof root.line === "number" ? root.line : typeof root.original_line === "number" ? root.original_line : null,
+        comments: members.map(normalizeReviewComment),
+      });
+    }
+    threads.sort((a, b) => {
+      const at = a.comments[0]?.createdAt ? new Date(a.comments[0].createdAt).getTime() : 0;
+      const bt = b.comments[0]?.createdAt ? new Date(b.comments[0].createdAt).getTime() : 0;
+      return at - bt;
+    });
+
+    return { ok: true, threads };
+  } catch {
+    ctx.log.error(`Failed to parse gh api pulls/reviews or pulls/comments response for ${owner}/${repo}#${number}`);
     return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
   }
 }

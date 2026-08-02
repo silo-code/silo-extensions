@@ -34,17 +34,24 @@ import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
 import { PrCommitsView } from "./PrCommitsView";
 import { PrCommitView } from "./PrCommitView";
+import { PrFilesView } from "./PrFilesView";
+import { PrReviewView } from "./PrReviewView";
 import {
   commitPageSlot,
   commitsPageSlot,
   detailPageSlot,
+  filesPageSlot,
   listPageSlot,
+  reviewPageSlot,
 } from "./page-slots";
 import type { PanelView } from "../view-stack";
 
-/** Any view that carries a `repoKey`/`number` — the detail, commits, and
- * commit pages all show data for the same underlying PR. */
-type PrContextView = Extract<PanelView, { kind: "detail" | "commits" | "commit" }>;
+/** Any view that carries a `repoKey`/`number` — the detail, commits, commit,
+ * files, and review pages all show data for the same underlying PR. */
+type PrContextView = Extract<
+  PanelView,
+  { kind: "detail" | "commits" | "commit" | "files" | "review" }
+>;
 
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
@@ -79,13 +86,15 @@ function MergeButton({
 }
 
 export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProps) {
-  const { view, push, pop } = useViewStack(storage, hydrated);
   const wsState = useServiceState(ctx.workspaces);
   const workspaceId = wsState.activeId ?? "";
+  const { view, push, pop } = useViewStack(storage, hydrated, workspaceId);
   const store = usePrStore();
 
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingCommitDetail, setLoadingCommitDetail] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingReviewComments, setLoadingReviewComments] = useState(false);
   const [merging, setMerging] = useState(false);
 
   const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
@@ -117,6 +126,14 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     if (view.kind === "commit") setLastCommitView(view);
   }, [view]);
 
+  const [lastReviewView, setLastReviewView] = useState<Extract<
+    PanelView,
+    { kind: "review" }
+  > | null>(view.kind === "review" ? view : null);
+  useEffect(() => {
+    if (view.kind === "review") setLastReviewView(view);
+  }, [view]);
+
   const detailPr = useMemo(() => {
     if (!lastPrView) return null;
     return findPrInRepoStates(repoStates, lastPrView.repoKey, lastPrView.number);
@@ -136,6 +153,46 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     ? store.getCommitDetailError(lastCommitView.repoKey, lastCommitView.sha)
     : undefined;
   const commitCwd = lastCommitView ? service.resolveCwd(lastCommitView.repoKey) : null;
+
+  const filesEntry = lastPrView ? store.getFiles(lastPrView.repoKey, lastPrView.number) : undefined;
+  const filesError = lastPrView ? store.getFilesError(lastPrView.repoKey, lastPrView.number) : undefined;
+  const filesCwd = lastPrView ? service.resolveCwd(lastPrView.repoKey) : null;
+
+  // No fetch/cache of its own — reviews already live on the cached PrDetail
+  // (the detail page had to load it to render the row that got clicked).
+  // Keyed off `lastReviewView` (the "keep last content visible while
+  // parked" tracker), which lags `view` by one render right after a click —
+  // fine for *display*, since the old review's content staying up one frame
+  // longer is invisible. NOT fine as the fetch effect's correlation input
+  // (see `activeReview` below) — that one render of staleness was enough to
+  // fetch review B's comments using review A's author+submittedAt as the
+  // correlation key, silently writing review A's comment into review B's
+  // cache slot.
+  const selectedReview = lastReviewView
+    ? detailEntry?.detail.reviews.find((r) => r.id === lastReviewView.reviewId)
+    : undefined;
+  // The fetch effect's own source of truth — keyed off `view` (never lags)
+  // so the id passed to fetchReviewComments and the author/submittedAt used
+  // to correlate it against the REST reviews list always describe the same
+  // review, even during the render where lastReviewView hasn't caught up yet.
+  const activeReview = view.kind === "review"
+    ? detailEntry?.detail.reviews.find((r) => r.id === view.reviewId)
+    : undefined;
+  // Primitives pulled out for the fetch effect's dependency array below —
+  // `activeReview` itself is a fresh `.find()` result every render (not
+  // memoized), so depending on the object directly re-ran the fetch (and
+  // re-flashed the loading state) far more often than the review actually
+  // changed. Depending on the two values the fetch call actually uses fixes
+  // that: same author + same submittedAt now means "same review, don't refetch".
+  const activeReviewAuthorLogin = activeReview?.author?.login ?? null;
+  const activeReviewSubmittedAt = activeReview?.submittedAt ?? null;
+
+  const reviewCommentsEntry = lastReviewView
+    ? store.getReviewComments(lastReviewView.repoKey, lastReviewView.reviewId)
+    : undefined;
+  const reviewCommentsError = lastReviewView
+    ? store.getReviewCommentsError(lastReviewView.repoKey, lastReviewView.reviewId)
+    : undefined;
 
   useEffect(() => {
     if (view.kind === "list" || !active) {
@@ -170,6 +227,68 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   }, [view, service, active]);
 
   useEffect(() => {
+    if (view.kind !== "files" || !active) {
+      setLoadingFiles(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingFiles(true);
+    void service.fetchFiles(view.repoKey, view.number).finally(() => {
+      if (!cancelled) setLoadingFiles(false);
+    });
+    return () => {
+      cancelled = true;
+      setLoadingFiles(false);
+    };
+  }, [view, service, active]);
+
+  useEffect(() => {
+    // activeReview may still be undefined on first render of a "review" view
+    // (e.g. restored from persisted state) until the detail fetch effect
+    // above resolves — this effect re-runs once it does, since
+    // activeReviewAuthorLogin/SubmittedAt flip from null to real values in
+    // that same render.
+    //
+    // Deliberately keyed off `view`/`activeReview*`, NOT `selectedReview`/
+    // `lastReviewView` — those lag `view` by one render right after a click
+    // (intentional, so the previous review's content stays visible while
+    // parked off-screen mid-transition). Using them here caused a real bug:
+    // for one render, `view.reviewId` had already advanced to the newly
+    // clicked review while `selectedReviewAuthorLogin`/`SubmittedAt` still
+    // described the *previous* one. fetchReviewComments correlates the id
+    // against GitHub's REST reviews by author+submittedAt — with a
+    // mismatched pair, it matched the previous review's REST entry and
+    // silently wrote *its* comments into the new review's cache slot.
+    if (view.kind !== "review" || !active || !activeReview) {
+      setLoadingReviewComments(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReviewComments(true);
+    void service
+      .fetchReviewComments(
+        view.repoKey,
+        view.number,
+        view.reviewId,
+        activeReviewAuthorLogin,
+        activeReviewSubmittedAt,
+      )
+      .finally(() => {
+        if (!cancelled) setLoadingReviewComments(false);
+      });
+    return () => {
+      cancelled = true;
+      setLoadingReviewComments(false);
+    };
+    // Deliberately not depending on `activeReview` itself — it's a fresh
+    // .find() result every render (unmemoized), so depending on the object
+    // reference re-ran this effect (and re-flashed the loading state) far
+    // more often than the review actually changed. The two primitives below
+    // are what the fetch call actually uses, and are what should trigger a
+    // refetch when they change.
+  }, [view, service, active, activeReviewAuthorLogin, activeReviewSubmittedAt]);
+
+  useEffect(() => {
     if (!active) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && view.kind !== "list") {
@@ -198,6 +317,18 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       await service.fetchDetail(lastPrView.repoKey, lastPrView.number);
     } finally {
       setLoadingDetail(false);
+    }
+  }, [lastPrView, service]);
+
+  // Separate from refreshDetail: files+merge-base is its own fetch/cache,
+  // not part of PrDetail, so it needs its own loading flag to spin correctly.
+  const refreshFiles = useCallback(async () => {
+    if (!lastPrView) return;
+    setLoadingFiles(true);
+    try {
+      await service.fetchFiles(lastPrView.repoKey, lastPrView.number);
+    } finally {
+      setLoadingFiles(false);
     }
   }, [lastPrView, service]);
 
@@ -323,6 +454,20 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const openCommit = useCallback(
     (repoKey: string, number: number, sha: string) => {
       push({ kind: "commit", repoKey, number, sha });
+    },
+    [push],
+  );
+
+  const openFiles = useCallback(
+    (repoKey: string, number: number) => {
+      push({ kind: "files", repoKey, number });
+    },
+    [push],
+  );
+
+  const openReview = useCallback(
+    (repoKey: string, number: number, reviewId: string) => {
+      push({ kind: "review", repoKey, number, reviewId });
     },
     [push],
   );
@@ -525,6 +670,10 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     detailError={detailError}
                     loadingDetail={loadingDetail}
                     onViewCommits={() => openCommits(lastPrView.repoKey, lastPrView.number)}
+                    onViewFiles={() => openFiles(lastPrView.repoKey, lastPrView.number)}
+                    onSelectReview={(reviewId) =>
+                      openReview(lastPrView.repoKey, lastPrView.number, reviewId)
+                    }
                   />
                 ) : (
                   <div className="ghpr-empty">
@@ -601,6 +750,93 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   loading={loadingCommitDetail}
                   error={
                     commitDetailError && !commitDetailEntry ? commitDetailError.error.message : null
+                  }
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* The PR's overall changed files — pushed from the detail page's
+            "Files changed" section (a sibling of Commits, not nested under it). */}
+        <div className={`ghpr-page ghpr-page--${filesPageSlot(view)}`}>
+          {lastPrView && (
+            <>
+              <div className="ghpr-header ghpr-header--detail">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingFiles ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void refreshFiles()}
+                        disabled={loadingFiles}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className="ghpr-header__title">Files changed</div>
+              </div>
+              <div className="ghpr-body">
+                <PrFilesView
+                  ctx={ctx}
+                  owner={lastPrView.repoKey.split("/")[0] ?? ""}
+                  repo={lastPrView.repoKey.split("/")[1] ?? ""}
+                  cwd={filesCwd}
+                  files={filesEntry?.files ?? []}
+                  baseSha={filesEntry?.baseSha ?? null}
+                  headSha={filesEntry?.headSha ?? null}
+                  loading={loadingFiles}
+                  error={filesError && !filesEntry ? filesError.error.message : null}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* One review's full body — pushed from a review row on the detail
+            page (another sibling of Commits, not nested under it). No fetch
+            of its own; refresh here re-fetches PrDetail like the detail page. */}
+        <div className={`ghpr-page ghpr-page--${reviewPageSlot(view)}`}>
+          {lastReviewView && (
+            <>
+              <div className="ghpr-header ghpr-header--detail">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void refreshDetail()}
+                        disabled={loadingDetail}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className="ghpr-header__title">Review</div>
+              </div>
+              <div className="ghpr-body">
+                <PrReviewView
+                  ctx={ctx}
+                  review={selectedReview}
+                  threads={reviewCommentsEntry?.threads ?? []}
+                  loadingComments={loadingReviewComments}
+                  commentsError={
+                    reviewCommentsError && !reviewCommentsEntry ? reviewCommentsError.error.message : null
                   }
                 />
               </div>

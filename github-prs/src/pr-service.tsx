@@ -6,6 +6,9 @@ import {
   fetchOpenPrs,
   fetchPrCommitDetail,
   fetchPrDetail,
+  fetchPrFiles,
+  fetchPrMergeBase,
+  fetchPrReviewComments,
   fetchRepoMergeMethods,
   fetchViewerLogin,
   mergePr,
@@ -502,6 +505,76 @@ export class PrService {
     } else {
       this._ctx.log.warn(`Failed to fetch commit ${sha.slice(0, 7)} detail`, { error: result.error });
       prStore.setCommitDetailError(repoKey, sha, result.error);
+    }
+  }
+
+  /** The PR's overall changed files, plus the base/head shas the diff
+   * provider needs. Reads `headRefOid`/`baseRefOid` off the already-cached
+   * PrDetail (the Files page is only reachable once detail has loaded — see
+   * PrDetailView's "N files" link) rather than re-fetching it here. */
+  async fetchFiles(repoKey: string, number: number): Promise<void> {
+    if (!this._ctx || !prStore.authenticated) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
+    const detail = prStore.getDetail(repoKey, number)?.detail;
+    if (!detail) return;
+
+    prStore.clearFilesError(repoKey, number);
+    const [filesResult, mergeBase] = await Promise.all([
+      fetchPrFiles(this._ctx, resolved.repoInfo.owner, resolved.repoInfo.repo, number, resolved.cwd, this._ghBin),
+      fetchPrMergeBase(
+        this._ctx,
+        resolved.repoInfo.owner,
+        resolved.repoInfo.repo,
+        detail.baseRefOid,
+        detail.headRefOid,
+        resolved.cwd,
+        this._ghBin,
+      ),
+    ]);
+    if (!filesResult.ok) {
+      this._ctx.log.warn(`Failed to fetch changed files for PR #${number}`, { error: filesResult.error });
+      prStore.setFilesError(repoKey, number, filesResult.error);
+      return;
+    }
+    prStore.setFiles(repoKey, number, {
+      files: filesResult.files,
+      baseSha: mergeBase ?? detail.baseRefOid,
+      headSha: detail.headRefOid,
+    });
+  }
+
+  /** A review's file/line-scoped inline comments — `gh pr view --json
+   * reviews` never exposes these (see fetchPrReviewComments for why).
+   * `authorLogin`/`submittedAt` come from the already-cached PrReview
+   * (needed to re-find it in the REST reviews list), not fetched here. */
+  async fetchReviewComments(
+    repoKey: string,
+    number: number,
+    reviewId: string,
+    authorLogin: string | null,
+    submittedAt: string | null,
+  ): Promise<void> {
+    if (!this._ctx || !prStore.authenticated) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
+
+    prStore.clearReviewCommentsError(repoKey, reviewId);
+    const result = await fetchPrReviewComments(
+      this._ctx,
+      resolved.repoInfo.owner,
+      resolved.repoInfo.repo,
+      number,
+      authorLogin,
+      submittedAt,
+      resolved.cwd,
+      this._ghBin,
+    );
+    if (result.ok) {
+      prStore.setReviewComments(repoKey, reviewId, result.threads);
+    } else {
+      this._ctx.log.warn(`Failed to fetch inline comments for review ${reviewId}`, { error: result.error });
+      prStore.setReviewCommentsError(repoKey, reviewId, result.error);
     }
   }
 
