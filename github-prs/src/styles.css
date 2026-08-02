@@ -561,10 +561,8 @@
   line-height: 1.25;
   margin: 1em 0 0.4em;
   font-weight: 600;
+  font-size: 1.1em;
 }
-.ghpr-md h1 { font-size: 1.25em; }
-.ghpr-md h2 { font-size: 1.15em; }
-.ghpr-md h3 { font-size: 1.05em; }
 .ghpr-md h1,
 .ghpr-md h2 {
   padding-bottom: 0.25em;
