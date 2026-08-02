@@ -682,30 +682,43 @@
   background: var(--silo-color-bg-hover);
 }
 
-/* A review's inline (file/line-scoped) comments, on the Review page. */
+/* A review's inline (file/line-scoped) conversations, on the Review page —
+   each .ghpr-review-thread is the full conversation at one file/line (root
+   comment + every reply, regardless of which review contributed each one —
+   see fetchPrReviewComments), not just this review's own comment. */
 .ghpr-review-comments {
   display: flex;
   flex-direction: column;
 }
-.ghpr-review-comment {
+.ghpr-review-thread {
   padding: 10px 12px;
 }
-.ghpr-review-comment + .ghpr-review-comment {
+.ghpr-review-thread + .ghpr-review-thread {
   border-top: 1px solid color-mix(in srgb, var(--silo-color-border-strong) 40%, transparent);
 }
-.ghpr-review-comment__path {
+.ghpr-review-thread__path {
   font-family: var(--silo-font-mono);
   font-size: calc(1em - 1px);
   color: var(--silo-color-text-lo);
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   overflow-wrap: anywhere;
 }
-.ghpr-review-comment__reply-to {
+.ghpr-review-thread__message {
+  padding: 6px 10px;
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-bg-hover);
+}
+.ghpr-review-thread__message + .ghpr-review-thread__message {
+  margin-top: 6px;
+}
+.ghpr-review-thread__message-meta {
   font-size: calc(1em - 1px);
-  font-style: italic;
   color: var(--silo-color-text-lo);
-  margin-bottom: 6px;
-  overflow-wrap: anywhere;
+  margin-bottom: 4px;
+}
+.ghpr-review-thread__message-meta strong {
+  color: var(--silo-color-text-hi);
+  font-weight: 500;
 }
 
 .ghpr-check-row__name {

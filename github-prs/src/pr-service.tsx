@@ -571,7 +571,7 @@ export class PrService {
       this._ghBin,
     );
     if (result.ok) {
-      prStore.setReviewComments(repoKey, reviewId, result.comments);
+      prStore.setReviewComments(repoKey, reviewId, result.threads);
     } else {
       this._ctx.log.warn(`Failed to fetch inline comments for review ${reviewId}`, { error: result.error });
       prStore.setReviewCommentsError(repoKey, reviewId, result.error);

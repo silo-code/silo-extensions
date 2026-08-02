@@ -662,72 +662,89 @@ export async function fetchPrMergeBase(
   return sha || null;
 }
 
-/** A review's file/line-scoped inline comment — GitHub's PR "Files changed"
- * annotations, distinct from the review's own summary body (`PrReview.body`,
- * often empty when a reviewer only left inline comments). */
+/** One message within a review thread — GitHub's PR "Files changed"
+ * inline annotations, distinct from a review's own summary body
+ * (`PrReview.body`, often empty when a reviewer only left inline
+ * comments). */
 export interface PrReviewComment {
   id: string;
-  path: string;
-  /** `null` for a comment on an outdated diff position (the line it was
-   * left on no longer exists in the current diff). */
-  line: number | null;
-  body: string;
   authorLogin: string | null;
   createdAt: string;
-  /** Set when this comment is a reply within an existing thread. GitHub
-   * attributes a reply to *whichever review the replier submitted it as
-   * part of* — not the thread's original review — so e.g. PR author Ani
-   * replying to reviewer Henry's comment shows up as Ani's own review's
-   * "comment", with nothing else on that review's page hinting it's a
-   * reply. Carrying the parent's author + a body preview here lets the UI
-   * show that context instead of an orphaned-looking fragment. */
-  replyTo: { authorLogin: string | null; bodyPreview: string } | null;
+  body: string;
+}
+
+/** A full inline conversation at one file/line — the root comment plus
+ * every reply, in chronological order, regardless of which review each
+ * reply happens to be individually attributed to (see `fetchPrReviewComments`
+ * for why that attribution doesn't line up with the thread itself). This is
+ * what GitHub's own "Files changed" tab shows as one thread block. */
+export interface PrReviewThread {
+  path: string;
+  /** `null` for a thread on an outdated diff position (the line it was
+   * left on no longer exists in the current diff). */
+  line: number | null;
+  /** Root comment first, replies after. */
+  comments: PrReviewComment[];
 }
 
 export type PrReviewCommentsResult =
-  | { ok: true; comments: PrReviewComment[] }
+  | { ok: true; threads: PrReviewThread[] }
   | { ok: false; error: GitHubApiError };
 
-const REPLY_PREVIEW_MAX = 120;
-
-function normalizeReviewComment(c: RawRecord, byId: Map<number, RawRecord>): PrReviewComment {
+function normalizeReviewComment(c: RawRecord): PrReviewComment {
   const user = c.user as RawRecord | null;
-  const line = typeof c.line === "number" ? c.line : typeof c.original_line === "number" ? c.original_line : null;
-  let replyTo: PrReviewComment["replyTo"] = null;
-  if (typeof c.in_reply_to_id === "number") {
-    const parent = byId.get(c.in_reply_to_id);
-    if (parent) {
-      const parentUser = parent.user as RawRecord | null;
-      const parentBody = typeof parent.body === "string" ? parent.body : "";
-      replyTo = {
-        authorLogin: parentUser && typeof parentUser.login === "string" ? parentUser.login : null,
-        bodyPreview:
-          parentBody.length > REPLY_PREVIEW_MAX ? `${parentBody.slice(0, REPLY_PREVIEW_MAX)}…` : parentBody,
-      };
-    }
-  }
   return {
     id: typeof c.id === "number" ? String(c.id) : "",
-    path: typeof c.path === "string" ? c.path : "",
-    line,
-    body: typeof c.body === "string" ? c.body : "",
     authorLogin: user && typeof user.login === "string" ? user.login : null,
     createdAt: typeof c.created_at === "string" ? c.created_at : "",
-    replyTo,
+    body: typeof c.body === "string" ? c.body : "",
   };
 }
 
-/** A review's inline comments, fetched via REST and matched to it by
- * author + submittedAt — the only key both API shapes share. `gh pr view
- * --json reviews` (GraphQL, what `PrDetail.reviews` comes from) never
- * exposes a review's file/line-scoped comments, only its own summary body,
- * and never exposes the plain-integer id that `pull_request_review_id`
+// GitHub reply chains are short in practice; this is a defensive bound
+// against a malformed or (in principle) cyclic in_reply_to_id chain, not a
+// real depth limit — GitHub's own UI doesn't nest threads this deep either.
+const MAX_THREAD_DEPTH = 50;
+
+/** Walks a comment's `in_reply_to_id` chain up to the thread's root (the
+ * top-most comment with no parent, or whose parent isn't in `byId` — e.g.
+ * a reply to a comment GitHub no longer returns). Returns the comment's own
+ * id when it's already a root. */
+function threadRootId(id: number, byId: Map<number, RawRecord>): number {
+  let current = id;
+  for (let i = 0; i < MAX_THREAD_DEPTH; i++) {
+    const c = byId.get(current);
+    const parentId = c && typeof c.in_reply_to_id === "number" ? c.in_reply_to_id : null;
+    if (parentId === null || !byId.has(parentId)) return current;
+    current = parentId;
+  }
+  return current;
+}
+
+function commentCreatedAt(c: RawRecord): number {
+  return typeof c.created_at === "string" ? new Date(c.created_at).getTime() : 0;
+}
+
+/** The full threads a review participated in, fetched via REST and matched
+ * to it by author + submittedAt — the only key both API shapes share. `gh
+ * pr view --json reviews` (GraphQL, what `PrDetail.reviews` comes from)
+ * never exposes a review's file/line-scoped comments, only its own summary
+ * body, and never exposes the plain-integer id that `pull_request_review_id`
  * (on REST comments) references — GraphQL's `id` is an unrelated opaque
  * node id. So fetching a review's comments means first re-finding it in the
- * REST reviews list to recover that integer id, then filtering REST
- * comments by it. Resolves to an empty list (not an error) when no REST
- * review matches — a defensive fallback, not an expected case, since the
- * same review necessarily exists in both API shapes. */
+ * REST reviews list to recover that integer id.
+ *
+ * A review's *own* comments (by that integer id) are only the entry point:
+ * GitHub attributes each reply to whichever review the replier submitted it
+ * as part of, not the thread's original review, so a thread this review
+ * merely replied within would otherwise show only that one reply with no
+ * surrounding conversation. Every comment sharing the same thread root
+ * (via `in_reply_to_id`) is included instead, regardless of which review
+ * contributed it — matching what GitHub's own "Files changed" tab shows.
+ *
+ * Resolves to an empty list (not an error) when no REST review matches —
+ * a defensive fallback, not an expected case, since the same review
+ * necessarily exists in both API shapes. */
 export async function fetchPrReviewComments(
   ctx: ExtensionContext,
   owner: string,
@@ -759,16 +776,40 @@ export async function fetchPrReviewComments(
       const login = user && typeof user.login === "string" ? user.login : null;
       return login === authorLogin && r.submitted_at === submittedAt;
     });
-    if (!match || typeof match.id !== "number") return { ok: true, comments: [] };
+    if (!match || typeof match.id !== "number") return { ok: true, threads: [] };
+
     const allComments = JSON.parse(commentsResult.stdout) as RawRecord[];
     const byId = new Map<number, RawRecord>();
     for (const c of allComments) {
       if (typeof c.id === "number") byId.set(c.id, c);
     }
-    const comments = allComments
-      .filter((c) => c.pull_request_review_id === match.id)
-      .map((c) => normalizeReviewComment(c, byId));
-    return { ok: true, comments };
+
+    const ownRootIds = new Set(
+      allComments
+        .filter((c) => c.pull_request_review_id === match.id && typeof c.id === "number")
+        .map((c) => threadRootId(c.id as number, byId)),
+    );
+
+    const threads: PrReviewThread[] = [];
+    for (const rootId of ownRootIds) {
+      const members = allComments
+        .filter((c) => typeof c.id === "number" && threadRootId(c.id as number, byId) === rootId)
+        .sort((a, b) => commentCreatedAt(a) - commentCreatedAt(b));
+      if (members.length === 0) continue;
+      const root = byId.get(rootId) ?? members[0]!;
+      threads.push({
+        path: typeof root.path === "string" ? root.path : "",
+        line: typeof root.line === "number" ? root.line : typeof root.original_line === "number" ? root.original_line : null,
+        comments: members.map(normalizeReviewComment),
+      });
+    }
+    threads.sort((a, b) => {
+      const at = a.comments[0]?.createdAt ? new Date(a.comments[0].createdAt).getTime() : 0;
+      const bt = b.comments[0]?.createdAt ? new Date(b.comments[0].createdAt).getTime() : 0;
+      return at - bt;
+    });
+
+    return { ok: true, threads };
   } catch {
     ctx.log.error(`Failed to parse gh api pulls/reviews or pulls/comments response for ${owner}/${repo}#${number}`);
     return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };

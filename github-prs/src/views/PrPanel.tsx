@@ -833,7 +833,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 <PrReviewView
                   ctx={ctx}
                   review={selectedReview}
-                  comments={reviewCommentsEntry?.comments ?? []}
+                  threads={reviewCommentsEntry?.threads ?? []}
                   loadingComments={loadingReviewComments}
                   commentsError={
                     reviewCommentsError && !reviewCommentsEntry ? reviewCommentsError.error.message : null

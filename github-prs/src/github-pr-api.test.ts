@@ -427,10 +427,10 @@ describe("checkAuth", () => {
 // question on a review with an empty GraphQL body, and PR author
 // ani-mehrabyan replied to it twice — each reply as part of one of *her own*
 // reviews, not hprutsman's (GitHub attributes a reply to whichever review the
-// replier submits it under). This is the exact shape that motivated both
-// fetchPrReviewComments (two REST calls needed — see its doc comment) and the
-// replyTo field (a reply shown on its own review's page, with no link back
-// to what it's replying to, reads as an orphaned, unrelated fragment).
+// replier submits it under). This is the exact shape that motivated
+// fetchPrReviewComments's two REST calls (see its doc comment) and its
+// thread-grouping: opening any one of the three reviews should surface the
+// same full three-message conversation, not just that review's own comment.
 const REST_REVIEWS_FIXTURE = [
   { id: 4828430073, user: { login: "hprutsman" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T12:23:45Z" },
   { id: 4829159578, user: { login: "ani-mehrabyan" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T14:03:34Z" },
@@ -490,7 +490,7 @@ describe("fetchPrReviewComments", () => {
     throw new Error(`unexpected endpoint: ${endpoint}`);
   }
 
-  it("matches a review by author+submittedAt and filters comments to its numeric id", async () => {
+  it("matches a review by author+submittedAt and returns its thread in full", async () => {
     const { fetchPrReviewComments } = await import("./github-pr-api");
     const ctx = mockCtx(restFetchStub);
     const result = await fetchPrReviewComments(
@@ -498,19 +498,34 @@ describe("fetchPrReviewComments", () => {
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.comments).toHaveLength(1);
-    expect(result.comments[0]).toEqual({
-      id: "3690389630",
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]).toEqual({
       path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
       line: null,
-      body: "Just confirming if we have a ticket tracking this to not lose sight of it?",
-      authorLogin: "hprutsman",
-      createdAt: "2026-07-31T12:23:40Z",
-      replyTo: null,
+      comments: [
+        {
+          id: "3690389630",
+          authorLogin: "hprutsman",
+          createdAt: "2026-07-31T12:23:40Z",
+          body: "Just confirming if we have a ticket tracking this to not lose sight of it?",
+        },
+        {
+          id: "3690956831",
+          authorLogin: "ani-mehrabyan",
+          createdAt: "2026-07-31T14:03:30Z",
+          body: "No filed ticket yet for this specific gap.",
+        },
+        {
+          id: "3692413472",
+          authorLogin: "ani-mehrabyan",
+          createdAt: "2026-07-31T18:03:55Z",
+          body: "Added a ticket for it",
+        },
+      ],
     });
   });
 
-  it("matches the other review by its own submittedAt, not the first one found", async () => {
+  it("returns the same full thread when opened from either reply's own review, not just the root's", async () => {
     const { fetchPrReviewComments } = await import("./github-pr-api");
     const ctx = mockCtx(restFetchStub);
     const result = await fetchPrReviewComments(
@@ -518,56 +533,12 @@ describe("fetchPrReviewComments", () => {
     );
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.comments.map((c) => c.id)).toEqual(["3690956831"]);
-  });
-
-  it("attaches reply-to context when a comment is a reply attributed to a different review than its parent", async () => {
-    const { fetchPrReviewComments } = await import("./github-pr-api");
-    const ctx = mockCtx(restFetchStub);
-    // Ani's second review — its one "comment" is actually a reply to
-    // hprutsman's original comment on his own (different) review.
-    const result = await fetchPrReviewComments(
-      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T18:04:00Z", "/repo", "gh",
-    );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.comments).toHaveLength(1);
-    expect(result.comments[0]?.replyTo).toEqual({
-      authorLogin: "hprutsman",
-      bodyPreview: "Just confirming if we have a ticket tracking this to not lose sight of it?",
-    });
-  });
-
-  it("truncates a long parent body to a preview", async () => {
-    const { fetchPrReviewComments } = await import("./github-pr-api");
-    const longBody = "x".repeat(200);
-    const ctx = mockCtx((bin, args) => {
-      const endpoint = args[1] ?? "";
-      if (endpoint.endsWith("/reviews")) {
-        return Promise.resolve({
-          code: 0,
-          stdout: JSON.stringify([
-            { id: 1, user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" },
-            { id: 2, user: { login: "b" }, submitted_at: "2026-01-01T00:01:00Z" },
-          ]),
-          stderr: "",
-        });
-      }
-      return Promise.resolve({
-        code: 0,
-        stdout: JSON.stringify([
-          { id: 10, in_reply_to_id: null, pull_request_review_id: 1, path: "f.ts", body: longBody, user: { login: "a" }, created_at: "2026-01-01T00:00:00Z" },
-          { id: 11, in_reply_to_id: 10, pull_request_review_id: 2, path: "f.ts", body: "ok", user: { login: "b" }, created_at: "2026-01-01T00:01:00Z" },
-        ]),
-        stderr: "",
-      });
-    });
-    const result = await fetchPrReviewComments(ctx, "o", "r", 1, "b", "2026-01-01T00:01:00Z", "/repo", "gh");
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const preview = result.comments[0]?.replyTo?.bodyPreview ?? "";
-    expect(preview.endsWith("…")).toBe(true);
-    expect(preview.length).toBe(121);
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]?.comments.map((c) => c.id)).toEqual([
+      "3690389630",
+      "3690956831",
+      "3692413472",
+    ]);
   });
 
   it("resolves to an empty list (not an error) when no REST review matches", async () => {
@@ -576,7 +547,63 @@ describe("fetchPrReviewComments", () => {
     const result = await fetchPrReviewComments(
       ctx, "o", "r", 346, "someone-else", "2026-01-01T00:00:00Z", "/repo", "gh",
     );
-    expect(result).toEqual({ ok: true, comments: [] });
+    expect(result).toEqual({ ok: true, threads: [] });
+  });
+
+  it("returns multiple unrelated threads sorted by each thread's start time", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx((bin, args) => {
+      const endpoint = args[1] ?? "";
+      if (endpoint.endsWith("/reviews")) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify([{ id: 1, user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" }]),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({
+        code: 0,
+        stdout: JSON.stringify([
+          // Two comments from the same review, on two different files — two
+          // separate threads, the second one started earlier.
+          { id: 20, in_reply_to_id: null, pull_request_review_id: 1, path: "b.ts", body: "later thread", user: { login: "a" }, created_at: "2026-01-01T01:00:00Z" },
+          { id: 10, in_reply_to_id: null, pull_request_review_id: 1, path: "a.ts", body: "earlier thread", user: { login: "a" }, created_at: "2026-01-01T00:00:00Z" },
+        ]),
+        stderr: "",
+      });
+    });
+    const result = await fetchPrReviewComments(ctx, "o", "r", 1, "a", "2026-01-01T00:00:00Z", "/repo", "gh");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads.map((t) => t.path)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("treats a comment as its own thread root when its parent is missing (e.g. deleted)", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx((bin, args) => {
+      const endpoint = args[1] ?? "";
+      if (endpoint.endsWith("/reviews")) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify([{ id: 1, user: { login: "a" }, submitted_at: "2026-01-01T00:00:00Z" }]),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({
+        code: 0,
+        // in_reply_to_id points at a comment id (999) not present anywhere
+        // in this list.
+        stdout: JSON.stringify([
+          { id: 10, in_reply_to_id: 999, pull_request_review_id: 1, path: "a.ts", body: "orphaned reply", user: { login: "a" }, created_at: "2026-01-01T00:00:00Z" },
+        ]),
+        stderr: "",
+      });
+    });
+    const result = await fetchPrReviewComments(ctx, "o", "r", 1, "a", "2026-01-01T00:00:00Z", "/repo", "gh");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]?.comments.map((c) => c.id)).toEqual(["10"]);
   });
 
   it("returns an error when the reviews call fails", async () => {

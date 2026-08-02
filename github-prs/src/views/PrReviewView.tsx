@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@silo-code/sdk";
-import type { PrReview, PrReviewComment } from "../github-pr-api";
+import type { PrReview, PrReviewThread } from "../github-pr-api";
 import { reviewKindLabel } from "../detail-helpers";
 import { formatElapsed } from "../format-elapsed";
 import { reviewStateIcon } from "./PrDetailView";
@@ -8,23 +8,24 @@ import { GithubMarkdown } from "./GithubMarkdown";
 export interface PrReviewViewProps {
   ctx: ExtensionContext;
   review: PrReview | undefined;
-  /** File/line-scoped inline comments — often where a "COMMENTED" review's
-   * actual feedback lives when `review.body` (the summary) is empty. */
-  comments: PrReviewComment[];
+  /** Full inline (file/line-scoped) conversations this review participated
+   * in — often where a "COMMENTED" review's actual feedback lives when
+   * `review.body` (the summary) is empty. */
+  threads: PrReviewThread[];
   loadingComments: boolean;
   commentsError: string | null;
 }
 
-/** One review's full body plus its inline (file/line-scoped) comments —
- * pushed from a review row on the detail page. `review` itself comes
- * straight out of the already-cached PrDetail.reviews (no fetch needed, the
- * detail page already had to load it to render the row that got clicked);
- * `comments` is fetched separately (see PrService.fetchReviewComments) since
- * it needs its own REST round trip. */
+/** One review's full body plus every inline (file/line-scoped) conversation
+ * it participated in — pushed from a review row on the detail page.
+ * `review` itself comes straight out of the already-cached PrDetail.reviews
+ * (no fetch needed, the detail page already had to load it to render the
+ * row that got clicked); `threads` is fetched separately (see
+ * PrService.fetchReviewComments) since it needs its own REST round trip. */
 export function PrReviewView({
   ctx,
   review,
-  comments,
+  threads,
   loadingComments,
   commentsError,
 }: PrReviewViewProps) {
@@ -37,7 +38,7 @@ export function PrReviewView({
   }
 
   const hasBody = !!review.body;
-  const showEmptyState = !hasBody && comments.length === 0 && !loadingComments && !commentsError;
+  const showEmptyState = !hasBody && threads.length === 0 && !loadingComments && !commentsError;
 
   return (
     <div className="ghpr-commit-detail">
@@ -59,29 +60,31 @@ export function PrReviewView({
           <p className="ghpr-detail__body ghpr-detail__body--empty">No comment.</p>
         </div>
       )}
-      {!hasBody && loadingComments && comments.length === 0 && (
+      {!hasBody && loadingComments && threads.length === 0 && (
         <div className="ghpr-detail__section">
           <div className="ghpr-detail__loading">Loading comment…</div>
         </div>
       )}
-      {commentsError && comments.length === 0 && (
+      {commentsError && threads.length === 0 && (
         <div className="ghpr-error-banner ghpr-error-banner--inline">{commentsError}</div>
       )}
-      {comments.length > 0 && (
+      {threads.length > 0 && (
         <div className="ghpr-review-comments">
-          {comments.map((c) => (
-            <div key={c.id} className="ghpr-review-comment">
-              <div className="ghpr-review-comment__path">
-                {c.path}
-                {c.line != null ? `:${c.line}` : ""}
+          {threads.map((thread) => (
+            <div key={`${thread.path}:${thread.line ?? "?"}:${thread.comments[0]?.id}`} className="ghpr-review-thread">
+              <div className="ghpr-review-thread__path">
+                {thread.path}
+                {thread.line != null ? `:${thread.line}` : ""}
               </div>
-              {c.replyTo && (
-                <div className="ghpr-review-comment__reply-to">
-                  ↪ replying to {c.replyTo.authorLogin ?? "unknown"}
-                  {c.replyTo.bodyPreview && `: “${c.replyTo.bodyPreview}”`}
+              {thread.comments.map((c) => (
+                <div key={c.id} className="ghpr-review-thread__message">
+                  <div className="ghpr-review-thread__message-meta">
+                    <strong>{c.authorLogin ?? "unknown"}</strong>
+                    {c.createdAt && <> · {formatElapsed(new Date(c.createdAt))}</>}
+                  </div>
+                  <GithubMarkdown ctx={ctx}>{c.body}</GithubMarkdown>
                 </div>
-              )}
-              <GithubMarkdown ctx={ctx}>{c.body}</GithubMarkdown>
+              ))}
             </div>
           ))}
         </div>

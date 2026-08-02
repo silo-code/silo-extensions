@@ -6,7 +6,7 @@ import type {
   PrDetail,
   PrFileChange,
   PrListItem,
-  PrReviewComment,
+  PrReviewThread,
 } from "./github-pr-api";
 import { DEFAULT_FILTER, type PrFilter } from "./filters";
 
@@ -107,7 +107,7 @@ function commitDetailKey(repoKey: string, sha: string): string {
 // by the review's GraphQL id (PrReview.id), same as the review itself.
 
 export interface ReviewCommentsCacheEntry {
-  comments: PrReviewComment[];
+  threads: PrReviewThread[];
   fetchedAt: Date;
 }
 
@@ -321,9 +321,9 @@ export class PrStore {
     return this._reviewCommentsErrors.get(reviewCommentsKey(repoKey, reviewId));
   }
 
-  setReviewComments(repoKey: string, reviewId: string, comments: PrReviewComment[]): void {
+  setReviewComments(repoKey: string, reviewId: string, threads: PrReviewThread[]): void {
     const key = reviewCommentsKey(repoKey, reviewId);
-    this._reviewCommentsCache.set(key, { comments, fetchedAt: new Date() });
+    this._reviewCommentsCache.set(key, { threads, fetchedAt: new Date() });
     this._reviewCommentsErrors.delete(key);
     this._notify();
   }
