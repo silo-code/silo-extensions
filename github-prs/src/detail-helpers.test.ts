@@ -77,9 +77,9 @@ describe("uniqueReviewers", () => {
   it("keeps the latest review per login", () => {
     const item = pr({
       latestReviews: [
-        { author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
-        { author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-02T00:00:00Z", body: "" },
-        { author: { login: "b" }, state: "CHANGES_REQUESTED", submittedAt: "2026-01-01T12:00:00Z", body: "" },
+        { id: "r1", author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
+        { id: "r2", author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-02T00:00:00Z", body: "" },
+        { id: "r3", author: { login: "b" }, state: "CHANGES_REQUESTED", submittedAt: "2026-01-01T12:00:00Z", body: "" },
       ],
     });
     const reviewers = uniqueReviewers(item);
@@ -90,7 +90,7 @@ describe("uniqueReviewers", () => {
   it("prefers detail.reviews when present", () => {
     const item = pr({
       latestReviews: [
-        { author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
+        { id: "r1", author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
       ],
     });
     const detail = {
@@ -103,7 +103,7 @@ describe("uniqueReviewers", () => {
       headRefOid: "",
       baseRefOid: "",
       reviews: [
-        { author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-03T00:00:00Z", body: "" },
+        { id: "r2", author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-03T00:00:00Z", body: "" },
       ],
     } as PrDetail;
     expect(uniqueReviewers(item, detail)[0]?.state).toBe("APPROVED");
@@ -130,6 +130,7 @@ describe("buildTimeline", () => {
       ],
       reviews: [
         {
+          id: "r1",
           author: { login: "alice" },
           state: "APPROVED",
           submittedAt: "2026-01-02T00:00:00Z",
@@ -154,7 +155,7 @@ describe("buildTimeline", () => {
       baseRefOid: "",
       comments: [],
       reviews: [
-        { author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
+        { id: "r1", author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },
       ],
     } as PrDetail;
     expect(buildTimeline(detail)).toEqual([]);

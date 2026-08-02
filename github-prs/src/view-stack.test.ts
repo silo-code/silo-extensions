@@ -52,6 +52,15 @@ describe("pushView / popView / currentView", () => {
     stack = popView(stack);
     expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/r", number: 42 });
   });
+
+  it("drills from detail directly to a review (another sibling of commits)", () => {
+    let stack: ViewStack = ROOT_STACK;
+    stack = pushView(stack, { kind: "detail", repoKey: "o/r", number: 42 });
+    stack = pushView(stack, { kind: "review", repoKey: "o/r", number: 42, reviewId: "PRR_1" });
+    expect(currentView(stack)).toEqual({ kind: "review", repoKey: "o/r", number: 42, reviewId: "PRR_1" });
+    stack = popView(stack);
+    expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/r", number: 42 });
+  });
 });
 
 describe("serializeStack / restoreStack round-trip", () => {
@@ -86,6 +95,16 @@ describe("serializeStack / restoreStack round-trip", () => {
       kind: "files",
       repoKey: "o/a",
       number: 1,
+    });
+    expect(restoreStack(serializeStack(stack))).toEqual(stack);
+  });
+
+  it("round-trips a stack drilled into a review", () => {
+    const stack = pushView(pushView(ROOT_STACK, { kind: "detail", repoKey: "o/a", number: 1 }), {
+      kind: "review",
+      repoKey: "o/a",
+      number: 1,
+      reviewId: "PRR_1",
     });
     expect(restoreStack(serializeStack(stack))).toEqual(stack);
   });
@@ -129,5 +148,14 @@ describe("restoreStack garbage handling", () => {
   it("falls back to root for a malformed files entry", () => {
     expect(restoreStack([{ kind: "list" }, { kind: "files", repoKey: "o/a" }])).toBe(ROOT_STACK);
     expect(restoreStack([{ kind: "list" }, { kind: "files", number: 1 }])).toBe(ROOT_STACK);
+  });
+
+  it("falls back to root for a malformed review entry", () => {
+    expect(
+      restoreStack([{ kind: "list" }, { kind: "review", repoKey: "o/a", number: 1 }]),
+    ).toBe(ROOT_STACK);
+    expect(
+      restoreStack([{ kind: "list" }, { kind: "review", repoKey: "o/a", reviewId: "PRR_1" }]),
+    ).toBe(ROOT_STACK);
   });
 });

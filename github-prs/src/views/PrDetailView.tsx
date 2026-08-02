@@ -6,8 +6,6 @@ import {
   ClockCountdown,
   XCircle,
 } from "@phosphor-icons/react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { ExtensionContext } from "@silo-code/sdk";
 import type { CheckContext, PrListItem } from "../github-pr-api";
 import {
@@ -27,6 +25,7 @@ import {
   uniqueReviewers,
 } from "../detail-helpers";
 import type { DetailCacheEntry, DetailErrorEntry } from "../store";
+import { GithubMarkdown } from "./GithubMarkdown";
 
 export interface PrDetailViewProps {
   ctx: ExtensionContext;
@@ -36,6 +35,7 @@ export interface PrDetailViewProps {
   loadingDetail: boolean;
   onViewCommits: () => void;
   onViewFiles: () => void;
+  onSelectReview: (reviewId: string) => void;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -49,7 +49,7 @@ function checkIcon(outcome: CheckOutcome) {
   }
 }
 
-function reviewStateIcon(state: string) {
+export function reviewStateIcon(state: string) {
   switch (state) {
     case "APPROVED":
       return <CheckCircle size={14} weight="fill" className="ghpr-row__icon--ok" />;
@@ -70,6 +70,7 @@ export function PrDetailView({
   loadingDetail,
   onViewCommits,
   onViewFiles,
+  onSelectReview,
 }: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
@@ -170,7 +171,19 @@ export function PrDetailView({
         ) : (
           <>
             {reviewers.map((r) => (
-              <div key={r.author?.login ?? r.submittedAt} className="ghpr-review-row">
+              <div
+                key={r.id || (r.author?.login ?? r.submittedAt)}
+                className="ghpr-review-row"
+                role="button"
+                tabIndex={0}
+                onClick={() => r.id && onSelectReview(r.id)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && r.id) {
+                    e.preventDefault();
+                    onSelectReview(r.id);
+                  }
+                }}
+              >
                 {reviewStateIcon(r.state)}
                 <span>
                   <span className="ghpr-timeline-row__who">{r.author?.login ?? "unknown"}</span>
@@ -201,30 +214,7 @@ export function PrDetailView({
         ) : loadingDetail && !detail ? (
           <div className="ghpr-detail__loading">Loading description…</div>
         ) : detail?.body ? (
-          <div className="ghpr-md">
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ href, children }) => (
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (href) void ctx.ui.openExternal(href);
-                    }}
-                  >
-                    {children}
-                  </a>
-                ),
-                img: ({ src, alt }) =>
-                  typeof src === "string" && /^https?:\/\//.test(src) ? (
-                    <img src={src} alt={alt ?? ""} />
-                  ) : null,
-              }}
-            >
-              {detail.body}
-            </Markdown>
-          </div>
+          <GithubMarkdown ctx={ctx}>{detail.body}</GithubMarkdown>
         ) : (
           <p className="ghpr-detail__body ghpr-detail__body--empty">No description.</p>
         )}

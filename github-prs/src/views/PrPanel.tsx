@@ -35,18 +35,23 @@ import { PrDetailView } from "./PrDetailView";
 import { PrCommitsView } from "./PrCommitsView";
 import { PrCommitView } from "./PrCommitView";
 import { PrFilesView } from "./PrFilesView";
+import { PrReviewView } from "./PrReviewView";
 import {
   commitPageSlot,
   commitsPageSlot,
   detailPageSlot,
   filesPageSlot,
   listPageSlot,
+  reviewPageSlot,
 } from "./page-slots";
 import type { PanelView } from "../view-stack";
 
 /** Any view that carries a `repoKey`/`number` — the detail, commits, commit,
- * and files pages all show data for the same underlying PR. */
-type PrContextView = Extract<PanelView, { kind: "detail" | "commits" | "commit" | "files" }>;
+ * files, and review pages all show data for the same underlying PR. */
+type PrContextView = Extract<
+  PanelView,
+  { kind: "detail" | "commits" | "commit" | "files" | "review" }
+>;
 
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
@@ -120,6 +125,14 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     if (view.kind === "commit") setLastCommitView(view);
   }, [view]);
 
+  const [lastReviewView, setLastReviewView] = useState<Extract<
+    PanelView,
+    { kind: "review" }
+  > | null>(view.kind === "review" ? view : null);
+  useEffect(() => {
+    if (view.kind === "review") setLastReviewView(view);
+  }, [view]);
+
   const detailPr = useMemo(() => {
     if (!lastPrView) return null;
     return findPrInRepoStates(repoStates, lastPrView.repoKey, lastPrView.number);
@@ -143,6 +156,12 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const filesEntry = lastPrView ? store.getFiles(lastPrView.repoKey, lastPrView.number) : undefined;
   const filesError = lastPrView ? store.getFilesError(lastPrView.repoKey, lastPrView.number) : undefined;
   const filesCwd = lastPrView ? service.resolveCwd(lastPrView.repoKey) : null;
+
+  // No fetch/cache of its own — reviews already live on the cached PrDetail
+  // (the detail page had to load it to render the row that got clicked).
+  const selectedReview = lastReviewView
+    ? detailEntry?.detail.reviews.find((r) => r.id === lastReviewView.reviewId)
+    : undefined;
 
   useEffect(() => {
     if (view.kind === "list" || !active) {
@@ -369,6 +388,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     [push],
   );
 
+  const openReview = useCallback(
+    (repoKey: string, number: number, reviewId: string) => {
+      push({ kind: "review", repoKey, number, reviewId });
+    },
+    [push],
+  );
+
   if (!workspaceId) {
     return (
       <div className="ghpr">
@@ -568,6 +594,9 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     loadingDetail={loadingDetail}
                     onViewCommits={() => openCommits(lastPrView.repoKey, lastPrView.number)}
                     onViewFiles={() => openFiles(lastPrView.repoKey, lastPrView.number)}
+                    onSelectReview={(reviewId) =>
+                      openReview(lastPrView.repoKey, lastPrView.number, reviewId)
+                    }
                   />
                 ) : (
                   <div className="ghpr-empty">
@@ -690,6 +719,41 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   loading={loadingFiles}
                   error={filesError && !filesEntry ? filesError.error.message : null}
                 />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* One review's full body — pushed from a review row on the detail
+            page (another sibling of Commits, not nested under it). No fetch
+            of its own; refresh here re-fetches PrDetail like the detail page. */}
+        <div className={`ghpr-page ghpr-page--${reviewPageSlot(view)}`}>
+          {lastReviewView && (
+            <>
+              <div className="ghpr-header ghpr-header--detail">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingDetail ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void refreshDetail()}
+                        disabled={loadingDetail}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className="ghpr-header__title">Review</div>
+              </div>
+              <div className="ghpr-body">
+                <PrReviewView ctx={ctx} review={selectedReview} />
               </div>
             </>
           )}

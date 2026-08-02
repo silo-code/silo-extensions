@@ -128,6 +128,9 @@ export interface StatusContextEntry {
 export type CheckContext = CheckRunContext | StatusContextEntry;
 
 export interface PrReview {
+  /** GraphQL node id (e.g. "PRR_kw…") — stable, unique per review. Used to
+   * key the Review drill-down page. */
+  id: string;
   author: PrActor | null;
   state: string;       // "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING"
   submittedAt: string | null;
@@ -290,6 +293,7 @@ function asActor(raw: unknown): PrActor | null {
 function asReviews(raw: unknown): PrReview[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((r: RawRecord) => ({
+    id: typeof r.id === "string" ? r.id : "",
     author: asActor(r.author),
     state: typeof r.state === "string" ? r.state : "",
     submittedAt: typeof r.submittedAt === "string" ? r.submittedAt : null,

@@ -11,6 +11,7 @@ Browse open and recently merged pull requests for the GitHub repos in your works
 - Click a row for CI checks, reviews, description, and activity
 - Drill from a PR into its commits, then a commit's changed files, then open a file's diff — sourced from GitHub directly, so it works even for commits never fetched into your local clone (e.g. a fork PR's head)
 - Or drill straight into every file the PR changes overall (diffed against its merge-base, matching GitHub's own "Files changed" tab) without stepping through individual commits
+- Click a review to read its full write-up on its own page, not just the state icon
 - Merge from the detail view when the PR is merge-ready (disabled with a reason otherwise)
 - At-a-glance review icons, check rollup, draft and conflict chips
 - Copy PR URL, head branch, or `gh pr checkout N`
@@ -45,7 +46,7 @@ Open the **PRS** panel on the right. The default filter is **My PRs**. Switch fi
 
 Click a row for details. List data shows immediately; description and activity load next. Use **Merge** on the detail header when the PR is ready (confirm first). Use the overflow menu to copy the URL, branch name, or checkout command.
 
-From the detail view, open **Commits** to see the PR's own commit history, click a commit for its changed files, then click a file to open its diff. Or open **Files changed** to go straight to every file the PR touches overall.
+From the detail view, open **Commits** to see the PR's own commit history, click a commit for its changed files, then click a file to open its diff. Or open **Files changed** to go straight to every file the PR touches overall. Click a review under **Reviews** to read its full body.
 
 If monitoring was turned off for a workspace, use **Enable** in the panel gate to turn it back on.
 

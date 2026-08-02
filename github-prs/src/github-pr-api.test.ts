@@ -60,7 +60,7 @@ const OPEN_PR_FIXTURE = JSON.parse(`{
   "headRefName": "feat/rfc-0015-polling-gate-suppression",
   "isDraft": false,
   "labels": [{ "id": "L1", "name": "minor", "color": "d73a4a" }],
-  "latestReviews": [{ "author": { "login": "reviewer1" }, "state": "APPROVED", "submittedAt": "2026-07-17T02:35:00Z" }],
+  "latestReviews": [{ "id": "PRR_kwABC123", "author": { "login": "reviewer1" }, "state": "APPROVED", "submittedAt": "2026-07-17T02:35:00Z" }],
   "mergeStateStatus": "UNKNOWN",
   "mergeable": "UNKNOWN",
   "number": 53,
@@ -100,6 +100,7 @@ describe("normalizePrItem", () => {
     expect(pr.labels).toEqual([{ name: "minor" }]);
     expect(pr.statusCheckRollup).toHaveLength(2);
     expect(pr.latestReviews[0]).toEqual({
+      id: "PRR_kwABC123",
       author: { login: "reviewer1" },
       state: "APPROVED",
       submittedAt: "2026-07-17T02:35:00Z",
@@ -149,12 +150,13 @@ describe("normalizePrDetail", () => {
       body: "PR description here",
       changedFiles: 4,
       closedAt: null,
-      reviews: [{ author: { login: "reviewer1" }, state: "APPROVED", submittedAt: "2026-07-17T02:35:00Z", body: "LGTM" }],
+      reviews: [{ id: "PRR_kwXYZ789", author: { login: "reviewer1" }, state: "APPROVED", submittedAt: "2026-07-17T02:35:00Z", body: "LGTM" }],
       comments: [{ author: { login: "davideweaver" }, body: "ping", createdAt: "2026-07-17T01:00:00Z", url: "https://github.com/x" }],
     });
     expect(detail.body).toBe("PR description here");
     expect(detail.changedFiles).toBe(4);
     expect(detail.closedAt).toBeNull();
+    expect(detail.reviews[0].id).toBe("PRR_kwXYZ789");
     expect(detail.reviews[0].body).toBe("LGTM");
     expect(detail.comments[0]).toEqual({
       author: { login: "davideweaver" },

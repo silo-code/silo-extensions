@@ -5,6 +5,7 @@ import {
   detailPageSlot,
   filesPageSlot,
   listPageSlot,
+  reviewPageSlot,
 } from "./page-slots";
 import type { PanelView } from "../view-stack";
 
@@ -13,6 +14,7 @@ const DETAIL: PanelView = { kind: "detail", repoKey: "o/r", number: 42 };
 const COMMITS: PanelView = { kind: "commits", repoKey: "o/r", number: 42 };
 const COMMIT: PanelView = { kind: "commit", repoKey: "o/r", number: 42, sha: "abc123" };
 const FILES: PanelView = { kind: "files", repoKey: "o/r", number: 42 };
+const REVIEW: PanelView = { kind: "review", repoKey: "o/r", number: 42, reviewId: "PRR_1" };
 
 describe("listPageSlot / detailPageSlot", () => {
   it("centers the list and parks detail off-screen right at the list view", () => {
@@ -76,5 +78,29 @@ describe("filesPageSlot — sibling of commits at the same depth", () => {
     expect(commitsPageSlot(FILES)).not.toBe("current");
     expect(filesPageSlot(COMMITS)).toBe("parked-right");
     expect(commitsPageSlot(FILES)).toBe("parked-right");
+  });
+});
+
+describe("reviewPageSlot — a third sibling at the same depth", () => {
+  it("parks right of the list and detail, like commits and files", () => {
+    expect(reviewPageSlot(LIST)).toBe("parked-right");
+    expect(reviewPageSlot(DETAIL)).toBe("parked-right");
+  });
+
+  it("centers review and parks shallower pages left, commit (deeper) right", () => {
+    expect(listPageSlot(REVIEW)).toBe("parked-left");
+    expect(detailPageSlot(REVIEW)).toBe("parked-left");
+    expect(reviewPageSlot(REVIEW)).toBe("current");
+    expect(commitPageSlot(REVIEW)).toBe("parked-right");
+  });
+
+  // All three siblings (commits, files, review) share VIEW_DEPTH — verify
+  // none of them ever reports "current" while either of the other two is
+  // the active view.
+  it("never collides with commits or files", () => {
+    expect(reviewPageSlot(COMMITS)).toBe("parked-right");
+    expect(reviewPageSlot(FILES)).toBe("parked-right");
+    expect(commitsPageSlot(REVIEW)).toBe("parked-right");
+    expect(filesPageSlot(REVIEW)).toBe("parked-right");
   });
 });

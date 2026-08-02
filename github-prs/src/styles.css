@@ -669,6 +669,18 @@
 .ghpr-check-row:hover {
   background: var(--silo-color-bg-hover);
 }
+/* Unlike .ghpr-check-row (a <button>) and .ghpr-timeline-row (not
+   interactive), .ghpr-review-row is a clickable <div role="button"> — drills
+   into that one review's full body, same pattern as a commit row. */
+.ghpr-review-row {
+  cursor: pointer;
+  border-radius: var(--silo-radius-sm);
+  padding: 6px 4px;
+  margin: 0 -4px;
+}
+.ghpr-review-row:hover {
+  background: var(--silo-color-bg-hover);
+}
 .ghpr-check-row__name {
   flex: 1;
   min-width: 0;
