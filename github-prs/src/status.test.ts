@@ -88,25 +88,56 @@ describe("classifyCheck", () => {
 });
 
 describe("splitChecksByOutcome", () => {
-  it("separates passing from failing/pending, preserving relative order in each group", () => {
+  it("keeps all failing/pending visible, preserving relative order, when under minVisible", () => {
     const passingA = checkRun({ name: "a", conclusion: "SUCCESS" });
     const failing = checkRun({ name: "b", conclusion: "FAILURE" });
     const passingB = statusContext({ context: "c", state: "SUCCESS" });
     const pending = checkRun({ name: "d", status: "IN_PROGRESS", conclusion: "" });
-    const { passing, other } = splitChecksByOutcome([passingA, failing, passingB, pending]);
-    expect(passing).toEqual([passingA, passingB]);
-    expect(other).toEqual([failing, pending]);
+    const { visible, collapsed } = splitChecksByOutcome([passingA, failing, passingB, pending]);
+    expect(visible).toEqual([failing, pending, passingA, passingB]);
+    expect(collapsed).toEqual([]);
   });
 
   it("returns two empty arrays for an empty rollup", () => {
-    expect(splitChecksByOutcome([])).toEqual({ passing: [], other: [] });
+    expect(splitChecksByOutcome([])).toEqual({ visible: [], collapsed: [] });
   });
 
-  it("puts an all-passing rollup entirely in `passing`", () => {
+  it("pads an all-passing rollup up to minVisible, collapsing the rest", () => {
+    const checks = Array.from({ length: 8 }, (_, i) => checkRun({ name: `c${i}`, conclusion: "SUCCESS" }));
+    const { visible, collapsed } = splitChecksByOutcome(checks);
+    expect(visible).toHaveLength(5);
+    expect(visible).toEqual(checks.slice(0, 5));
+    expect(collapsed).toEqual(checks.slice(5));
+  });
+
+  it("shows an all-passing rollup entirely when it's at or under minVisible", () => {
     const checks = [checkRun({ conclusion: "SUCCESS" }), statusContext({ state: "SUCCESS" })];
-    const { passing, other } = splitChecksByOutcome(checks);
-    expect(passing).toHaveLength(2);
-    expect(other).toHaveLength(0);
+    const { visible, collapsed } = splitChecksByOutcome(checks);
+    expect(visible).toEqual(checks);
+    expect(collapsed).toEqual([]);
+  });
+
+  it("shows every failing/pending check even past minVisible, without padding in any passing ones", () => {
+    const failing = Array.from({ length: 7 }, (_, i) => checkRun({ name: `f${i}`, conclusion: "FAILURE" }));
+    const passing = [checkRun({ name: "p", conclusion: "SUCCESS" })];
+    const { visible, collapsed } = splitChecksByOutcome([...failing, ...passing]);
+    expect(visible).toEqual(failing);
+    expect(collapsed).toEqual(passing);
+  });
+
+  it("pads with only as many passing checks as needed to reach minVisible", () => {
+    const failing = [checkRun({ name: "f", conclusion: "FAILURE" })];
+    const passing = Array.from({ length: 6 }, (_, i) => checkRun({ name: `p${i}`, conclusion: "SUCCESS" }));
+    const { visible, collapsed } = splitChecksByOutcome([...failing, ...passing]);
+    expect(visible).toEqual([failing[0], ...passing.slice(0, 4)]);
+    expect(collapsed).toEqual(passing.slice(4));
+  });
+
+  it("respects a custom minVisible", () => {
+    const checks = Array.from({ length: 4 }, (_, i) => checkRun({ name: `c${i}`, conclusion: "SUCCESS" }));
+    const { visible, collapsed } = splitChecksByOutcome(checks, 2);
+    expect(visible).toEqual(checks.slice(0, 2));
+    expect(collapsed).toEqual(checks.slice(2));
   });
 });
 

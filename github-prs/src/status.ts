@@ -30,19 +30,25 @@ export function classifyCheck(check: CheckContext): CheckOutcome {
   }
 }
 
-// Splits a rollup into what needs a look (failing/pending) and what doesn't
-// (passing), preserving each group's relative order — used to collapse the
-// passing checks behind a "Show more" toggle on the detail page's Checks
-// section without hiding a failure that happens to sort after them.
+// Splits a rollup into what's always visible and what's collapsed behind a
+// "Show more" toggle on the detail page's Checks section: everything that
+// needs a look (failing/pending) is always visible, padded out with passing
+// checks up to `minVisible` total so an all-green PR still shows a handful of
+// rows instead of nothing but the toggle. Preserves relative order within
+// each half.
 export function splitChecksByOutcome(
   checks: CheckContext[],
-): { passing: CheckContext[]; other: CheckContext[] } {
+  minVisible = 5,
+): { visible: CheckContext[]; collapsed: CheckContext[] } {
   const passing: CheckContext[] = [];
   const other: CheckContext[] = [];
   for (const check of checks) {
     (classifyCheck(check) === "passing" ? passing : other).push(check);
   }
-  return { passing, other };
+  const fillCount = Math.max(0, minVisible - other.length);
+  const visible = [...other, ...passing.slice(0, fillCount)];
+  const collapsed = passing.slice(fillCount);
+  return { visible, collapsed };
 }
 
 export interface CheckSummary {

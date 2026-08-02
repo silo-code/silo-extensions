@@ -106,7 +106,7 @@ export function PrDetailView({
   // still running) are what should be visible without scrolling past a wall
   // of green.
   const [showPassingChecks, setShowPassingChecks] = useState(false);
-  const { passing: passingChecks, other: otherChecks } = useMemo(
+  const { visible: visibleChecks, collapsed: collapsedChecks } = useMemo(
     () => splitChecksByOutcome(checks),
     [checks],
   );
@@ -171,8 +171,8 @@ export function PrDetailView({
           <div className="ghpr-detail__loading">No checks reported.</div>
         ) : (
           <>
-            {otherChecks.map((check) => renderCheckRow(check, ctx))}
-            {passingChecks.length > 0 && (
+            {visibleChecks.map((check) => renderCheckRow(check, ctx))}
+            {collapsedChecks.length > 0 && (
               <button
                 type="button"
                 className="ghpr-checks-toggle"
@@ -185,11 +185,11 @@ export function PrDetailView({
                   <CaretRight size={12} weight="bold" />
                 )}
                 {showPassingChecks
-                  ? `Hide ${passingChecks.length} passing`
-                  : `Show ${passingChecks.length} more passing`}
+                  ? `Hide ${collapsedChecks.length} passing`
+                  : `Show ${collapsedChecks.length} more passing`}
               </button>
             )}
-            {showPassingChecks && passingChecks.map((check) => renderCheckRow(check, ctx))}
+            {showPassingChecks && collapsedChecks.map((check) => renderCheckRow(check, ctx))}
           </>
         )}
       </section>
