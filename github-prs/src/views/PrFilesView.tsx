@@ -1,10 +1,8 @@
-import type { ReactNode } from "react";
 import { File as FileIcon } from "@phosphor-icons/react";
 import { Tooltip, type ExtensionContext } from "@silo-code/sdk";
-import type { PrCommitDetail, PrFileChange } from "../github-pr-api";
-import { formatElapsed } from "../format-elapsed";
+import type { PrFileChange } from "../github-pr-api";
 
-export interface PrCommitViewProps {
+export interface PrFilesViewProps {
   ctx: ExtensionContext;
   owner: string;
   repo: string;
@@ -12,12 +10,16 @@ export interface PrCommitViewProps {
    * workspace currently resolves to it (diff rows are hidden in that case —
    * there's nowhere to run `gh` from). */
   cwd: string | null;
-  detail: PrCommitDetail | undefined;
+  files: PrFileChange[];
+  /** Merge-base / head shas from PrService.fetchFiles — the diff provider's
+   * two sides. `null` until the fetch resolves. */
+  baseSha: string | null;
+  headSha: string | null;
   loading: boolean;
   error: string | null;
 }
 
-function statFor(f: PrFileChange): ReactNode {
+function statFor(f: PrFileChange) {
   if ((f.additions ?? 0) === 0 && (f.deletions ?? 0) === 0) return null;
   return (
     <span className="ghpr-file-stat">
@@ -27,30 +29,46 @@ function statFor(f: PrFileChange): ReactNode {
   );
 }
 
-/** A single commit's message and changed files — pushed from PrCommitsView.
- * Row click opens the file's diff (base = the commit's first parent) via the
- * `silo.github-prs` content provider, the same generic diff editor Silo's
- * git-explorer uses, just resolving both sides from the GitHub Contents API
- * instead of a local git object store — the commit's own sha may never have
- * been fetched into the workspace's clone (e.g. a fork PR's head). */
-export function PrCommitView({ ctx, owner, repo, cwd, detail, loading, error }: PrCommitViewProps) {
-  if (error && !detail) {
+/** The PR's overall changed files — pushed from PrDetailView's "N files"
+ * link. Unlike PrCommitView (one commit vs its own first parent), each file
+ * here diffs against the PR's merge-base (PrService.fetchFiles resolves it),
+ * so the list matches what GitHub's own "Files changed" tab shows — not
+ * every commit landed on the base branch since the PR forked. */
+export function PrFilesView({
+  ctx,
+  owner,
+  repo,
+  cwd,
+  files,
+  baseSha,
+  headSha,
+  loading,
+  error,
+}: PrFilesViewProps) {
+  if (error && files.length === 0) {
     return (
       <div className="ghpr-empty">
-        <div className="ghpr-empty__title">Couldn’t load commit</div>
+        <div className="ghpr-empty__title">Couldn’t load files</div>
         <div>{error}</div>
       </div>
     );
   }
-  if (!detail) {
+  if (loading && files.length === 0) {
     return (
       <div className="ghpr-empty">
-        <div className="ghpr-empty__title">{loading ? "Loading commit…" : "Commit not found."}</div>
+        <div className="ghpr-empty__title">Loading files…</div>
+      </div>
+    );
+  }
+  if (files.length === 0) {
+    return (
+      <div className="ghpr-empty">
+        <div className="ghpr-empty__title">No files changed</div>
       </div>
     );
   }
 
-  const totals = detail.files.reduce(
+  const totals = files.reduce(
     (acc, f) => ({
       additions: acc.additions + (f.additions ?? 0),
       deletions: acc.deletions + (f.deletions ?? 0),
@@ -59,7 +77,7 @@ export function PrCommitView({ ctx, owner, repo, cwd, detail, loading, error }: 
   );
 
   function openDiff(file: PrFileChange) {
-    if (!cwd || !detail) return;
+    if (!cwd || !headSha) return;
     const base = file.path.split("/").pop() ?? file.path;
     ctx.editors.openDiff(
       {
@@ -69,12 +87,12 @@ export function PrCommitView({ ctx, owner, repo, cwd, detail, loading, error }: 
           owner,
           repo,
           cwd,
-          commit: detail.sha,
-          parent: detail.parentSha ?? undefined,
+          commit: headSha,
+          parent: baseSha ?? undefined,
           path: file.path,
           origPath: file.origPath,
         },
-        title: `${base} (${detail.shortSha})`,
+        title: base,
       },
       { preview: true },
     );
@@ -82,17 +100,8 @@ export function PrCommitView({ ctx, owner, repo, cwd, detail, loading, error }: 
 
   return (
     <div className="ghpr-commit-detail">
-      <div className="ghpr-commit-detail-message">
-        <div className="ghpr-commit-detail-subject">{detail.subject}</div>
-        {detail.body && <pre className="ghpr-commit-detail-body">{detail.body}</pre>}
-        <div className="ghpr-commit-detail-meta">
-          <span>{detail.authorLogin ?? (detail.authorName || "unknown")}</span>
-          {detail.date && <span>{formatElapsed(new Date(detail.date))}</span>}
-          <code>{detail.shortSha}</code>
-        </div>
-      </div>
       <div className="ghpr-commit-detail-stats">
-        {detail.files.length} file{detail.files.length === 1 ? "" : "s"} changed
+        {files.length} file{files.length === 1 ? "" : "s"} changed
         {(totals.additions > 0 || totals.deletions > 0) && (
           <>
             {" · "}
@@ -102,7 +111,7 @@ export function PrCommitView({ ctx, owner, repo, cwd, detail, loading, error }: 
         )}
       </div>
       <div className="ghpr-commit-detail-files">
-        {detail.files.map((f) => (
+        {files.map((f) => (
           <div
             key={f.path}
             className="ghpr-file-row"

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   classifyFetchError,
   normalizePrCommitDetail,
+  normalizePrFiles,
   normalizePrItem,
   normalizePrDetail,
 } from "./github-pr-api";
@@ -206,6 +207,24 @@ describe("normalizePrDetail commits", () => {
   });
 });
 
+describe("normalizePrDetail headRefOid/baseRefOid", () => {
+  it("normalizes both shas — the diff provider's base/head for the Files page", () => {
+    const detail = normalizePrDetail({
+      number: 1,
+      headRefOid: "4f66d144ee145947ec144d22d3ab758628a9e946",
+      baseRefOid: "cc4f4b9c1e21020a4fb1699091a183e3291d2612",
+    });
+    expect(detail.headRefOid).toBe("4f66d144ee145947ec144d22d3ab758628a9e946");
+    expect(detail.baseRefOid).toBe("cc4f4b9c1e21020a4fb1699091a183e3291d2612");
+  });
+
+  it("defaults both to empty strings when absent", () => {
+    const detail = normalizePrDetail({ number: 1 });
+    expect(detail.headRefOid).toBe("");
+    expect(detail.baseRefOid).toBe("");
+  });
+});
+
 // Captured from a real `gh api repos/{owner}/{repo}/commits/{sha}` invocation (trimmed).
 const COMMIT_DETAIL_FIXTURE = {
   sha: "3f1b638a55da2d177fb23d9e6b6188640db9e9ca",
@@ -307,6 +326,36 @@ describe("normalizePrCommitDetail", () => {
       ],
     });
     expect(detail.files.map((f) => f.status)).toEqual(["A", "D", "C", "M"]);
+  });
+});
+
+// Captured from a real `gh api repos/{owner}/{repo}/pulls/{number}/files` invocation.
+describe("normalizePrFiles", () => {
+  it("normalizes the same shape as a commit's files (shared REST fields)", () => {
+    const files = normalizePrFiles([
+      {
+        additions: 2,
+        deletions: 3,
+        filename: "github-prs/src/styles.css",
+        previous_filename: null,
+        status: "modified",
+      },
+    ]);
+    expect(files).toEqual([
+      { path: "github-prs/src/styles.css", origPath: undefined, status: "M", additions: 2, deletions: 3 },
+    ]);
+  });
+
+  it("keeps the previous filename for a rename", () => {
+    const files = normalizePrFiles([
+      { filename: "new.ts", previous_filename: "old.ts", status: "renamed", additions: 0, deletions: 0 },
+    ]);
+    expect(files[0]?.origPath).toBe("old.ts");
+  });
+
+  it("returns an empty array for a non-array response", () => {
+    expect(normalizePrFiles(undefined)).toEqual([]);
+    expect(normalizePrFiles({})).toEqual([]);
   });
 });
 

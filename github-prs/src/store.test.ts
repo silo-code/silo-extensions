@@ -164,6 +164,8 @@ describe("PrStore repo state + detail cache", () => {
       reviews: [],
       comments: [],
       commits: [],
+      headRefOid: "",
+      baseRefOid: "",
       changedFiles: 2,
       closedAt: null,
     } as PrDetail;
@@ -221,6 +223,8 @@ describe("PrStore repo state + detail cache", () => {
       reviews: [],
       comments: [],
       commits: [],
+      headRefOid: "",
+      baseRefOid: "",
       changedFiles: 1,
       closedAt: null,
     } as PrDetail);

@@ -6,7 +6,8 @@ export type PanelView =
   | { kind: "list" }
   | { kind: "detail"; repoKey: string; number: number }
   | { kind: "commits"; repoKey: string; number: number }
-  | { kind: "commit"; repoKey: string; number: number; sha: string };
+  | { kind: "commit"; repoKey: string; number: number; sha: string }
+  | { kind: "files"; repoKey: string; number: number };
 
 export interface ViewStack {
   // Invariant: views[0] is always the list root.
@@ -37,7 +38,7 @@ function isPanelView(raw: unknown): raw is PanelView {
   if (!raw || typeof raw !== "object") return false;
   const v = raw as Record<string, unknown>;
   if (v.kind === "list") return true;
-  if (v.kind === "detail" || v.kind === "commits") {
+  if (v.kind === "detail" || v.kind === "commits" || v.kind === "files") {
     return typeof v.repoKey === "string" && typeof v.number === "number";
   }
   if (v.kind === "commit") {

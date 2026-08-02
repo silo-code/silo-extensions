@@ -6,6 +6,8 @@ import {
   fetchOpenPrs,
   fetchPrCommitDetail,
   fetchPrDetail,
+  fetchPrFiles,
+  fetchPrMergeBase,
   fetchRepoMergeMethods,
   fetchViewerLogin,
   mergePr,
@@ -503,6 +505,42 @@ export class PrService {
       this._ctx.log.warn(`Failed to fetch commit ${sha.slice(0, 7)} detail`, { error: result.error });
       prStore.setCommitDetailError(repoKey, sha, result.error);
     }
+  }
+
+  /** The PR's overall changed files, plus the base/head shas the diff
+   * provider needs. Reads `headRefOid`/`baseRefOid` off the already-cached
+   * PrDetail (the Files page is only reachable once detail has loaded — see
+   * PrDetailView's "N files" link) rather than re-fetching it here. */
+  async fetchFiles(repoKey: string, number: number): Promise<void> {
+    if (!this._ctx || !prStore.authenticated) return;
+    const resolved = this._resolveRepo(repoKey);
+    if (!resolved) return;
+    const detail = prStore.getDetail(repoKey, number)?.detail;
+    if (!detail) return;
+
+    prStore.clearFilesError(repoKey, number);
+    const [filesResult, mergeBase] = await Promise.all([
+      fetchPrFiles(this._ctx, resolved.repoInfo.owner, resolved.repoInfo.repo, number, resolved.cwd, this._ghBin),
+      fetchPrMergeBase(
+        this._ctx,
+        resolved.repoInfo.owner,
+        resolved.repoInfo.repo,
+        detail.baseRefOid,
+        detail.headRefOid,
+        resolved.cwd,
+        this._ghBin,
+      ),
+    ]);
+    if (!filesResult.ok) {
+      this._ctx.log.warn(`Failed to fetch changed files for PR #${number}`, { error: filesResult.error });
+      prStore.setFilesError(repoKey, number, filesResult.error);
+      return;
+    }
+    prStore.setFiles(repoKey, number, {
+      files: filesResult.files,
+      baseSha: mergeBase ?? detail.baseRefOid,
+      headSha: detail.headRefOid,
+    });
   }
 
   /** The resolved `gh` binary path — the diff content provider needs it to

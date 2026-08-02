@@ -43,6 +43,15 @@ describe("pushView / popView / currentView", () => {
     stack = popView(stack);
     expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/r", number: 42 });
   });
+
+  it("drills from detail directly to files (a sibling of commits)", () => {
+    let stack: ViewStack = ROOT_STACK;
+    stack = pushView(stack, { kind: "detail", repoKey: "o/r", number: 42 });
+    stack = pushView(stack, { kind: "files", repoKey: "o/r", number: 42 });
+    expect(currentView(stack)).toEqual({ kind: "files", repoKey: "o/r", number: 42 });
+    stack = popView(stack);
+    expect(currentView(stack)).toEqual({ kind: "detail", repoKey: "o/r", number: 42 });
+  });
 });
 
 describe("serializeStack / restoreStack round-trip", () => {
@@ -69,6 +78,15 @@ describe("serializeStack / restoreStack round-trip", () => {
       }),
       { kind: "commit", repoKey: "o/a", number: 1, sha: "deadbeef" },
     );
+    expect(restoreStack(serializeStack(stack))).toEqual(stack);
+  });
+
+  it("round-trips a stack drilled into files", () => {
+    const stack = pushView(pushView(ROOT_STACK, { kind: "detail", repoKey: "o/a", number: 1 }), {
+      kind: "files",
+      repoKey: "o/a",
+      number: 1,
+    });
     expect(restoreStack(serializeStack(stack))).toEqual(stack);
   });
 });
@@ -106,5 +124,10 @@ describe("restoreStack garbage handling", () => {
     expect(
       restoreStack([{ kind: "list" }, { kind: "commit", repoKey: "o/a", number: 1 }]),
     ).toBe(ROOT_STACK);
+  });
+
+  it("falls back to root for a malformed files entry", () => {
+    expect(restoreStack([{ kind: "list" }, { kind: "files", repoKey: "o/a" }])).toBe(ROOT_STACK);
+    expect(restoreStack([{ kind: "list" }, { kind: "files", number: 1 }])).toBe(ROOT_STACK);
   });
 });

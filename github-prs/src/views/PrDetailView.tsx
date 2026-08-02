@@ -35,6 +35,7 @@ export interface PrDetailViewProps {
   detailError: DetailErrorEntry | undefined;
   loadingDetail: boolean;
   onViewCommits: () => void;
+  onViewFiles: () => void;
 }
 
 function checkIcon(outcome: CheckOutcome) {
@@ -68,6 +69,7 @@ export function PrDetailView({
   detailError,
   loadingDetail,
   onViewCommits,
+  onViewFiles,
 }: PrDetailViewProps) {
   const detail = detailEntry?.detail;
   const review = deriveReviewState(pr);
@@ -95,9 +97,6 @@ export function PrDetailView({
           <span className="ghpr-detail__stats">
             <span className="ghpr-detail__add">+{pr.additions}</span>{" "}
             <span className="ghpr-detail__del">−{pr.deletions}</span>
-            {detail?.changedFiles != null && detail.changedFiles > 0 && (
-              <> · {detail.changedFiles} files</>
-            )}
           </span>
         </div>
       </section>
@@ -113,6 +112,18 @@ export function PrDetailView({
             {detail
               ? `${detail.commits.length} commit${detail.commits.length === 1 ? "" : "s"}`
               : "View commits"}
+          </span>
+          <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
+        </button>
+      </section>
+
+      <section className="ghpr-detail__section">
+        <h3 className="ghpr-detail__section-title">Files changed</h3>
+        <button type="button" className="ghpr-nav-row" onClick={onViewFiles}>
+          <span className="ghpr-nav-row__label">
+            {detail?.changedFiles != null
+              ? `${detail.changedFiles} file${detail.changedFiles === 1 ? "" : "s"}`
+              : "View files"}
           </span>
           <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
         </button>

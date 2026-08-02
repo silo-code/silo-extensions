@@ -100,6 +100,8 @@ describe("uniqueReviewers", () => {
       closedAt: null,
       comments: [],
       commits: [],
+      headRefOid: "",
+      baseRefOid: "",
       reviews: [
         { author: { login: "a" }, state: "APPROVED", submittedAt: "2026-01-03T00:00:00Z", body: "" },
       ],
@@ -116,6 +118,8 @@ describe("buildTimeline", () => {
       changedFiles: 0,
       closedAt: null,
       commits: [],
+      headRefOid: "",
+      baseRefOid: "",
       comments: [
         {
           author: { login: "dave" },
@@ -146,6 +150,8 @@ describe("buildTimeline", () => {
       changedFiles: 0,
       closedAt: null,
       commits: [],
+      headRefOid: "",
+      baseRefOid: "",
       comments: [],
       reviews: [
         { author: { login: "a" }, state: "COMMENTED", submittedAt: "2026-01-01T00:00:00Z", body: "" },

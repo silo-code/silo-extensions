@@ -191,10 +191,13 @@ export interface PrCommitListItem {
 
 /** Single-letter file status, matching Silo's git-explorer convention
  * (see `CommitFileChange` in packages/extensions-silo/src/git/git-api.ts)
- * so the two commit-detail UIs read the same status glyphs. */
+ * so the commit-detail and PR-files UIs read the same status glyphs. */
 export type CommitFileStatus = "A" | "M" | "D" | "R" | "C" | "T" | "U" | "X";
 
-export interface PrCommitFileChange {
+/** One changed file — shared shape for a single commit's files
+ * (`PrCommitDetail.files`) and the PR's overall changed-file list
+ * (`fetchPrFiles`), since both REST endpoints return the same fields. */
+export interface PrFileChange {
   path: string;
   /** Original path for a rename/copy. */
   origPath?: string;
@@ -212,7 +215,7 @@ export interface PrCommitDetail extends PrCommitListItem {
   /** First parent's sha, or `null` for a root commit. Feeds the diff
    * provider's "original" side. */
   parentSha: string | null;
-  files: PrCommitFileChange[];
+  files: PrFileChange[];
 }
 
 export interface PrDetail extends PrListItem {
@@ -222,6 +225,11 @@ export interface PrDetail extends PrListItem {
   changedFiles: number;
   closedAt: string | null;
   commits: PrCommitListItem[];
+  /** Head/base commit shas — used (with `fetchPrMergeBase`) to diff the PR's
+   * overall changed files against the merge-base, not the base branch's
+   * live tip (which would show unrelated commits if it's moved since). */
+  headRefOid: string;
+  baseRefOid: string;
 }
 
 export interface GitHubApiError {
@@ -374,6 +382,8 @@ export function normalizePrDetail(raw: RawRecord): PrDetail {
     changedFiles: typeof raw.changedFiles === "number" ? raw.changedFiles : 0,
     closedAt: typeof raw.closedAt === "string" ? raw.closedAt : null,
     commits: asCommits(raw.commits),
+    headRefOid: typeof raw.headRefOid === "string" ? raw.headRefOid : "",
+    baseRefOid: typeof raw.baseRefOid === "string" ? raw.baseRefOid : "",
   };
 }
 
@@ -389,6 +399,19 @@ const FILE_STATUS_MAP: Record<string, CommitFileStatus> = {
 
 function mapFileStatus(raw: string): CommitFileStatus {
   return FILE_STATUS_MAP[raw] ?? "M";
+}
+
+/** Shared row mapping for both REST "changed files" shapes — a single
+ * commit's files (`GET commits/{sha}`) and a PR's overall files
+ * (`GET pulls/{number}/files`) — which return identical field names. */
+function normalizeFileChange(f: RawRecord): PrFileChange {
+  return {
+    path: typeof f.filename === "string" ? f.filename : "",
+    origPath: typeof f.previous_filename === "string" ? f.previous_filename : undefined,
+    status: mapFileStatus(typeof f.status === "string" ? f.status : ""),
+    additions: typeof f.additions === "number" ? f.additions : null,
+    deletions: typeof f.deletions === "number" ? f.deletions : null,
+  };
 }
 
 /** Split a raw commit message into its subject line and body, the way
@@ -413,13 +436,7 @@ export function normalizePrCommitDetail(raw: RawRecord): PrCommitDetail {
   const parents = Array.isArray(raw.parents) ? (raw.parents as RawRecord[]) : [];
   const parentSha = typeof parents[0]?.sha === "string" ? (parents[0]!.sha as string) : null;
   const filesRaw = Array.isArray(raw.files) ? (raw.files as RawRecord[]) : [];
-  const files: PrCommitFileChange[] = filesRaw.map((f) => ({
-    path: typeof f.filename === "string" ? f.filename : "",
-    origPath: typeof f.previous_filename === "string" ? f.previous_filename : undefined,
-    status: mapFileStatus(typeof f.status === "string" ? f.status : ""),
-    additions: typeof f.additions === "number" ? f.additions : null,
-    deletions: typeof f.deletions === "number" ? f.deletions : null,
-  }));
+  const files: PrFileChange[] = filesRaw.map(normalizeFileChange);
   return {
     sha,
     shortSha: sha.slice(0, 7),
@@ -456,6 +473,7 @@ const DETAIL_PR_FIELDS = [
   "statusCheckRollup", "comments", "labels", "headRefName", "baseRefName",
   "mergeable", "mergeStateStatus", "additions", "deletions", "changedFiles",
   "createdAt", "updatedAt", "mergedAt", "closedAt", "commits",
+  "headRefOid", "baseRefOid",
 ].join(",");
 
 async function runPrList(
@@ -569,6 +587,75 @@ export async function fetchPrCommitDetail(
     ctx.log.error(`Failed to parse gh api commit response for ${owner}/${repo}@${sha}`, { stdout: result.stdout.slice(0, 200) });
     return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
   }
+}
+
+export function normalizePrFiles(raw: unknown): PrFileChange[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawRecord[]).map(normalizeFileChange);
+}
+
+export type PrFilesResult =
+  | { ok: true; files: PrFileChange[] }
+  | { ok: false; error: GitHubApiError };
+
+/** The PR's overall changed files — unlike a single commit's files, this is
+ * already scoped to the PR's merge-base by GitHub itself (the same list
+ * shown in the PR's "Files changed" tab), so no separate range computation
+ * is needed for the *list*. Paginated: a large PR's file count can exceed
+ * the REST default page size. */
+export async function fetchPrFiles(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  number: number,
+  cwd: string,
+  ghBin: string,
+): Promise<PrFilesResult> {
+  ctx.log.debug(`Fetching changed files for ${owner}/${repo}#${number}`);
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/pulls/${number}/files`, "--paginate",
+  ], { cwd });
+  if (result.code !== 0) {
+    const error = classifyFetchError(result.stderr);
+    ctx.log.warn(`gh api pulls/files error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: result.stderr.trim() });
+    return { ok: false, error };
+  }
+  try {
+    return { ok: true, files: normalizePrFiles(JSON.parse(result.stdout)) };
+  } catch {
+    ctx.log.error(`Failed to parse gh api pulls/files response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
+/** The commit both `baseSha` and `headSha` descend from — the correct
+ * "before" side for diffing a PR's *overall* changes. Diffing against
+ * `baseSha` directly would show every commit landed on the base branch
+ * since the PR forked as part of the PR's own change, same mistake as a
+ * plain `git diff base head` instead of `git diff base...head`. Resolves to
+ * `null` on any failure — callers fall back to `baseSha` (a less accurate
+ * but still-functional diff origin) rather than blocking the page. */
+export async function fetchPrMergeBase(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  baseSha: string,
+  headSha: string,
+  cwd: string,
+  ghBin: string,
+): Promise<string | null> {
+  const result = await ctx.process.exec(ghBin, [
+    "api", `repos/${owner}/${repo}/compare/${baseSha}...${headSha}`,
+    "--jq", ".merge_base_commit.sha",
+  ], { cwd });
+  if (result.code !== 0) {
+    ctx.log.debug(`Merge-base lookup failed for ${owner}/${repo} (${baseSha.slice(0, 7)}...${headSha.slice(0, 7)}) — falling back to baseSha`, {
+      stderr: result.stderr.trim(),
+    });
+    return null;
+  }
+  const sha = result.stdout.trim();
+  return sha || null;
 }
 
 export interface GithubBlobContent {

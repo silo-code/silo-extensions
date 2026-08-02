@@ -34,17 +34,19 @@ import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
 import { PrCommitsView } from "./PrCommitsView";
 import { PrCommitView } from "./PrCommitView";
+import { PrFilesView } from "./PrFilesView";
 import {
   commitPageSlot,
   commitsPageSlot,
   detailPageSlot,
+  filesPageSlot,
   listPageSlot,
 } from "./page-slots";
 import type { PanelView } from "../view-stack";
 
-/** Any view that carries a `repoKey`/`number` — the detail, commits, and
- * commit pages all show data for the same underlying PR. */
-type PrContextView = Extract<PanelView, { kind: "detail" | "commits" | "commit" }>;
+/** Any view that carries a `repoKey`/`number` — the detail, commits, commit,
+ * and files pages all show data for the same underlying PR. */
+type PrContextView = Extract<PanelView, { kind: "detail" | "commits" | "commit" | "files" }>;
 
 export interface PrPanelProps extends SidePanelProps {
   ctx: ExtensionContext;
@@ -86,6 +88,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingCommitDetail, setLoadingCommitDetail] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(false);
   const [merging, setMerging] = useState(false);
 
   const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
@@ -137,6 +140,10 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     : undefined;
   const commitCwd = lastCommitView ? service.resolveCwd(lastCommitView.repoKey) : null;
 
+  const filesEntry = lastPrView ? store.getFiles(lastPrView.repoKey, lastPrView.number) : undefined;
+  const filesError = lastPrView ? store.getFilesError(lastPrView.repoKey, lastPrView.number) : undefined;
+  const filesCwd = lastPrView ? service.resolveCwd(lastPrView.repoKey) : null;
+
   useEffect(() => {
     if (view.kind === "list" || !active) {
       setLoadingDetail(false);
@@ -170,6 +177,22 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   }, [view, service, active]);
 
   useEffect(() => {
+    if (view.kind !== "files" || !active) {
+      setLoadingFiles(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingFiles(true);
+    void service.fetchFiles(view.repoKey, view.number).finally(() => {
+      if (!cancelled) setLoadingFiles(false);
+    });
+    return () => {
+      cancelled = true;
+      setLoadingFiles(false);
+    };
+  }, [view, service, active]);
+
+  useEffect(() => {
     if (!active) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && view.kind !== "list") {
@@ -198,6 +221,18 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       await service.fetchDetail(lastPrView.repoKey, lastPrView.number);
     } finally {
       setLoadingDetail(false);
+    }
+  }, [lastPrView, service]);
+
+  // Separate from refreshDetail: files+merge-base is its own fetch/cache,
+  // not part of PrDetail, so it needs its own loading flag to spin correctly.
+  const refreshFiles = useCallback(async () => {
+    if (!lastPrView) return;
+    setLoadingFiles(true);
+    try {
+      await service.fetchFiles(lastPrView.repoKey, lastPrView.number);
+    } finally {
+      setLoadingFiles(false);
     }
   }, [lastPrView, service]);
 
@@ -323,6 +358,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const openCommit = useCallback(
     (repoKey: string, number: number, sha: string) => {
       push({ kind: "commit", repoKey, number, sha });
+    },
+    [push],
+  );
+
+  const openFiles = useCallback(
+    (repoKey: string, number: number) => {
+      push({ kind: "files", repoKey, number });
     },
     [push],
   );
@@ -525,6 +567,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                     detailError={detailError}
                     loadingDetail={loadingDetail}
                     onViewCommits={() => openCommits(lastPrView.repoKey, lastPrView.number)}
+                    onViewFiles={() => openFiles(lastPrView.repoKey, lastPrView.number)}
                   />
                 ) : (
                   <div className="ghpr-empty">
@@ -602,6 +645,50 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   error={
                     commitDetailError && !commitDetailEntry ? commitDetailError.error.message : null
                   }
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* The PR's overall changed files — pushed from the detail page's
+            "Files changed" section (a sibling of Commits, not nested under it). */}
+        <div className={`ghpr-page ghpr-page--${filesPageSlot(view)}`}>
+          {lastPrView && (
+            <>
+              <div className="ghpr-header ghpr-header--detail">
+                <div className="ghpr-header__toolbar">
+                  <button type="button" className="ghpr-header__back" onClick={pop}>
+                    <CaretLeft size={14} weight="bold" />
+                    <span className="ghpr-header__back-label">Back</span>
+                  </button>
+                  <div className="ghpr-header__actions">
+                    <Tooltip content="Refresh">
+                      <button
+                        type="button"
+                        className={`ghpr-icon-btn${loadingFiles ? " ghpr-icon-btn--spinning" : ""}`}
+                        onClick={() => void refreshFiles()}
+                        disabled={loadingFiles}
+                        aria-label="Refresh"
+                      >
+                        <ArrowsClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  </div>
+                </div>
+                <div className="ghpr-header__title">Files changed</div>
+              </div>
+              <div className="ghpr-body">
+                <PrFilesView
+                  ctx={ctx}
+                  owner={lastPrView.repoKey.split("/")[0] ?? ""}
+                  repo={lastPrView.repoKey.split("/")[1] ?? ""}
+                  cwd={filesCwd}
+                  files={filesEntry?.files ?? []}
+                  baseSha={filesEntry?.baseSha ?? null}
+                  headSha={filesEntry?.headSha ?? null}
+                  loading={loadingFiles}
+                  error={filesError && !filesEntry ? filesError.error.message : null}
                 />
               </div>
             </>
