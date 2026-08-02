@@ -160,17 +160,32 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
   // No fetch/cache of its own — reviews already live on the cached PrDetail
   // (the detail page had to load it to render the row that got clicked).
+  // Keyed off `lastReviewView` (the "keep last content visible while
+  // parked" tracker), which lags `view` by one render right after a click —
+  // fine for *display*, since the old review's content staying up one frame
+  // longer is invisible. NOT fine as the fetch effect's correlation input
+  // (see `activeReview` below) — that one render of staleness was enough to
+  // fetch review B's comments using review A's author+submittedAt as the
+  // correlation key, silently writing review A's comment into review B's
+  // cache slot.
   const selectedReview = lastReviewView
     ? detailEntry?.detail.reviews.find((r) => r.id === lastReviewView.reviewId)
     : undefined;
+  // The fetch effect's own source of truth — keyed off `view` (never lags)
+  // so the id passed to fetchReviewComments and the author/submittedAt used
+  // to correlate it against the REST reviews list always describe the same
+  // review, even during the render where lastReviewView hasn't caught up yet.
+  const activeReview = view.kind === "review"
+    ? detailEntry?.detail.reviews.find((r) => r.id === view.reviewId)
+    : undefined;
   // Primitives pulled out for the fetch effect's dependency array below —
-  // `selectedReview` itself is a fresh `.find()` result every render (not
+  // `activeReview` itself is a fresh `.find()` result every render (not
   // memoized), so depending on the object directly re-ran the fetch (and
   // re-flashed the loading state) far more often than the review actually
   // changed. Depending on the two values the fetch call actually uses fixes
   // that: same author + same submittedAt now means "same review, don't refetch".
-  const selectedReviewAuthorLogin = selectedReview?.author?.login ?? null;
-  const selectedReviewSubmittedAt = selectedReview?.submittedAt ?? null;
+  const activeReviewAuthorLogin = activeReview?.author?.login ?? null;
+  const activeReviewSubmittedAt = activeReview?.submittedAt ?? null;
 
   const reviewCommentsEntry = lastReviewView
     ? store.getReviewComments(lastReviewView.repoKey, lastReviewView.reviewId)
@@ -228,12 +243,23 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   }, [view, service, active]);
 
   useEffect(() => {
-    // selectedReview may still be undefined on first render of a "review"
-    // view (e.g. restored from persisted state) until the detail fetch
-    // effect above resolves — this effect re-runs once it does, since
-    // selectedReviewAuthorLogin/SubmittedAt flip from null to real values in
+    // activeReview may still be undefined on first render of a "review" view
+    // (e.g. restored from persisted state) until the detail fetch effect
+    // above resolves — this effect re-runs once it does, since
+    // activeReviewAuthorLogin/SubmittedAt flip from null to real values in
     // that same render.
-    if (view.kind !== "review" || !active || !selectedReview) {
+    //
+    // Deliberately keyed off `view`/`activeReview*`, NOT `selectedReview`/
+    // `lastReviewView` — those lag `view` by one render right after a click
+    // (intentional, so the previous review's content stays visible while
+    // parked off-screen mid-transition). Using them here caused a real bug:
+    // for one render, `view.reviewId` had already advanced to the newly
+    // clicked review while `selectedReviewAuthorLogin`/`SubmittedAt` still
+    // described the *previous* one. fetchReviewComments correlates the id
+    // against GitHub's REST reviews by author+submittedAt — with a
+    // mismatched pair, it matched the previous review's REST entry and
+    // silently wrote *its* comments into the new review's cache slot.
+    if (view.kind !== "review" || !active || !activeReview) {
       setLoadingReviewComments(false);
       return;
     }
@@ -244,8 +270,8 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
         view.repoKey,
         view.number,
         view.reviewId,
-        selectedReviewAuthorLogin,
-        selectedReviewSubmittedAt,
+        activeReviewAuthorLogin,
+        activeReviewSubmittedAt,
       )
       .finally(() => {
         if (!cancelled) setLoadingReviewComments(false);
@@ -254,13 +280,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       cancelled = true;
       setLoadingReviewComments(false);
     };
-    // Deliberately not depending on `selectedReview` itself — it's a fresh
+    // Deliberately not depending on `activeReview` itself — it's a fresh
     // .find() result every render (unmemoized), so depending on the object
     // reference re-ran this effect (and re-flashed the loading state) far
     // more often than the review actually changed. The two primitives below
     // are what the fetch call actually uses, and are what should trigger a
     // refetch when they change.
-  }, [view, service, active, selectedReviewAuthorLogin, selectedReviewSubmittedAt]);
+  }, [view, service, active, activeReviewAuthorLogin, activeReviewSubmittedAt]);
 
   useEffect(() => {
     if (!active) return;
