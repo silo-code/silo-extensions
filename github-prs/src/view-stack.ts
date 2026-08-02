@@ -59,3 +59,17 @@ export function restoreStack(raw: unknown): ViewStack {
   if ((raw[0] as PanelView).kind !== "list") return ROOT_STACK;
   return { views: raw as PanelView[] };
 }
+
+// `SidePanelProps.storage` is a stable object across workspace switches (the
+// host swaps the underlying bag it reads from, not the wrapper) — so a plain
+// "have I restored yet" boolean only ever fires once per panel mount, not
+// once per workspace. This gates the restore effect on *which* workspace was
+// last restored, so switching workspaces re-reads the newly-active one's
+// stack instead of leaving the previous workspace's view stuck on screen.
+export function shouldRestoreStack(
+  hydrated: boolean,
+  restoredFor: string | null,
+  workspaceId: string,
+): boolean {
+  return hydrated && restoredFor !== workspaceId;
+}

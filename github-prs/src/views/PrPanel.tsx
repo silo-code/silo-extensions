@@ -86,9 +86,9 @@ function MergeButton({
 }
 
 export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProps) {
-  const { view, push, pop } = useViewStack(storage, hydrated);
   const wsState = useServiceState(ctx.workspaces);
   const workspaceId = wsState.activeId ?? "";
+  const { view, push, pop } = useViewStack(storage, hydrated, workspaceId);
   const store = usePrStore();
 
   const [loadingDetail, setLoadingDetail] = useState(false);
