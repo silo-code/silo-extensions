@@ -674,15 +674,38 @@ export interface PrReviewComment {
   body: string;
   authorLogin: string | null;
   createdAt: string;
+  /** Set when this comment is a reply within an existing thread. GitHub
+   * attributes a reply to *whichever review the replier submitted it as
+   * part of* — not the thread's original review — so e.g. PR author Ani
+   * replying to reviewer Henry's comment shows up as Ani's own review's
+   * "comment", with nothing else on that review's page hinting it's a
+   * reply. Carrying the parent's author + a body preview here lets the UI
+   * show that context instead of an orphaned-looking fragment. */
+  replyTo: { authorLogin: string | null; bodyPreview: string } | null;
 }
 
 export type PrReviewCommentsResult =
   | { ok: true; comments: PrReviewComment[] }
   | { ok: false; error: GitHubApiError };
 
-function normalizeReviewComment(c: RawRecord): PrReviewComment {
+const REPLY_PREVIEW_MAX = 120;
+
+function normalizeReviewComment(c: RawRecord, byId: Map<number, RawRecord>): PrReviewComment {
   const user = c.user as RawRecord | null;
   const line = typeof c.line === "number" ? c.line : typeof c.original_line === "number" ? c.original_line : null;
+  let replyTo: PrReviewComment["replyTo"] = null;
+  if (typeof c.in_reply_to_id === "number") {
+    const parent = byId.get(c.in_reply_to_id);
+    if (parent) {
+      const parentUser = parent.user as RawRecord | null;
+      const parentBody = typeof parent.body === "string" ? parent.body : "";
+      replyTo = {
+        authorLogin: parentUser && typeof parentUser.login === "string" ? parentUser.login : null,
+        bodyPreview:
+          parentBody.length > REPLY_PREVIEW_MAX ? `${parentBody.slice(0, REPLY_PREVIEW_MAX)}…` : parentBody,
+      };
+    }
+  }
   return {
     id: typeof c.id === "number" ? String(c.id) : "",
     path: typeof c.path === "string" ? c.path : "",
@@ -690,6 +713,7 @@ function normalizeReviewComment(c: RawRecord): PrReviewComment {
     body: typeof c.body === "string" ? c.body : "",
     authorLogin: user && typeof user.login === "string" ? user.login : null,
     createdAt: typeof c.created_at === "string" ? c.created_at : "",
+    replyTo,
   };
 }
 
@@ -737,9 +761,13 @@ export async function fetchPrReviewComments(
     });
     if (!match || typeof match.id !== "number") return { ok: true, comments: [] };
     const allComments = JSON.parse(commentsResult.stdout) as RawRecord[];
+    const byId = new Map<number, RawRecord>();
+    for (const c of allComments) {
+      if (typeof c.id === "number") byId.set(c.id, c);
+    }
     const comments = allComments
       .filter((c) => c.pull_request_review_id === match.id)
-      .map(normalizeReviewComment);
+      .map((c) => normalizeReviewComment(c, byId));
     return { ok: true, comments };
   } catch {
     ctx.log.error(`Failed to parse gh api pulls/reviews or pulls/comments response for ${owner}/${repo}#${number}`);

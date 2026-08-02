@@ -700,6 +700,13 @@
   margin-bottom: 4px;
   overflow-wrap: anywhere;
 }
+.ghpr-review-comment__reply-to {
+  font-size: calc(1em - 1px);
+  font-style: italic;
+  color: var(--silo-color-text-lo);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
 
 .ghpr-check-row__name {
   flex: 1;

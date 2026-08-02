@@ -75,6 +75,12 @@ export function PrReviewView({
                 {c.path}
                 {c.line != null ? `:${c.line}` : ""}
               </div>
+              {c.replyTo && (
+                <div className="ghpr-review-comment__reply-to">
+                  ↪ replying to {c.replyTo.authorLogin ?? "unknown"}
+                  {c.replyTo.bodyPreview && `: “${c.replyTo.bodyPreview}”`}
+                </div>
+              )}
               <GithubMarkdown ctx={ctx}>{c.body}</GithubMarkdown>
             </div>
           ))}
