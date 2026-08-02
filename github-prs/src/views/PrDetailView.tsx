@@ -215,7 +215,7 @@ export function PrDetailView({
                 }}
               >
                 {reviewStateIcon(r.state)}
-                <span>
+                <span className="ghpr-review-row__label">
                   <span className="ghpr-timeline-row__who">{r.author?.login ?? "unknown"}</span>
                   {" · "}
                   {reviewKindLabel(r.state)}
@@ -226,6 +226,7 @@ export function PrDetailView({
                     </span>
                   )}
                 </span>
+                <CaretRight size={14} weight="bold" className="ghpr-nav-row__chevron" />
               </div>
             ))}
             {requested.length > 0 && (

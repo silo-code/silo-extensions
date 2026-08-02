@@ -673,6 +673,7 @@
    interactive), .ghpr-review-row is a clickable <div role="button"> — drills
    into that one review's full body, same pattern as a commit row. */
 .ghpr-review-row {
+  align-items: center;
   cursor: pointer;
   border-radius: var(--silo-radius-sm);
   padding: 6px 4px;
@@ -680,6 +681,10 @@
 }
 .ghpr-review-row:hover {
   background: var(--silo-color-bg-hover);
+}
+.ghpr-review-row__label {
+  flex: 1;
+  min-width: 0;
 }
 
 /* A review's inline (file/line-scoped) conversations, on the Review page —
