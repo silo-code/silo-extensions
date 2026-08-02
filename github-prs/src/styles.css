@@ -681,6 +681,26 @@
 .ghpr-review-row:hover {
   background: var(--silo-color-bg-hover);
 }
+
+/* A review's inline (file/line-scoped) comments, on the Review page. */
+.ghpr-review-comments {
+  display: flex;
+  flex-direction: column;
+}
+.ghpr-review-comment {
+  padding: 10px 12px;
+}
+.ghpr-review-comment + .ghpr-review-comment {
+  border-top: 1px solid color-mix(in srgb, var(--silo-color-border-strong) 40%, transparent);
+}
+.ghpr-review-comment__path {
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
 .ghpr-check-row__name {
   flex: 1;
   min-width: 0;

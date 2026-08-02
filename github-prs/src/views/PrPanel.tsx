@@ -94,6 +94,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingCommitDetail, setLoadingCommitDetail] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingReviewComments, setLoadingReviewComments] = useState(false);
   const [merging, setMerging] = useState(false);
 
   const filter = workspaceId ? store.getWorkspaceFilter(workspaceId) : "authored";
@@ -163,6 +164,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
     ? detailEntry?.detail.reviews.find((r) => r.id === lastReviewView.reviewId)
     : undefined;
 
+  const reviewCommentsEntry = lastReviewView
+    ? store.getReviewComments(lastReviewView.repoKey, lastReviewView.reviewId)
+    : undefined;
+  const reviewCommentsError = lastReviewView
+    ? store.getReviewCommentsError(lastReviewView.repoKey, lastReviewView.reviewId)
+    : undefined;
+
   useEffect(() => {
     if (view.kind === "list" || !active) {
       setLoadingDetail(false);
@@ -210,6 +218,34 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       setLoadingFiles(false);
     };
   }, [view, service, active]);
+
+  useEffect(() => {
+    // selectedReview may still be undefined on first render of a "review"
+    // view (e.g. restored from persisted state) until the detail fetch
+    // effect above resolves — this effect re-runs once it does, since
+    // selectedReview is referentially stable only while detail is unchanged.
+    if (view.kind !== "review" || !active || !selectedReview) {
+      setLoadingReviewComments(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReviewComments(true);
+    void service
+      .fetchReviewComments(
+        view.repoKey,
+        view.number,
+        view.reviewId,
+        selectedReview.author?.login ?? null,
+        selectedReview.submittedAt,
+      )
+      .finally(() => {
+        if (!cancelled) setLoadingReviewComments(false);
+      });
+    return () => {
+      cancelled = true;
+      setLoadingReviewComments(false);
+    };
+  }, [view, service, active, selectedReview]);
 
   useEffect(() => {
     if (!active) return;
@@ -753,7 +789,15 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                 <div className="ghpr-header__title">Review</div>
               </div>
               <div className="ghpr-body">
-                <PrReviewView ctx={ctx} review={selectedReview} />
+                <PrReviewView
+                  ctx={ctx}
+                  review={selectedReview}
+                  comments={reviewCommentsEntry?.comments ?? []}
+                  loadingComments={loadingReviewComments}
+                  commentsError={
+                    reviewCommentsError && !reviewCommentsEntry ? reviewCommentsError.error.message : null
+                  }
+                />
               </div>
             </>
           )}

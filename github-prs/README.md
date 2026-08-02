@@ -11,7 +11,7 @@ Browse open and recently merged pull requests for the GitHub repos in your works
 - Click a row for CI checks, reviews, description, and activity
 - Drill from a PR into its commits, then a commit's changed files, then open a file's diff — sourced from GitHub directly, so it works even for commits never fetched into your local clone (e.g. a fork PR's head)
 - Or drill straight into every file the PR changes overall (diffed against its merge-base, matching GitHub's own "Files changed" tab) without stepping through individual commits
-- Click a review to read its full write-up on its own page, not just the state icon
+- Click a review to read its full write-up on its own page, not just the state icon — including inline (file/line) comments, which often carry the actual feedback when the review's own summary is empty
 - Merge from the detail view when the PR is merge-ready (disabled with a reason otherwise)
 - At-a-glance review icons, check rollup, draft and conflict chips
 - Copy PR URL, head branch, or `gh pr checkout N`

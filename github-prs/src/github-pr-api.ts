@@ -662,6 +662,91 @@ export async function fetchPrMergeBase(
   return sha || null;
 }
 
+/** A review's file/line-scoped inline comment — GitHub's PR "Files changed"
+ * annotations, distinct from the review's own summary body (`PrReview.body`,
+ * often empty when a reviewer only left inline comments). */
+export interface PrReviewComment {
+  id: string;
+  path: string;
+  /** `null` for a comment on an outdated diff position (the line it was
+   * left on no longer exists in the current diff). */
+  line: number | null;
+  body: string;
+  authorLogin: string | null;
+  createdAt: string;
+}
+
+export type PrReviewCommentsResult =
+  | { ok: true; comments: PrReviewComment[] }
+  | { ok: false; error: GitHubApiError };
+
+function normalizeReviewComment(c: RawRecord): PrReviewComment {
+  const user = c.user as RawRecord | null;
+  const line = typeof c.line === "number" ? c.line : typeof c.original_line === "number" ? c.original_line : null;
+  return {
+    id: typeof c.id === "number" ? String(c.id) : "",
+    path: typeof c.path === "string" ? c.path : "",
+    line,
+    body: typeof c.body === "string" ? c.body : "",
+    authorLogin: user && typeof user.login === "string" ? user.login : null,
+    createdAt: typeof c.created_at === "string" ? c.created_at : "",
+  };
+}
+
+/** A review's inline comments, fetched via REST and matched to it by
+ * author + submittedAt — the only key both API shapes share. `gh pr view
+ * --json reviews` (GraphQL, what `PrDetail.reviews` comes from) never
+ * exposes a review's file/line-scoped comments, only its own summary body,
+ * and never exposes the plain-integer id that `pull_request_review_id`
+ * (on REST comments) references — GraphQL's `id` is an unrelated opaque
+ * node id. So fetching a review's comments means first re-finding it in the
+ * REST reviews list to recover that integer id, then filtering REST
+ * comments by it. Resolves to an empty list (not an error) when no REST
+ * review matches — a defensive fallback, not an expected case, since the
+ * same review necessarily exists in both API shapes. */
+export async function fetchPrReviewComments(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  number: number,
+  authorLogin: string | null,
+  submittedAt: string | null,
+  cwd: string,
+  ghBin: string,
+): Promise<PrReviewCommentsResult> {
+  const [reviewsResult, commentsResult] = await Promise.all([
+    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/reviews`, "--paginate"], { cwd }),
+    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/comments`, "--paginate"], { cwd }),
+  ]);
+  if (reviewsResult.code !== 0) {
+    const error = classifyFetchError(reviewsResult.stderr);
+    ctx.log.warn(`gh api pulls/reviews error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: reviewsResult.stderr.trim() });
+    return { ok: false, error };
+  }
+  if (commentsResult.code !== 0) {
+    const error = classifyFetchError(commentsResult.stderr);
+    ctx.log.warn(`gh api pulls/comments error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: commentsResult.stderr.trim() });
+    return { ok: false, error };
+  }
+  try {
+    const restReviews = JSON.parse(reviewsResult.stdout) as RawRecord[];
+    const match = restReviews.find((r) => {
+      const user = r.user as RawRecord | null;
+      const login = user && typeof user.login === "string" ? user.login : null;
+      return login === authorLogin && r.submitted_at === submittedAt;
+    });
+    if (!match || typeof match.id !== "number") return { ok: true, comments: [] };
+    const allComments = JSON.parse(commentsResult.stdout) as RawRecord[];
+    const comments = allComments
+      .filter((c) => c.pull_request_review_id === match.id)
+      .map(normalizeReviewComment);
+    return { ok: true, comments };
+  } catch {
+    ctx.log.error(`Failed to parse gh api pulls/reviews or pulls/comments response for ${owner}/${repo}#${number}`);
+    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+  }
+}
+
 export interface GithubBlobContent {
   text: string;
   /** True when the content can't be shown as text — a binary blob, or the

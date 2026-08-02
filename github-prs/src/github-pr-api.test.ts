@@ -421,3 +421,103 @@ describe("checkAuth", () => {
     expect(execCalled).toBe(false);
   });
 });
+
+// Captured from real `gh api repos/{owner}/{repo}/pulls/{number}/reviews` and
+// `.../comments` calls against a review whose GraphQL body was empty but that
+// had one inline (file/line-scoped) comment — the exact case that motivated
+// fetchPrReviewComments (see its doc comment for why two REST calls are
+// needed instead of one).
+const REST_REVIEWS_FIXTURE = [
+  { id: 4829159578, user: { login: "ani-mehrabyan" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T14:03:34Z" },
+  { id: 4831029177, user: { login: "ani-mehrabyan" }, state: "COMMENTED", body: "", submitted_at: "2026-07-31T18:04:00Z" },
+];
+const REST_COMMENTS_FIXTURE = [
+  {
+    id: 3690956831,
+    pull_request_review_id: 4829159578,
+    path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+    line: null,
+    body: "No filed ticket yet for this specific gap.",
+    user: { login: "ani-mehrabyan" },
+    created_at: "2026-07-31T14:03:30Z",
+  },
+  {
+    id: 3692413472,
+    pull_request_review_id: 4831029177,
+    path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+    line: 42,
+    body: "Added a ticket for it",
+    user: { login: "ani-mehrabyan" },
+    created_at: "2026-07-31T18:03:55Z",
+  },
+];
+
+describe("fetchPrReviewComments", () => {
+  function mockCtx(
+    exec: (bin: string, args: string[]) => Promise<{ code: number; stdout: string; stderr: string }>,
+  ) {
+    return {
+      process: { exec },
+      log: { debug: () => {}, warn: () => {}, error: () => {} },
+    } as unknown as import("@silo-code/sdk").ExtensionContext;
+  }
+
+  function restFetchStub(bin: string, args: string[]) {
+    const endpoint = args[1] ?? "";
+    if (endpoint.endsWith("/reviews")) {
+      return Promise.resolve({ code: 0, stdout: JSON.stringify(REST_REVIEWS_FIXTURE), stderr: "" });
+    }
+    if (endpoint.endsWith("/comments")) {
+      return Promise.resolve({ code: 0, stdout: JSON.stringify(REST_COMMENTS_FIXTURE), stderr: "" });
+    }
+    throw new Error(`unexpected endpoint: ${endpoint}`);
+  }
+
+  it("matches a review by author+submittedAt and filters comments to its numeric id", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T18:04:00Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.comments).toHaveLength(1);
+    expect(result.comments[0]).toEqual({
+      id: "3692413472",
+      path: "frontend/packages/job-booking-panel/src/utils/mapSubmitJobBookingInput.ts",
+      line: 42,
+      body: "Added a ticket for it",
+      authorLogin: "ani-mehrabyan",
+      createdAt: "2026-07-31T18:03:55Z",
+    });
+  });
+
+  it("matches the other review by its own submittedAt, not the first one found", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T14:03:34Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.comments.map((c) => c.id)).toEqual(["3690956831"]);
+  });
+
+  it("resolves to an empty list (not an error) when no REST review matches", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(restFetchStub);
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "someone-else", "2026-01-01T00:00:00Z", "/repo", "gh",
+    );
+    expect(result).toEqual({ ok: true, comments: [] });
+  });
+
+  it("returns an error when the reviews call fails", async () => {
+    const { fetchPrReviewComments } = await import("./github-pr-api");
+    const ctx = mockCtx(async () => ({ code: 1, stdout: "", stderr: "HTTP 404: Not Found" }));
+    const result = await fetchPrReviewComments(
+      ctx, "o", "r", 346, "ani-mehrabyan", "2026-07-31T18:04:00Z", "/repo", "gh",
+    );
+    expect(result.ok).toBe(false);
+  });
+});
