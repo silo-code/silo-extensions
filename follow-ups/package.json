@@ -1,8 +1,8 @@
 {
   "name": "@silo-extensions/follow-ups",
   "displayName": "Follow-ups",
-  "version": "0.1.1",
-  "description": "Mark editor and terminal tabs to come back to later — toolbar toggle, tab flag, and a Workspaces panel rollup.",
+  "version": "0.2.0",
+  "description": "Mark editor and terminal tabs to come back to later — toolbar toggle, tab highlight, and a Workspaces panel rollup.",
   "type": "module",
   "files": [
     "dist/",
@@ -10,7 +10,7 @@
   ],
   "silo": {
     "id": "silo.follow-ups",
-    "engine": "^0.39.0",
+    "engine": "^0.42.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": []
@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@silo-code/sdk": "^0.32.0",
+    "@silo-code/sdk": "^0.33.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",

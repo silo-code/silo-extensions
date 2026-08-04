@@ -229,32 +229,20 @@ function activate(ctx: ExtensionContext) {
   );
 
   ctx.subscriptions.push(
-    ctx.editors.bindIndicator({
-      id: "silo.follow-ups.tab",
+    ctx.editors.bindHighlight({
+      id: "silo.follow-ups.tab-highlight",
       provide: (editorId) => {
         const ws = findWorkspaceFor("editor", editorId);
         if (!ws || !isMarked(state, ws, "editor", editorId)) return null;
-        return {
-          icon: "Flag",
-          color: "warn",
-          tooltip: "Follow-up",
-          filled: true,
-          chip: true,
-        };
+        return { color: "warn" };
       },
     }),
-    ctx.terminals.bindIndicator({
-      id: "silo.follow-ups.tab",
+    ctx.terminals.bindHighlight({
+      id: "silo.follow-ups.tab-highlight",
       provide: (terminalId) => {
         const ws = findWorkspaceFor("terminal", terminalId);
         if (!ws || !isMarked(state, ws, "terminal", terminalId)) return null;
-        return {
-          icon: "Flag",
-          color: "warn",
-          tooltip: "Follow-up",
-          filled: true,
-          chip: true,
-        };
+        return { color: "warn" };
       },
     }),
   );
