@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/agent-monitor",
   "displayName": "Agent Monitor",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "At-a-glance agent status: a dedicated Agents panel across every workspace, status rows in the Workspaces panel, and terminal tab badges/icons, cleared when you view the terminal.",
   "type": "module",
   "files": [
