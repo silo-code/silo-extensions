@@ -15,7 +15,12 @@ import {
   Switch,
 } from "@silo-code/sdk";
 import type { SoundName } from "./synth";
-import { settingsService, SOUND_IDS, type FocusBehavior } from "./settings-store";
+import {
+  settingsService,
+  SOUND_IDS,
+  type FocusBehavior,
+  type IconMode,
+} from "./settings-store";
 import { previewSound } from "./sound";
 
 export {
@@ -24,6 +29,8 @@ export {
   clearSettingsListeners,
   type AgentMonitorSettings,
   type FocusBehavior,
+  type GroupBy,
+  type IconMode,
 } from "./settings-store";
 
 function soundLabel(name: SoundName): string {
@@ -48,6 +55,12 @@ const FOCUS_OPTIONS: { value: FocusBehavior; label: string; hint: string }[] = [
   },
 ];
 
+const ICON_MODE_OPTIONS: { value: IconMode; label: string }[] = [
+  { value: "none", label: "No icons" },
+  { value: "color", label: "Color" },
+  { value: "monotone", label: "Monotone" },
+];
+
 export function AgentMonitorSettingsPage() {
   const s = useServiceState(settingsService);
   return (
@@ -55,70 +68,90 @@ export function AgentMonitorSettingsPage() {
       <div className="am-header">
         <h2>Agent Monitor</h2>
       </div>
-      <div className="am-section">
-        <span className="am-section-title">
-          When you view a finished agent's terminal
-        </span>
-        <span className="am-hint">
-          An agent that finishes a run shows a green check on its tab and a
-          green dot in the workspace status until you look at it. Choose what
-          viewing its terminal should do.
-        </span>
-        <div className="am-options">
-          <RadioGroup
-            value={s.focusBehavior}
-            onChange={(value) =>
-              settingsService.set({ focusBehavior: value as FocusBehavior })
-            }
-          >
-            {FOCUS_OPTIONS.map((opt) => (
-              <RadioCard
-                key={opt.value}
-                value={opt.value}
-                title={opt.label}
-                description={opt.hint}
-              />
-            ))}
-          </RadioGroup>
-        </div>
-      </div>
-      <div className="am-section">
-        <span className="am-section-title">Sound</span>
-        <span className="am-hint">
-          Play a sound whenever an agent stops working, whether or not you're
-          watching its terminal.
-        </span>
-        <SettingRow label="Play a sound when an agent stops working">
-          <Switch
-            checked={s.soundEnabled}
-            onChange={(soundEnabled) => settingsService.set({ soundEnabled })}
-            aria-label="Play a sound when an agent stops working"
-          />
-        </SettingRow>
-        <SettingRow label="Notification sound">
-          <div className="am-sound-control">
-            <Select
-              value={s.soundId}
-              onChange={(e) =>
-                settingsService.set({ soundId: e.target.value as SoundName })
+      <div className="am-body">
+        <div className="am-section">
+          <span className="am-section-title">
+            When you view a finished agent's terminal
+          </span>
+          <span className="am-hint">
+            An agent that finishes a run shows a green check on its tab and a
+            green dot in the workspace status until you look at it. Choose
+            what viewing its terminal should do.
+          </span>
+          <div className="am-options">
+            <RadioGroup
+              value={s.focusBehavior}
+              onChange={(value) =>
+                settingsService.set({ focusBehavior: value as FocusBehavior })
               }
-              aria-label="Notification sound"
             >
-              {SOUND_IDS.map((name) => (
-                <option key={name} value={name}>
-                  {soundLabel(name)}
+              {FOCUS_OPTIONS.map((opt) => (
+                <RadioCard
+                  key={opt.value}
+                  value={opt.value}
+                  title={opt.label}
+                  description={opt.hint}
+                />
+              ))}
+            </RadioGroup>
+          </div>
+        </div>
+        <div className="am-section">
+          <span className="am-section-title">Agent icons</span>
+          <SettingRow label="Show agent app icons in the Agents panel">
+            <Select
+              value={s.iconMode}
+              onChange={(e) =>
+                settingsService.set({ iconMode: e.target.value as IconMode })
+              }
+              aria-label="Show agent app icons in the Agents panel"
+            >
+              {ICON_MODE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </Select>
-            <IconButton
-              size="sm"
-              onClick={() => previewSound(s.soundId)}
-              aria-label={`Preview ${soundLabel(s.soundId)} sound`}
-            >
-              ▶
-            </IconButton>
-          </div>
-        </SettingRow>
+          </SettingRow>
+        </div>
+        <div className="am-section">
+          <span className="am-section-title">Sound</span>
+          <span className="am-hint">
+            Play a sound whenever an agent stops working, whether or not
+            you're watching its terminal.
+          </span>
+          <SettingRow label="Play a sound when an agent stops working">
+            <Switch
+              checked={s.soundEnabled}
+              onChange={(soundEnabled) => settingsService.set({ soundEnabled })}
+              aria-label="Play a sound when an agent stops working"
+            />
+          </SettingRow>
+          <SettingRow label="Notification sound">
+            <div className="am-sound-control">
+              <Select
+                value={s.soundId}
+                onChange={(e) =>
+                  settingsService.set({ soundId: e.target.value as SoundName })
+                }
+                aria-label="Notification sound"
+              >
+                {SOUND_IDS.map((name) => (
+                  <option key={name} value={name}>
+                    {soundLabel(name)}
+                  </option>
+                ))}
+              </Select>
+              <IconButton
+                size="sm"
+                onClick={() => previewSound(s.soundId)}
+                aria-label={`Preview ${soundLabel(s.soundId)} sound`}
+              >
+                ▶
+              </IconButton>
+            </div>
+          </SettingRow>
+        </div>
       </div>
     </div>
   );

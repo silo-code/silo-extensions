@@ -18,6 +18,8 @@ import {
   AgentMonitorSettingsPage,
   settingsService,
 } from "./settings";
+import { AgentsPanel } from "./agents-panel";
+import { AgentIconGlyph } from "./AgentIconGlyph";
 import styles from "./styles.css";
 
 const STYLE_ID = "silo-agent-monitor-styles";
@@ -29,8 +31,9 @@ function activate(ctx: ExtensionContext) {
   // 0.39 the host (`ctx.agents`) owns every hard part — OSC detection, the
   // working/idle/dead state machine, cross-restart persistence, and stale-gap
   // recovery — so this extension only *projects* that shared state into rows,
-  // tab badges, and a chime. The map is read synchronously by the two binder
-  // `provide` callbacks below, so it's kept current on every agents change.
+  // tab badges, and a chime. The map is read synchronously by the three
+  // binder `provide` callbacks below, so it's kept current on every agents
+  // change.
   const agents = new Map<string, AgentInfo>();
   // Terminals that have finished a run and not yet started another, mapped to
   // when they finished. This is the extension's own "finished, unseen" record,
@@ -67,6 +70,10 @@ function activate(ctx: ExtensionContext) {
     if (ring) maybePlayTransitionSound();
     ctx.workspaces.invalidateStatus();
     ctx.terminals.invalidateTabDecorations();
+    // Refreshes bindActivity too, but that's already covered above — added
+    // for bindIcon (agentId can newly resolve after the terminal's already
+    // been seen once, e.g. once a hook confirms the session).
+    ctx.terminals.invalidateTabAdornments();
   }
 
   ctx.subscriptions.push(
@@ -130,6 +137,28 @@ function activate(ctx: ExtensionContext) {
   );
 
   ctx.subscriptions.push(
+    ctx.terminals.bindIcon({
+      id: "silo.agent-monitor.tab-icon",
+      provide(terminalId) {
+        const a = agents.get(terminalId);
+        if (!a) return null;
+        // Called as a plain function (not JSX) so `icon` is the component's
+        // *actual* return value now — AgentIconGlyph renders null for "none"
+        // mode or an unknown agent, and that has to gate whether a
+        // contribution is returned at all. Constructing `<AgentIconGlyph/>`
+        // instead would give a truthy element descriptor even when the
+        // component ultimately renders nothing, tricking the host into
+        // reserving tab space (margin, flex gap) for an empty icon slot.
+        const icon = AgentIconGlyph({
+          agentId: a.agentId,
+          mode: settingsService.getState().iconMode,
+        });
+        return icon ? { icon } : null;
+      },
+    }),
+  );
+
+  ctx.subscriptions.push(
     ctx.terminals.subscribeActive((terminalId) => {
       activeTerminalId = terminalId;
       // Viewing a terminal acknowledges a pending finish (clears the green
@@ -157,6 +186,8 @@ function activate(ctx: ExtensionContext) {
     settingsService.subscribe(() => {
       // Toggling "hide focused row" changes which rows render.
       ctx.workspaces.invalidateStatus();
+      // Toggling iconMode changes what silo.agent-monitor.tab-icon returns.
+      ctx.terminals.invalidateTabAdornments();
     }),
   );
 
@@ -166,6 +197,20 @@ function activate(ctx: ExtensionContext) {
       id: "agent-monitor",
       title: "Agent Monitor",
       component: AgentMonitorSettingsPage,
+    }),
+  );
+
+  // Sits next to the Workspaces panel (also "left", order 1) so switching
+  // between agent tabs across every workspace doesn't require the Workspaces
+  // tree — the panel reads `ctx.agents`/`ctx.workspaces` directly rather than
+  // the `agents` map above, since it needs its own re-render subscription.
+  ctx.subscriptions.push(
+    ctx.registerSidePanel({
+      id: "silo.agent-monitor.agents",
+      location: "left",
+      title: "Agents",
+      order: 2,
+      component: () => <AgentsPanel ctx={ctx} />,
     }),
   );
 

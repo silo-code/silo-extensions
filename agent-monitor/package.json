@@ -2,7 +2,7 @@
   "name": "@silo-extensions/agent-monitor",
   "displayName": "Agent Monitor",
   "version": "0.2.1",
-  "description": "At-a-glance agent status in the Workspaces panel: rows for coding agents that are working or finished and need attention, cleared when you view the terminal.",
+  "description": "At-a-glance agent status: a dedicated Agents panel across every workspace, status rows in the Workspaces panel, and terminal tab badges/icons, cleared when you view the terminal.",
   "type": "module",
   "files": [
     "dist/",
@@ -22,6 +22,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@silo-code/sdk": "^0.32.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
