@@ -165,3 +165,82 @@ describe("agent-monitor sound settings", () => {
     expect(SOUND_IDS).toContain("chime");
   });
 });
+
+describe("agent-monitor groupBy setting", () => {
+  beforeEach(() => {
+    clearSettingsListeners();
+    initSettings(fakeStorage({ agentsGroupBy: "status" })).dispose();
+  });
+
+  it("defaults to \"status\" with empty storage", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("status");
+    sub.dispose();
+  });
+
+  it("hydrates a persisted \"workspace\" value", () => {
+    const storage = fakeStorage({ agentsGroupBy: "workspace" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("workspace");
+    sub.dispose();
+  });
+
+  it("coerces an invalid persisted value to the default", () => {
+    const storage = fakeStorage({ agentsGroupBy: "nonsense" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("status");
+    sub.dispose();
+  });
+
+  it("persists a change through settingsService.set", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    settingsService.set({ groupBy: "workspace" });
+    expect(storage.get<string>("agentsGroupBy")).toBe("workspace");
+    sub.dispose();
+  });
+});
+
+describe("agent-monitor iconMode setting", () => {
+  beforeEach(() => {
+    clearSettingsListeners();
+    initSettings(fakeStorage({ agentsIconMode: "color" })).dispose();
+  });
+
+  it("defaults to \"color\" with empty storage", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    expect(settingsService.getState().iconMode).toBe("color");
+    sub.dispose();
+  });
+
+  it("hydrates a persisted \"monotone\" value", () => {
+    const storage = fakeStorage({ agentsIconMode: "monotone" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().iconMode).toBe("monotone");
+    sub.dispose();
+  });
+
+  it("hydrates a persisted \"none\" value", () => {
+    const storage = fakeStorage({ agentsIconMode: "none" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().iconMode).toBe("none");
+    sub.dispose();
+  });
+
+  it("coerces an invalid persisted value to the default", () => {
+    const storage = fakeStorage({ agentsIconMode: "nonsense" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().iconMode).toBe("color");
+    sub.dispose();
+  });
+
+  it("persists a change through settingsService.set", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    settingsService.set({ iconMode: "monotone" });
+    expect(storage.get<string>("agentsIconMode")).toBe("monotone");
+    sub.dispose();
+  });
+});

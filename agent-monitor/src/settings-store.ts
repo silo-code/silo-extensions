@@ -31,12 +31,24 @@ import { sounds, type SoundName } from "./synth";
  */
 export type FocusBehavior = "clear" | "hide" | "none";
 
+/** How the Agents panel sections its rows: by state (ready/working/done) or
+ * by which workspace each agent belongs to. */
+export type GroupBy = "status" | "workspace";
+
+/** Whether/how the Agents panel shows each row's agent brand icon —
+ * `"none"`, the official brand color, or a single monotone color. */
+export type IconMode = "none" | "color" | "monotone";
+
 export interface AgentMonitorSettings {
   focusBehavior: FocusBehavior;
   /** Whether a sound plays when an agent transitions working → waiting. */
   soundEnabled: boolean;
   /** Which synthesized sound to play. */
   soundId: SoundName;
+  /** How the Agents panel groups its rows. */
+  groupBy: GroupBy;
+  /** How the Agents panel shows each row's agent icon. */
+  iconMode: IconMode;
 }
 
 // Keys renamed on each shape change ("hideStatusWhenFocused" → "clearOnFocus"
@@ -45,12 +57,18 @@ export interface AgentMonitorSettings {
 const STORAGE_KEY_FOCUS = "focusBehavior";
 const STORAGE_KEY_SOUND_ENABLED = "soundEnabled";
 const STORAGE_KEY_SOUND_ID = "soundId";
+const STORAGE_KEY_GROUP_BY = "agentsGroupBy";
+const STORAGE_KEY_ICON_MODE = "agentsIconMode";
 
 const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
 const DEFAULT_SOUND_ENABLED = true;
 const DEFAULT_SOUND_ID: SoundName = "chime";
+const DEFAULT_GROUP_BY: GroupBy = "status";
+const DEFAULT_ICON_MODE: IconMode = "color";
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
+const VALID_GROUP_BY: readonly GroupBy[] = ["status", "workspace"];
+const VALID_ICON_MODES: readonly IconMode[] = ["none", "color", "monotone"];
 // The synth's raw UI-feedback sounds (press/release/toggle) read as click
 // acknowledgements, not "come look at this" — excluded from the curated
 // list offered here. Everything else is `sounds`' own names, reused
@@ -76,10 +94,20 @@ function coerceSoundId(v: unknown): SoundName {
   return SOUND_IDS.includes(v as SoundName) ? (v as SoundName) : DEFAULT_SOUND_ID;
 }
 
+function coerceGroupBy(v: unknown): GroupBy {
+  return VALID_GROUP_BY.includes(v as GroupBy) ? (v as GroupBy) : DEFAULT_GROUP_BY;
+}
+
+function coerceIconMode(v: unknown): IconMode {
+  return VALID_ICON_MODES.includes(v as IconMode) ? (v as IconMode) : DEFAULT_ICON_MODE;
+}
+
 let settings: AgentMonitorSettings = {
   focusBehavior: DEFAULT_BEHAVIOR,
   soundEnabled: DEFAULT_SOUND_ENABLED,
   soundId: DEFAULT_SOUND_ID,
+  groupBy: DEFAULT_GROUP_BY,
+  iconMode: DEFAULT_ICON_MODE,
 };
 let backingStorage: ExtensionStorage | null = null;
 const listeners = new Set<(s: AgentMonitorSettings) => void>();
@@ -97,6 +125,8 @@ export const settingsService: ReactiveService<AgentMonitorSettings> & {
     backingStorage?.set(STORAGE_KEY_FOCUS, settings.focusBehavior);
     backingStorage?.set(STORAGE_KEY_SOUND_ENABLED, settings.soundEnabled);
     backingStorage?.set(STORAGE_KEY_SOUND_ID, settings.soundId);
+    backingStorage?.set(STORAGE_KEY_GROUP_BY, settings.groupBy);
+    backingStorage?.set(STORAGE_KEY_ICON_MODE, settings.iconMode);
     for (const l of listeners) l(settings);
   },
 };
@@ -121,12 +151,20 @@ export function initSettings(storage: ExtensionStorage): {
     const soundId = coerceSoundId(
       storage.get<string>(STORAGE_KEY_SOUND_ID, settings.soundId),
     );
+    const groupBy = coerceGroupBy(
+      storage.get<string>(STORAGE_KEY_GROUP_BY, settings.groupBy),
+    );
+    const iconMode = coerceIconMode(
+      storage.get<string>(STORAGE_KEY_ICON_MODE, settings.iconMode),
+    );
     if (
       focusBehavior !== settings.focusBehavior ||
       soundEnabled !== settings.soundEnabled ||
-      soundId !== settings.soundId
+      soundId !== settings.soundId ||
+      groupBy !== settings.groupBy ||
+      iconMode !== settings.iconMode
     ) {
-      settings = { ...settings, focusBehavior, soundEnabled, soundId };
+      settings = { ...settings, focusBehavior, soundEnabled, soundId, groupBy, iconMode };
       for (const l of listeners) l(settings);
     }
   }
