@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/follow-ups",
   "displayName": "Follow-ups",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Mark editor and terminal tabs to come back to later — toolbar toggle, tab highlight, and a Workspaces panel rollup.",
   "type": "module",
   "files": [
