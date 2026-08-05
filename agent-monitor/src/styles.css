@@ -94,18 +94,32 @@
   gap: 8px;
 }
 
+.am-hours-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.am-hours-input {
+  width: 4em;
+}
+.am-hours-unit {
+  color: var(--silo-color-text-lo);
+}
+
 /* Agents side panel — all classes prefixed ap-; tokens only. Root inherits
-   the column font size from `.side-pane`, so no absolute font-size here. */
+   the column font size from `.side-pane`, so no absolute font-size here.
+   Deliberately NOT its own scroll container: the host's `.tab-pane` (the
+   direct parent every side panel renders into) already scrolls, persists,
+   and styles scroll position for whatever a panel renders. Giving `.ap-body`
+   its own nested `overflow-y: auto` stacked TWO scrollable regions at the
+   same screen position — the outer `.tab-pane` (normally zero scroll range,
+   so its thumb renders full-track, looking "already at the bottom") and the
+   real one one level deeper that a real mouse/trackpad drag never reliably
+   reached. Letting `.tab-pane` be the sole scroller fixes that outright. */
 .ap-panel {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
 }
 .ap-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   padding: 4px 0;
 }
 .ap-empty {
@@ -119,14 +133,32 @@
   z-index: 1;
 }
 .ap-section + .ap-section {
-  margin-top: 8px;
+  margin-top: 20px;
 }
 .ap-section-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 12px;
   font-size: var(--silo-font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  color: var(--silo-color-text-lo);
+}
+.ap-section-caret {
+  flex-shrink: 0;
+  transition: transform 0.1s ease-out;
+}
+.ap-section-caret.expanded {
+  transform: rotate(90deg);
+}
+.ap-section-count {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ap-section-empty {
+  padding: 6px 12px;
   color: var(--silo-color-text-lo);
 }
 .ap-row {

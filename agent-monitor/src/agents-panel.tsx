@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { FunnelSimple } from "@phosphor-icons/react";
+import { CaretRight, FunnelSimple } from "@phosphor-icons/react";
 import type { Activity, ExtensionContext, ExtensionStorage } from "@silo-code/sdk";
-import { ActivityGlyph, IconButton, Tooltip, useServiceState } from "@silo-code/sdk";
+import { ActivityGlyph, Badge, IconButton, Tooltip, useServiceState } from "@silo-code/sdk";
 import {
   buildAgentRows,
   formatElapsed,
   groupAgentRows,
   groupAgentRowsByWorkspace,
+  isAtLeastHoursOld,
   SECTION_ORDER,
   updateDoneSince,
   type AgentRow,
@@ -59,18 +60,57 @@ interface PanelSection {
   header: string;
   rows: AgentRow[];
   subtitle: (row: AgentRow) => string;
+  /** Whether the render below collapses this heading's rows by default,
+   * revealing them only while the section is hovered — only the "N+ hours
+   * old" heading does, since it's the one that piles up with rows you're
+   * least likely to still care about. */
+  collapsible?: boolean;
 }
 
-function buildStatusSections(rows: readonly AgentRow[]): PanelSection[] {
+// Stable key for the "N+ hours old" section — both what buildStatusSections
+// tags it with and what the render below checks to apply the hover reveal.
+const STALE_DONE_SECTION_KEY = "stale-done";
+
+function isStaleDone(row: AgentRow, staleDoneHours: number): boolean {
+  return row.since !== undefined && isAtLeastHoursOld(row.since, staleDoneHours);
+}
+
+/**
+ * `staleDoneEnabled`/`staleDoneHours` are the settings-configurable split
+ * (see `DEFAULT_STALE_DONE_ENABLED`/`DEFAULT_STALE_DONE_HOURS`/
+ * `MIN_STALE_DONE_HOURS` in `./settings-store`): while enabled, a "done" row
+ * sitting for at least `staleDoneHours` drops out of the Done heading into
+ * its own "N+ hours old" one, clearing space in Done for finishes still
+ * worth a glance without losing the older ones entirely. Disabled, every
+ * done row just stays in Done and the extra heading doesn't appear at all.
+ */
+export function buildStatusSections(
+  rows: readonly AgentRow[],
+  staleDoneEnabled: boolean,
+  staleDoneHours: number,
+): PanelSection[] {
   const groups = groupAgentRows(rows);
-  return SECTION_ORDER.filter((section) => groups[section].length > 0).map(
-    (section) => ({
-      key: section,
-      header: SECTION_LABELS[section],
-      rows: groups[section],
-      subtitle: (row) => row.workspaceName,
-    }),
-  );
+  const subtitle = (row: AgentRow) => row.workspaceName;
+  const statusSections = SECTION_ORDER.map((section) => ({
+    key: section,
+    header: SECTION_LABELS[section],
+    rows:
+      section === "done" && staleDoneEnabled
+        ? groups.done.filter((row) => !isStaleDone(row, staleDoneHours))
+        : groups[section],
+    subtitle,
+  }));
+  if (!staleDoneEnabled) return statusSections;
+  return [
+    ...statusSections,
+    {
+      key: STALE_DONE_SECTION_KEY,
+      header: `${staleDoneHours}+ hours old`,
+      rows: groups.done.filter((row) => isStaleDone(row, staleDoneHours)),
+      subtitle,
+      collapsible: true,
+    },
+  ];
 }
 
 function buildWorkspaceSections(rows: readonly AgentRow[]): PanelSection[] {
@@ -171,7 +211,47 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
     [ctx.terminals],
   );
 
-  const { groupBy, iconMode } = useServiceState(settingsService);
+  const { groupBy, iconMode, staleDoneEnabled, staleDoneHours } =
+    useServiceState(settingsService);
+
+  // The "N+ hours old" section starts collapsed and reveals its rows only
+  // while the mouse is over it — attached to the section's own container
+  // (not the heading), so a click on a row inside it (which doesn't move the
+  // mouse) never collapses it mid-click; only actually leaving the section
+  // does.
+  //
+  // Collapse is debounced rather than instant: WebKit (and Chromium) re-hit-test
+  // and fire mouseleave/mouseenter transitions on scroll, not just on real
+  // pointer movement, so scrolling the panel with the cursor sitting still over
+  // this section can momentarily "leave" it mid-scroll. Without the delay that
+  // collapsed the section — and shrank ap-body's scroll height — before the
+  // user could ever scroll down into the rows they'd just revealed. A leave
+  // that's immediately followed by a re-enter (the common case while scrolling
+  // through the section's own rows) cancels the pending collapse; only a leave
+  // that sticks around actually collapses it.
+  const [staleHovered, setStaleHovered] = useState(false);
+  const staleCollapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (staleCollapseTimeoutRef.current !== null) {
+        clearTimeout(staleCollapseTimeoutRef.current);
+      }
+    },
+    [],
+  );
+  function handleStaleMouseEnter() {
+    if (staleCollapseTimeoutRef.current !== null) {
+      clearTimeout(staleCollapseTimeoutRef.current);
+      staleCollapseTimeoutRef.current = null;
+    }
+    setStaleHovered(true);
+  }
+  function handleStaleMouseLeave() {
+    staleCollapseTimeoutRef.current = setTimeout(() => {
+      staleCollapseTimeoutRef.current = null;
+      setStaleHovered(false);
+    }, 300);
+  }
 
   const agentsSnapshot = ctx.agents.getState({ allWorkspaces: true });
   // The host doesn't expose a timestamp for how long a row has been "done"
@@ -236,7 +316,15 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
     </span>
   );
 
-  if (rows.length === 0) {
+  const sections =
+    groupBy === "workspace"
+      ? buildWorkspaceSections(rows)
+      : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
+
+  // Only the workspace grouping can produce zero sections (no workspace to
+  // group by) — the status grouping always has its three fixed headings, even
+  // with no agents at all, so it never hits this.
+  if (sections.length === 0) {
     return (
       <div className="ap-panel">
         {viewMenuButton}
@@ -249,28 +337,51 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
     );
   }
 
-  const sections =
-    groupBy === "workspace" ? buildWorkspaceSections(rows) : buildStatusSections(rows);
-
   return (
     <div className="ap-panel">
       {viewMenuButton}
       <div className="ap-body">
-        {sections.map((section) => (
-          <div key={section.key} className="ap-section">
-            <div className="ap-section-title">{section.header}</div>
-            {section.rows.map((row) => (
-              <AgentRowItem
-                key={row.terminalId}
-                row={row}
-                subtitle={section.subtitle(row)}
-                active={row.terminalId === activeTerminalId}
-                iconMode={iconMode}
-                onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
-              />
-            ))}
-          </div>
-        ))}
+        {sections.map((section) => {
+          const isStaleSection = section.key === STALE_DONE_SECTION_KEY;
+          const expanded = !isStaleSection || staleHovered;
+          return (
+            <div
+              key={section.key}
+              className="ap-section"
+              onMouseEnter={isStaleSection ? handleStaleMouseEnter : undefined}
+              onMouseLeave={isStaleSection ? handleStaleMouseLeave : undefined}
+            >
+              <div className="ap-section-title">
+                {isStaleSection && (
+                  <CaretRight
+                    size="0.7em"
+                    weight="bold"
+                    className={expanded ? "ap-section-caret expanded" : "ap-section-caret"}
+                  />
+                )}
+                {section.header}
+                {isStaleSection && !expanded && section.rows.length > 0 && (
+                  <Badge className="ap-section-count">{section.rows.length}</Badge>
+                )}
+              </div>
+              {expanded &&
+                (section.rows.length === 0 ? (
+                  <div className="ap-section-empty">—</div>
+                ) : (
+                  section.rows.map((row) => (
+                    <AgentRowItem
+                      key={row.terminalId}
+                      row={row}
+                      subtitle={section.subtitle(row)}
+                      active={row.terminalId === activeTerminalId}
+                      iconMode={iconMode}
+                      onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
+                    />
+                  ))
+                ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

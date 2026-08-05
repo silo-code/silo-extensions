@@ -49,6 +49,13 @@ export interface AgentMonitorSettings {
   groupBy: GroupBy;
   /** How the Agents panel shows each row's agent icon. */
   iconMode: IconMode;
+  /** Whether the Agents panel segments long-done agents out of the Done
+   * heading into a collapsible "N+ hours old" one at all. */
+  staleDoneEnabled: boolean;
+  /** How long a "done" row sits before the Agents panel moves it out of the
+   * Done heading into its own "N+ hours old" one. Whole hours, minimum 1.
+   * Only takes effect while {@link staleDoneEnabled} is on. */
+  staleDoneHours: number;
 }
 
 // Keys renamed on each shape change ("hideStatusWhenFocused" → "clearOnFocus"
@@ -59,12 +66,17 @@ const STORAGE_KEY_SOUND_ENABLED = "soundEnabled";
 const STORAGE_KEY_SOUND_ID = "soundId";
 const STORAGE_KEY_GROUP_BY = "agentsGroupBy";
 const STORAGE_KEY_ICON_MODE = "agentsIconMode";
+const STORAGE_KEY_STALE_DONE_ENABLED = "agentsStaleDoneEnabled";
+const STORAGE_KEY_STALE_DONE_HOURS = "agentsStaleDoneHours";
 
 const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
 const DEFAULT_SOUND_ENABLED = true;
 const DEFAULT_SOUND_ID: SoundName = "chime";
 const DEFAULT_GROUP_BY: GroupBy = "status";
 const DEFAULT_ICON_MODE: IconMode = "color";
+export const DEFAULT_STALE_DONE_ENABLED = true;
+export const DEFAULT_STALE_DONE_HOURS = 4;
+export const MIN_STALE_DONE_HOURS = 1;
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
 const VALID_GROUP_BY: readonly GroupBy[] = ["status", "workspace"];
@@ -102,12 +114,30 @@ function coerceIconMode(v: unknown): IconMode {
   return VALID_ICON_MODES.includes(v as IconMode) ? (v as IconMode) : DEFAULT_ICON_MODE;
 }
 
+function coerceStaleDoneEnabled(v: unknown): boolean {
+  return typeof v === "boolean" ? v : DEFAULT_STALE_DONE_ENABLED;
+}
+
+/** Whole hours, at least {@link MIN_STALE_DONE_HOURS} — anything else
+ * (garbage in storage, a fractional or sub-minimum value) falls back to the
+ * default rather than being clamped, since a silently-clamped stored value
+ * would drift from what the settings field displays. */
+function coerceStaleDoneHours(v: unknown): number {
+  return typeof v === "number" &&
+    Number.isInteger(v) &&
+    v >= MIN_STALE_DONE_HOURS
+    ? v
+    : DEFAULT_STALE_DONE_HOURS;
+}
+
 let settings: AgentMonitorSettings = {
   focusBehavior: DEFAULT_BEHAVIOR,
   soundEnabled: DEFAULT_SOUND_ENABLED,
   soundId: DEFAULT_SOUND_ID,
   groupBy: DEFAULT_GROUP_BY,
   iconMode: DEFAULT_ICON_MODE,
+  staleDoneEnabled: DEFAULT_STALE_DONE_ENABLED,
+  staleDoneHours: DEFAULT_STALE_DONE_HOURS,
 };
 let backingStorage: ExtensionStorage | null = null;
 const listeners = new Set<(s: AgentMonitorSettings) => void>();
@@ -127,6 +157,8 @@ export const settingsService: ReactiveService<AgentMonitorSettings> & {
     backingStorage?.set(STORAGE_KEY_SOUND_ID, settings.soundId);
     backingStorage?.set(STORAGE_KEY_GROUP_BY, settings.groupBy);
     backingStorage?.set(STORAGE_KEY_ICON_MODE, settings.iconMode);
+    backingStorage?.set(STORAGE_KEY_STALE_DONE_ENABLED, settings.staleDoneEnabled);
+    backingStorage?.set(STORAGE_KEY_STALE_DONE_HOURS, settings.staleDoneHours);
     for (const l of listeners) l(settings);
   },
 };
@@ -157,14 +189,31 @@ export function initSettings(storage: ExtensionStorage): {
     const iconMode = coerceIconMode(
       storage.get<string>(STORAGE_KEY_ICON_MODE, settings.iconMode),
     );
+    const staleDoneEnabled = coerceStaleDoneEnabled(
+      storage.get<boolean>(STORAGE_KEY_STALE_DONE_ENABLED, settings.staleDoneEnabled),
+    );
+    const staleDoneHours = coerceStaleDoneHours(
+      storage.get<number>(STORAGE_KEY_STALE_DONE_HOURS, settings.staleDoneHours),
+    );
     if (
       focusBehavior !== settings.focusBehavior ||
       soundEnabled !== settings.soundEnabled ||
       soundId !== settings.soundId ||
       groupBy !== settings.groupBy ||
-      iconMode !== settings.iconMode
+      iconMode !== settings.iconMode ||
+      staleDoneEnabled !== settings.staleDoneEnabled ||
+      staleDoneHours !== settings.staleDoneHours
     ) {
-      settings = { ...settings, focusBehavior, soundEnabled, soundId, groupBy, iconMode };
+      settings = {
+        ...settings,
+        focusBehavior,
+        soundEnabled,
+        soundId,
+        groupBy,
+        iconMode,
+        staleDoneEnabled,
+        staleDoneHours,
+      };
       for (const l of listeners) l(settings);
     }
   }
