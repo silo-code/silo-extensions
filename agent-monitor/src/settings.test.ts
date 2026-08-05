@@ -5,6 +5,8 @@ import {
   initSettings,
   clearSettingsListeners,
   SOUND_IDS,
+  DEFAULT_STALE_DONE_ENABLED,
+  DEFAULT_STALE_DONE_HOURS,
   type FocusBehavior,
 } from "./settings-store";
 
@@ -241,6 +243,99 @@ describe("agent-monitor iconMode setting", () => {
     const sub = initSettings(storage);
     settingsService.set({ iconMode: "monotone" });
     expect(storage.get<string>("agentsIconMode")).toBe("monotone");
+    sub.dispose();
+  });
+});
+
+describe("agent-monitor staleDoneEnabled setting", () => {
+  beforeEach(() => {
+    clearSettingsListeners();
+    initSettings(fakeStorage({ agentsStaleDoneEnabled: DEFAULT_STALE_DONE_ENABLED })).dispose();
+  });
+
+  it(`defaults to ${DEFAULT_STALE_DONE_ENABLED} with empty storage`, () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneEnabled).toBe(DEFAULT_STALE_DONE_ENABLED);
+    sub.dispose();
+  });
+
+  it("hydrates a persisted false value", () => {
+    const storage = fakeStorage({ agentsStaleDoneEnabled: false });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneEnabled).toBe(false);
+    sub.dispose();
+  });
+
+  it("coerces a non-boolean persisted value to the default", () => {
+    const storage = fakeStorage({ agentsStaleDoneEnabled: "nope" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneEnabled).toBe(DEFAULT_STALE_DONE_ENABLED);
+    sub.dispose();
+  });
+
+  it("persists a change through settingsService.set", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    settingsService.set({ staleDoneEnabled: false });
+    expect(storage.get<boolean>("agentsStaleDoneEnabled")).toBe(false);
+    sub.dispose();
+  });
+});
+
+describe("agent-monitor staleDoneHours setting", () => {
+  beforeEach(() => {
+    clearSettingsListeners();
+    initSettings(fakeStorage({ agentsStaleDoneHours: DEFAULT_STALE_DONE_HOURS })).dispose();
+  });
+
+  it(`defaults to ${DEFAULT_STALE_DONE_HOURS} with empty storage`, () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(DEFAULT_STALE_DONE_HOURS);
+    sub.dispose();
+  });
+
+  it("hydrates a persisted value", () => {
+    const storage = fakeStorage({ agentsStaleDoneHours: 12 });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(12);
+    sub.dispose();
+  });
+
+  it("coerces the minimum boundary value (1) as valid", () => {
+    const storage = fakeStorage({ agentsStaleDoneHours: 1 });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(1);
+    sub.dispose();
+  });
+
+  it("coerces a value below the minimum to the default", () => {
+    const storage = fakeStorage({ agentsStaleDoneHours: 0 });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(DEFAULT_STALE_DONE_HOURS);
+    sub.dispose();
+  });
+
+  it("coerces a fractional value to the default", () => {
+    const storage = fakeStorage({ agentsStaleDoneHours: 4.5 });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(DEFAULT_STALE_DONE_HOURS);
+    sub.dispose();
+  });
+
+  it("coerces a non-number persisted value to the default", () => {
+    const storage = fakeStorage({ agentsStaleDoneHours: "8" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().staleDoneHours).toBe(DEFAULT_STALE_DONE_HOURS);
+    sub.dispose();
+  });
+
+  it("persists a change through settingsService.set", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    settingsService.set({ staleDoneHours: 6 });
+    expect(storage.get<number>("agentsStaleDoneHours")).toBe(6);
     sub.dispose();
   });
 });

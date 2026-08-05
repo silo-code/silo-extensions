@@ -5,6 +5,7 @@ import {
   groupAgentRows,
   groupAgentRowsByWorkspace,
   formatElapsed,
+  isAtLeastHoursOld,
   updateDoneSince,
 } from "./agents-panel-view";
 
@@ -276,6 +277,37 @@ describe("formatElapsed", () => {
 
   it("clamps a future timestamp (clock skew) to 0s rather than negative", () => {
     expect(formatElapsed(new Date(now.getTime() + 5_000).toISOString())).toBe("0s");
+  });
+});
+
+describe("isAtLeastHoursOld", () => {
+  const now = new Date("2026-01-01T00:00:00Z");
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is false for a timestamp under the threshold", () => {
+    expect(isAtLeastHoursOld(new Date(now.getTime() - 7 * 3_600_000).toISOString(), 8)).toBe(
+      false,
+    );
+  });
+
+  it("is true at exactly the threshold", () => {
+    expect(isAtLeastHoursOld(new Date(now.getTime() - 8 * 3_600_000).toISOString(), 8)).toBe(
+      true,
+    );
+  });
+
+  it("is true past the threshold", () => {
+    expect(isAtLeastHoursOld(new Date(now.getTime() - 9 * 3_600_000).toISOString(), 8)).toBe(
+      true,
+    );
   });
 });
 

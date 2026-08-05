@@ -8,6 +8,7 @@
 import {
   useServiceState,
   IconButton,
+  Input,
   RadioCard,
   RadioGroup,
   Select,
@@ -18,6 +19,7 @@ import type { SoundName } from "./synth";
 import {
   settingsService,
   SOUND_IDS,
+  MIN_STALE_DONE_HOURS,
   type FocusBehavior,
   type IconMode,
 } from "./settings-store";
@@ -27,6 +29,9 @@ export {
   settingsService,
   initSettings,
   clearSettingsListeners,
+  DEFAULT_STALE_DONE_ENABLED,
+  DEFAULT_STALE_DONE_HOURS,
+  MIN_STALE_DONE_HOURS,
   type AgentMonitorSettings,
   type FocusBehavior,
   type GroupBy,
@@ -113,6 +118,39 @@ export function AgentMonitorSettingsPage() {
               ))}
             </Select>
           </SettingRow>
+        </div>
+        <div className="am-section">
+          <span className="am-section-title">Agents panel</span>
+          <SettingRow
+            label="Set old finished agents aside"
+            hint="Keeps Done focused on recent finishes — older ones collapse into their own section that expands on hover."
+          >
+            <Switch
+              checked={s.staleDoneEnabled}
+              onChange={(staleDoneEnabled) => settingsService.set({ staleDoneEnabled })}
+              aria-label="Set old finished agents aside"
+            />
+          </SettingRow>
+          {s.staleDoneEnabled && (
+            <SettingRow label="Consider an agent old after">
+              <div className="am-hours-control">
+                <Input
+                  className="am-hours-input"
+                  type="number"
+                  min={MIN_STALE_DONE_HOURS}
+                  step={1}
+                  value={s.staleDoneHours}
+                  onChange={(e) => {
+                    const hours = Math.trunc(Number(e.target.value));
+                    if (!Number.isFinite(hours) || hours < MIN_STALE_DONE_HOURS) return;
+                    settingsService.set({ staleDoneHours: hours });
+                  }}
+                  aria-label="Consider an agent old after this many hours"
+                />
+                <span className="am-hours-unit">hours</span>
+              </div>
+            </SettingRow>
+          )}
         </div>
         <div className="am-section">
           <span className="am-section-title">Sound</span>

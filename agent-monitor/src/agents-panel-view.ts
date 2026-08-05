@@ -153,6 +153,16 @@ export function formatElapsed(isoDate: string): string {
 }
 
 /**
+ * Whether an ISO timestamp is at least `hours` old — used to split the
+ * panel's "done" section into a further "N+ hours old" heading once a
+ * finished agent has sat unacknowledged long enough that it reads as clutter
+ * rather than something to act on.
+ */
+export function isAtLeastHoursOld(isoDate: string, hours: number): boolean {
+  return Date.now() - new Date(isoDate).getTime() >= hours * 60 * 60 * 1000;
+}
+
+/**
  * Order two rows within a single section: rows with a `since` timestamp sort
  * most-recent-first — i.e. shortest duration first, since a smaller elapsed
  * time means a more recent `since`. (Every row normally carries one once
