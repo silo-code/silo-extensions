@@ -853,10 +853,6 @@
 }
 .ghpr-timeline-row__body {
   margin: 2px 0 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--silo-color-text);
-  line-height: 1.45;
 }
 
 /* Commits list page + commit detail page — ported from Silo's git-explorer

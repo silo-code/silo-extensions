@@ -273,7 +273,11 @@ export function PrDetailView({
                     </span>
                   )}
                 </div>
-                {item.body && <p className="ghpr-timeline-row__body">{item.body}</p>}
+                {item.body && (
+                  <div className="ghpr-timeline-row__body">
+                    <GithubMarkdown ctx={ctx}>{item.body}</GithubMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           ))
