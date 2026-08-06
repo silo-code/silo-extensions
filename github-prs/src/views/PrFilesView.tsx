@@ -1,6 +1,7 @@
 import { File as FileIcon } from "@phosphor-icons/react";
 import { Tooltip, type ExtensionContext } from "@silo-code/sdk";
-import type { PrFileChange } from "../github-pr-api";
+import type { GitHubApiError, PrFileChange } from "../github-pr-api";
+import { showErrorDetail } from "./error-detail";
 
 export interface PrFilesViewProps {
   ctx: ExtensionContext;
@@ -16,7 +17,7 @@ export interface PrFilesViewProps {
   baseSha: string | null;
   headSha: string | null;
   loading: boolean;
-  error: string | null;
+  error: GitHubApiError | null;
 }
 
 function statFor(f: PrFileChange) {
@@ -49,7 +50,10 @@ export function PrFilesView({
     return (
       <div className="ghpr-empty">
         <div className="ghpr-empty__title">Couldn’t load files</div>
-        <div>{error}</div>
+        <div>{error.message}</div>
+        <button type="button" className="ghpr-link" onClick={() => showErrorDetail(ctx, error)}>
+          Details
+        </button>
       </div>
     );
   }

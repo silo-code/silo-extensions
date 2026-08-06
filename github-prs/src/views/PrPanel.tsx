@@ -30,6 +30,7 @@ import {
   offersMerge,
 } from "../status";
 import { useViewStack } from "./use-view-stack";
+import { showErrorDetail } from "./error-detail";
 import { PrListView } from "./PrListView";
 import { PrDetailView } from "./PrDetailView";
 import { PrCommitsView } from "./PrCommitsView";
@@ -391,7 +392,13 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
           ctx.ui.notify("info", `Merged #${detailPr.number}.`, { title: "Pull request merged" });
           pop();
         } else {
-          ctx.ui.notify("error", result.error.message, { title: "Couldn't merge pull request" });
+          const error = result.error;
+          ctx.ui.notify("error", error.message, {
+            title: "Couldn't merge pull request",
+            actions: error.command
+              ? [{ label: "View details", run: () => showErrorDetail(ctx, error, "Couldn't merge pull request") }]
+              : undefined,
+          });
         }
       } finally {
         setMerging(false);
@@ -407,8 +414,12 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
 
       const methodsResult = await service.fetchMergeMethods(repoKey);
       if (!methodsResult.ok) {
-        ctx.ui.notify("error", methodsResult.error.message, {
+        const error = methodsResult.error;
+        ctx.ui.notify("error", error.message, {
           title: "Couldn't load merge options",
+          actions: error.command
+            ? [{ label: "View details", run: () => showErrorDetail(ctx, error, "Couldn't load merge options") }]
+            : undefined,
         });
         return;
       }
@@ -574,6 +585,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
           </div>
           <div className="ghpr-body">
             <PrListView
+              ctx={ctx}
               storage={storage}
               repoStates={repoStates}
               filter={filter}
@@ -717,9 +729,10 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
               </div>
               <div className="ghpr-body">
                 <PrCommitsView
+                  ctx={ctx}
                   commits={detailEntry?.detail.commits ?? []}
                   loading={loadingDetail}
-                  error={detailError && !detailEntry ? detailError.error.message : null}
+                  error={detailError && !detailEntry ? detailError.error : null}
                   onSelectCommit={(sha) => openCommit(lastPrView.repoKey, lastPrView.number, sha)}
                 />
               </div>
@@ -749,7 +762,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   detail={commitDetailEntry?.detail}
                   loading={loadingCommitDetail}
                   error={
-                    commitDetailError && !commitDetailEntry ? commitDetailError.error.message : null
+                    commitDetailError && !commitDetailEntry ? commitDetailError.error : null
                   }
                 />
               </div>
@@ -794,7 +807,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   baseSha={filesEntry?.baseSha ?? null}
                   headSha={filesEntry?.headSha ?? null}
                   loading={loadingFiles}
-                  error={filesError && !filesEntry ? filesError.error.message : null}
+                  error={filesError && !filesEntry ? filesError.error : null}
                 />
               </div>
             </>
@@ -836,7 +849,7 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
                   threads={reviewCommentsEntry?.threads ?? []}
                   loadingComments={loadingReviewComments}
                   commentsError={
-                    reviewCommentsError && !reviewCommentsEntry ? reviewCommentsError.error.message : null
+                    reviewCommentsError && !reviewCommentsEntry ? reviewCommentsError.error : null
                   }
                 />
               </div>

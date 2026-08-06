@@ -27,6 +27,7 @@ import {
   reviewKindLabel,
 } from "../detail-helpers";
 import type { DetailCacheEntry, DetailErrorEntry } from "../store";
+import { ErrorBanner } from "./ErrorBanner";
 import { GithubMarkdown } from "./GithubMarkdown";
 
 export interface PrDetailViewProps {
@@ -137,9 +138,7 @@ export function PrDetailView({
         </div>
       </section>
 
-      {showDetailError && (
-        <div className="ghpr-error-banner">{detailError.error.message}</div>
-      )}
+      {showDetailError && <ErrorBanner ctx={ctx} error={detailError.error} />}
 
       <section className="ghpr-detail__section">
         <h3 className="ghpr-detail__section-title">Commits</h3>
@@ -274,7 +273,11 @@ export function PrDetailView({
                     </span>
                   )}
                 </div>
-                {item.body && <p className="ghpr-timeline-row__body">{item.body}</p>}
+                {item.body && (
+                  <div className="ghpr-timeline-row__body">
+                    <GithubMarkdown ctx={ctx}>{item.body}</GithubMarkdown>
+                  </div>
+                )}
               </div>
             </div>
           ))

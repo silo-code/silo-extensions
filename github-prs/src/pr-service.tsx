@@ -381,7 +381,20 @@ export class PrService {
       const prev = prStore.getRepoStates(workspaceId).find(
         (s) => s.repoInfo?.owner === repoInfo.owner && s.repoInfo?.repo === repoInfo.repo,
       );
-      const openPromise = fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, cwd, this._ghBin);
+      const openPromise = fetchOpenPrs(ctx, repoInfo.owner, repoInfo.repo, cwd, this._ghBin, (prsSoFar) => {
+        // Batched-fallback pages arrive several seconds apart — render each
+        // as it lands instead of leaving the panel blank until the whole
+        // sequence finishes. Superseded by the final setRepoState below once
+        // the full result (and merged PRs, and lastFetched) is ready.
+        prStore.setRepoState(workspaceId, repoInfo.owner, repoInfo.repo, {
+          folders,
+          repoInfo,
+          openPrs: prsSoFar,
+          mergedPrs: prev?.mergedPrs ?? [],
+          lastFetched: prev?.lastFetched ?? null,
+          error: null,
+        });
+      });
       const mergedPromise = needMerged
         ? fetchMergedPrs(ctx, repoInfo.owner, repoInfo.repo, cwd, this._ghBin)
         : Promise.resolve(null);
