@@ -1,7 +1,8 @@
 import type { ExtensionContext } from "@silo-code/sdk";
-import type { PrReview, PrReviewThread } from "../github-pr-api";
+import type { GitHubApiError, PrReview, PrReviewThread } from "../github-pr-api";
 import { reviewKindLabel } from "../detail-helpers";
 import { formatElapsed } from "../format-elapsed";
+import { ErrorBanner } from "./ErrorBanner";
 import { reviewStateIcon } from "./PrDetailView";
 import { GithubMarkdown } from "./GithubMarkdown";
 
@@ -13,7 +14,7 @@ export interface PrReviewViewProps {
    * `review.body` (the summary) is empty. */
   threads: PrReviewThread[];
   loadingComments: boolean;
-  commentsError: string | null;
+  commentsError: GitHubApiError | null;
 }
 
 /** One review's full body plus every inline (file/line-scoped) conversation
@@ -66,7 +67,7 @@ export function PrReviewView({
         </div>
       )}
       {commentsError && threads.length === 0 && (
-        <div className="ghpr-error-banner ghpr-error-banner--inline">{commentsError}</div>
+        <ErrorBanner ctx={ctx} error={commentsError} inline />
       )}
       {threads.length > 0 && (
         <div className="ghpr-review-comments">

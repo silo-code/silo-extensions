@@ -238,6 +238,13 @@ export interface PrDetail extends PrListItem {
 export interface GitHubApiError {
   kind: "unauthenticated" | "rate-limited" | "network" | "not-found";
   message: string;
+  /** Full argv of the failed invocation (binary + args), e.g.
+   * `["gh", "pr", "list", "-R", "owner/repo", ...]` — shown in the "Details"
+   * modal so a failure is reproducible outside the extension. */
+  command?: string[];
+  /** Raw stderr from the failed invocation (or a stdout snippet, for a parse
+   * failure) — the actual text `gh` reported, before classification. */
+  detail?: string;
 }
 
 export type PrListResult =
@@ -274,6 +281,13 @@ export function classifyFetchError(stderr: string): GitHubApiError {
     kind: "network",
     message: "Couldn’t reach GitHub — check your network and that gh is authenticated",
   };
+}
+
+// Wraps `classifyFetchError` with the invocation that produced it, so the
+// panel's "Details" action can show the exact command and raw stderr instead
+// of just the classified summary.
+function execError(command: string[], stderr: string): GitHubApiError {
+  return { ...classifyFetchError(stderr), command, detail: stderr.trim() };
 }
 
 // ─── Normalization ────────────────────────────────────────────────────────────
@@ -489,9 +503,10 @@ async function runPrList(
   args: string[],
   fallbackState: PrListItem["state"],
 ): Promise<PrListResult> {
+  const command = [ghBin, ...args];
   const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     const msg = `gh pr list error (${error.kind}) for ${owner}/${repo}`;
     const detail = { stderr: result.stderr.trim() };
     if (error.kind === "network") ctx.log.error(msg, detail);
@@ -505,8 +520,208 @@ async function runPrList(
     return { ok: true, prs };
   } catch {
     ctx.log.error(`Failed to parse gh pr list response for ${owner}/${repo}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+    return {
+      ok: false,
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command,
+        detail: result.stdout.slice(0, 2000),
+      },
+    };
   }
+}
+
+// A repo with many open PRs makes `gh pr list`'s single GraphQL request
+// (below) expensive enough to 504 — `mergeable`/`mergeStateStatus` force a
+// live per-PR merge computation and `statusCheckRollup` aggregates every
+// check run, and GitHub pays that cost for every PR in the response before
+// replying. Empirically this repo's own PR volume pushes a 37-PR / full-field
+// request past GitHub's server-side timeout (~10s) even though the exact same
+// fields for 20 PRs return in ~6s. `fetchOpenPrsBatched` is the fallback: the
+// same fields, paginated in small pages via a hand-built GraphQL query (`gh
+// pr list` has no offset/cursor flag), so no single request is ever expensive
+// enough to time out — at the cost of several sequential requests instead of
+// one.
+const OPEN_PRS_BATCH_SIZE = 15;
+
+const OPEN_PR_GRAPHQL_QUERY = `
+query($owner: String!, $repo: String!, $perPage: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequests(states: OPEN, first: $perPage, after: $cursor, orderBy: { field: CREATED_AT, direction: DESC }) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number
+        title
+        url
+        author { login }
+        isDraft
+        reviewDecision
+        reviewRequests(first: 20) {
+          nodes {
+            requestedReviewer {
+              __typename
+              ... on User { login }
+              ... on Bot { login }
+              ... on Team { name slug }
+            }
+          }
+        }
+        latestReviews(first: 20) {
+          nodes { id author { login } state submittedAt body }
+        }
+        statusCheckRollup {
+          contexts(first: 50) {
+            nodes {
+              __typename
+              ... on CheckRun {
+                name
+                status
+                conclusion
+                detailsUrl
+                startedAt
+                completedAt
+                checkSuite { workflowRun { workflow { name } } }
+              }
+              ... on StatusContext {
+                context
+                state
+                targetUrl
+              }
+            }
+          }
+        }
+        createdAt
+        updatedAt
+        headRefName
+        baseRefName
+        labels(first: 20) { nodes { name } }
+        mergeable
+        mergeStateStatus
+        additions
+        deletions
+      }
+    }
+  }
+}`;
+
+// `gh pr list --json`'s `statusCheckRollup` is already a flat array of check
+// items with a synthetic `workflowName` string field — this GraphQL query
+// instead nests it under `checkSuite.workflowRun.workflow.name`, so (unlike
+// the other connections below) it needs its own flattening before it matches
+// what `asChecks` (and `CheckContext`) expect.
+function flattenGraphqlCheckContexts(raw: unknown): RawRecord[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawRecord[]).flatMap((c): RawRecord[] => {
+    if (c.__typename === "CheckRun") {
+      const checkSuite = c.checkSuite as RawRecord | null;
+      const workflowRun = checkSuite?.workflowRun as RawRecord | null;
+      const workflow = workflowRun?.workflow as RawRecord | null;
+      return [{
+        __typename: "CheckRun",
+        name: c.name,
+        status: c.status,
+        conclusion: c.conclusion,
+        detailsUrl: c.detailsUrl,
+        workflowName: typeof workflow?.name === "string" ? workflow.name : "",
+        startedAt: c.startedAt,
+        completedAt: c.completedAt,
+      }];
+    }
+    if (c.__typename === "StatusContext") {
+      return [{ __typename: "StatusContext", context: c.context, state: c.state, targetUrl: c.targetUrl }];
+    }
+    return [];
+  });
+}
+
+// Reshapes one `pullRequests.nodes[]` entry from `OPEN_PR_GRAPHQL_QUERY` into
+// the flat shape `normalizePrItem` (and its `asReviews`/`asLabels`/`asChecks`
+// helpers, written for `gh pr list --json`'s already-flattened output) expect
+// — connections become plain arrays, everything else passes through as-is.
+function normalizeGraphqlPrNode(node: RawRecord): PrListItem {
+  const reviewRequestNodes = ((node.reviewRequests as RawRecord)?.nodes as RawRecord[]) ?? [];
+  const latestReviewNodes = ((node.latestReviews as RawRecord)?.nodes as unknown) ?? [];
+  const labelNodes = ((node.labels as RawRecord)?.nodes as unknown) ?? [];
+  const rollup = node.statusCheckRollup as RawRecord | null;
+  const contextNodes = ((rollup?.contexts as RawRecord)?.nodes as unknown) ?? [];
+  return normalizePrItem(
+    {
+      ...node,
+      reviewRequests: reviewRequestNodes.map((n) => n.requestedReviewer),
+      latestReviews: latestReviewNodes,
+      labels: labelNodes,
+      statusCheckRollup: flattenGraphqlCheckContexts(contextNodes),
+    },
+    "OPEN",
+  );
+}
+
+async function fetchOpenPrsBatched(
+  ctx: ExtensionContext,
+  owner: string,
+  repo: string,
+  cwd: string,
+  ghBin: string,
+  /** Invoked with the PRs fetched so far after each page — lets the caller
+   * render the list incrementally instead of waiting out every sequential
+   * request (several seconds each) before showing anything. */
+  onPage?: (prsSoFar: PrListItem[]) => void,
+): Promise<PrListResult> {
+  const prs: PrListItem[] = [];
+  let cursor: string | null = null;
+  // Safety cap, not the expected case — at OPEN_PRS_BATCH_SIZE per page this
+  // covers OPEN_PRS_LIMIT with one page to spare.
+  const maxPages = Math.ceil(OPEN_PRS_LIMIT / OPEN_PRS_BATCH_SIZE) + 1;
+  for (let page = 0; page < maxPages && prs.length < OPEN_PRS_LIMIT; page++) {
+    const args = [
+      "api", "graphql",
+      "-F", `query=${OPEN_PR_GRAPHQL_QUERY}`,
+      "-F", `owner=${owner}`,
+      "-F", `repo=${repo}`,
+      "-F", `perPage=${OPEN_PRS_BATCH_SIZE}`,
+      ...(cursor ? ["-F", `cursor=${cursor}`] : []),
+    ];
+    const command = [ghBin, ...args];
+    const result = await ctx.process.exec(ghBin, args, { cwd });
+    if (result.code !== 0) {
+      const error = execError(command, result.stderr);
+      ctx.log.warn(`gh api graphql (open PR batch, page ${page}) error (${error.kind}) for ${owner}/${repo}`, {
+        stderr: result.stderr.trim(),
+      });
+      if (prs.length === 0) return { ok: false, error };
+      break; // Partial results beat none — surface what we already fetched.
+    }
+    try {
+      const data = JSON.parse(result.stdout) as RawRecord;
+      const connection = (((data.data as RawRecord | undefined)?.repository as RawRecord | undefined)
+        ?.pullRequests as RawRecord | undefined) ?? {};
+      const nodes = (connection.nodes as RawRecord[]) ?? [];
+      for (const node of nodes) prs.push(normalizeGraphqlPrNode(node));
+      onPage?.(prs.slice());
+      const pageInfo = (connection.pageInfo as RawRecord) ?? {};
+      cursor = typeof pageInfo.endCursor === "string" ? pageInfo.endCursor : null;
+      if (pageInfo.hasNextPage !== true || !cursor) break;
+    } catch {
+      ctx.log.error(`Failed to parse gh api graphql (open PR batch, page ${page}) response for ${owner}/${repo}`, {
+        stdout: result.stdout.slice(0, 200),
+      });
+      if (prs.length === 0) {
+        return {
+          ok: false,
+          error: {
+            kind: "network",
+            message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+            command,
+            detail: result.stdout.slice(0, 2000),
+          },
+        };
+      }
+      break;
+    }
+  }
+  ctx.log.debug(`Fetched ${prs.length} open PRs for ${owner}/${repo} via batched pagination`);
+  return { ok: true, prs: prs.slice(0, OPEN_PRS_LIMIT) };
 }
 
 export async function fetchOpenPrs(
@@ -515,13 +730,26 @@ export async function fetchOpenPrs(
   repo: string,
   cwd: string,
   ghBin: string,
+  /** Only invoked when the batched fallback below kicks in — the primary
+   * single-request path has nothing to page over, its whole result arrives
+   * at once anyway. */
+  onPage?: (prsSoFar: PrListItem[]) => void,
 ): Promise<PrListResult> {
   ctx.log.debug(`Fetching open PRs for ${owner}/${repo}`);
-  return runPrList(ctx, owner, repo, cwd, ghBin, [
+  const result = await runPrList(ctx, owner, repo, cwd, ghBin, [
     "pr", "list", "-R", `${owner}/${repo}`,
     "--state", "open", "--limit", String(OPEN_PRS_LIMIT),
     "--json", OPEN_PR_FIELDS,
   ], "OPEN");
+  // Only worth retrying for the failure mode this fallback actually fixes —
+  // a request too expensive for GitHub to answer in time (504) falls into
+  // classifyFetchError's generic "network" bucket, same as a real outage. A
+  // genuine outage fails the fallback too and falls straight back through to
+  // the original (more informative) error below.
+  if (result.ok || result.error.kind !== "network") return result;
+  ctx.log.warn(`Open PR list for ${owner}/${repo} failed (${result.error.kind}) — retrying via batched pagination`);
+  const batched = await fetchOpenPrsBatched(ctx, owner, repo, cwd, ghBin, onPage);
+  return batched.ok ? batched : result;
 }
 
 export async function fetchMergedPrs(
@@ -548,12 +776,11 @@ export async function fetchPrDetail(
   ghBin: string,
 ): Promise<PrDetailResult> {
   ctx.log.debug(`Fetching PR #${number} detail for ${owner}/${repo}`);
-  const result = await ctx.process.exec(ghBin, [
-    "pr", "view", String(number), "-R", `${owner}/${repo}`,
-    "--json", DETAIL_PR_FIELDS,
-  ], { cwd });
+  const args = ["pr", "view", String(number), "-R", `${owner}/${repo}`, "--json", DETAIL_PR_FIELDS];
+  const command = [ghBin, ...args];
+  const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     ctx.log.warn(`gh pr view error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: result.stderr.trim() });
     return { ok: false, error };
   }
@@ -561,7 +788,15 @@ export async function fetchPrDetail(
     return { ok: true, detail: normalizePrDetail(JSON.parse(result.stdout) as RawRecord) };
   } catch {
     ctx.log.error(`Failed to parse gh pr view response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+    return {
+      ok: false,
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command,
+        detail: result.stdout.slice(0, 2000),
+      },
+    };
   }
 }
 
@@ -577,11 +812,11 @@ export async function fetchPrCommitDetail(
   ghBin: string,
 ): Promise<PrCommitDetailResult> {
   ctx.log.debug(`Fetching commit ${sha.slice(0, 7)} detail for ${owner}/${repo}`);
-  const result = await ctx.process.exec(ghBin, [
-    "api", `repos/${owner}/${repo}/commits/${sha}`,
-  ], { cwd });
+  const args = ["api", `repos/${owner}/${repo}/commits/${sha}`];
+  const command = [ghBin, ...args];
+  const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     ctx.log.warn(`gh api commit error (${error.kind}) for ${owner}/${repo}@${sha}`, { stderr: result.stderr.trim() });
     return { ok: false, error };
   }
@@ -589,7 +824,15 @@ export async function fetchPrCommitDetail(
     return { ok: true, detail: normalizePrCommitDetail(JSON.parse(result.stdout) as RawRecord) };
   } catch {
     ctx.log.error(`Failed to parse gh api commit response for ${owner}/${repo}@${sha}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+    return {
+      ok: false,
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command,
+        detail: result.stdout.slice(0, 2000),
+      },
+    };
   }
 }
 
@@ -616,11 +859,11 @@ export async function fetchPrFiles(
   ghBin: string,
 ): Promise<PrFilesResult> {
   ctx.log.debug(`Fetching changed files for ${owner}/${repo}#${number}`);
-  const result = await ctx.process.exec(ghBin, [
-    "api", `repos/${owner}/${repo}/pulls/${number}/files`, "--paginate",
-  ], { cwd });
+  const args = ["api", `repos/${owner}/${repo}/pulls/${number}/files`, "--paginate"];
+  const command = [ghBin, ...args];
+  const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     ctx.log.warn(`gh api pulls/files error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: result.stderr.trim() });
     return { ok: false, error };
   }
@@ -628,7 +871,15 @@ export async function fetchPrFiles(
     return { ok: true, files: normalizePrFiles(JSON.parse(result.stdout)) };
   } catch {
     ctx.log.error(`Failed to parse gh api pulls/files response for ${owner}/${repo}#${number}`, { stdout: result.stdout.slice(0, 200) });
-    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+    return {
+      ok: false,
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command,
+        detail: result.stdout.slice(0, 2000),
+      },
+    };
   }
 }
 
@@ -755,17 +1006,19 @@ export async function fetchPrReviewComments(
   cwd: string,
   ghBin: string,
 ): Promise<PrReviewCommentsResult> {
+  const reviewsArgs = ["api", `repos/${owner}/${repo}/pulls/${number}/reviews`, "--paginate"];
+  const commentsArgs = ["api", `repos/${owner}/${repo}/pulls/${number}/comments`, "--paginate"];
   const [reviewsResult, commentsResult] = await Promise.all([
-    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/reviews`, "--paginate"], { cwd }),
-    ctx.process.exec(ghBin, ["api", `repos/${owner}/${repo}/pulls/${number}/comments`, "--paginate"], { cwd }),
+    ctx.process.exec(ghBin, reviewsArgs, { cwd }),
+    ctx.process.exec(ghBin, commentsArgs, { cwd }),
   ]);
   if (reviewsResult.code !== 0) {
-    const error = classifyFetchError(reviewsResult.stderr);
+    const error = execError([ghBin, ...reviewsArgs], reviewsResult.stderr);
     ctx.log.warn(`gh api pulls/reviews error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: reviewsResult.stderr.trim() });
     return { ok: false, error };
   }
   if (commentsResult.code !== 0) {
-    const error = classifyFetchError(commentsResult.stderr);
+    const error = execError([ghBin, ...commentsArgs], commentsResult.stderr);
     ctx.log.warn(`gh api pulls/comments error (${error.kind}) for ${owner}/${repo}#${number}`, { stderr: commentsResult.stderr.trim() });
     return { ok: false, error };
   }
@@ -812,7 +1065,15 @@ export async function fetchPrReviewComments(
     return { ok: true, threads };
   } catch {
     ctx.log.error(`Failed to parse gh api pulls/reviews or pulls/comments response for ${owner}/${repo}#${number}`);
-    return { ok: false, error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" } };
+    return {
+      ok: false,
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command: [ghBin, ...reviewsArgs],
+        detail: `${reviewsResult.stdout.slice(0, 1000)}\n---\n${commentsResult.stdout.slice(0, 1000)}`,
+      },
+    };
   }
 }
 
@@ -893,12 +1154,14 @@ export async function fetchRepoMergeMethods(
   cwd: string,
   ghBin: string,
 ): Promise<MergeMethodsResult> {
-  const result = await ctx.process.exec(ghBin, [
+  const args = [
     "repo", "view", `${owner}/${repo}`,
     "--json", "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed",
-  ], { cwd });
+  ];
+  const command = [ghBin, ...args];
+  const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     ctx.log.warn(`gh repo view merge methods error (${error.kind}) for ${owner}/${repo}`, {
       stderr: result.stderr.trim(),
     });
@@ -920,7 +1183,12 @@ export async function fetchRepoMergeMethods(
     });
     return {
       ok: false,
-      error: { kind: "network", message: "Unexpected response from gh — try Refresh or update the GitHub CLI" },
+      error: {
+        kind: "network",
+        message: "Unexpected response from gh — try Refresh or update the GitHub CLI",
+        command,
+        detail: result.stdout.slice(0, 2000),
+      },
     };
   }
 }
@@ -941,21 +1209,19 @@ export async function mergePr(
   ghBin: string,
 ): Promise<MergePrResult> {
   ctx.log.info(`Merging PR #${number} (${method}) for ${owner}/${repo}`);
-  const result = await ctx.process.exec(ghBin, [
-    "pr", "merge", String(number),
-    "-R", `${owner}/${repo}`,
-    MERGE_METHOD_FLAG[method],
-  ], { cwd });
+  const args = ["pr", "merge", String(number), "-R", `${owner}/${repo}`, MERGE_METHOD_FLAG[method]];
+  const command = [ghBin, ...args];
+  const result = await ctx.process.exec(ghBin, args, { cwd });
   if (result.code !== 0) {
-    const error = classifyFetchError(result.stderr);
+    const error = execError(command, result.stderr);
     ctx.log.warn(`gh pr merge error (${error.kind}) for ${owner}/${repo}#${number}`, {
       stderr: result.stderr.trim(),
     });
     // Prefer the actionable stderr line when GitHub rejects a merge (permissions,
     // race, etc.) over the generic network fallback.
-    const detail = result.stderr.trim().split("\n").filter(Boolean).pop();
-    if (error.kind === "network" && detail) {
-      return { ok: false, error: { kind: "network", message: detail } };
+    const lastLine = result.stderr.trim().split("\n").filter(Boolean).pop();
+    if (error.kind === "network" && lastLine) {
+      return { ok: false, error: { ...error, message: lastLine } };
     }
     return { ok: false, error };
   }

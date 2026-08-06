@@ -301,6 +301,49 @@
 .ghpr-error-banner--inline {
   margin: 4px 8px 8px;
 }
+.ghpr-error-banner__message {
+  flex: 1;
+}
+.ghpr-error-banner__details {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 1px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.ghpr-error-modal__message {
+  margin: 0 0 10px;
+  color: var(--silo-color-text-hi);
+}
+.ghpr-error-modal__label {
+  margin: 10px 0 4px;
+  color: var(--silo-color-text-lo);
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.ghpr-error-modal__pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--silo-radius-md);
+  background: var(--silo-color-bg-hover);
+  border: 1px solid var(--silo-color-border);
+  color: var(--silo-color-text);
+  font-family: var(--silo-font-mono, monospace);
+  font-size: 0.9em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
 
 .ghpr-repo {
   display: flex;

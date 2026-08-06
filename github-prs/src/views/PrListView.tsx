@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
-import { useFocusGroup, type ExtensionStorage } from "@silo-code/sdk";
-import type { PrListItem } from "../github-pr-api";
+import { useFocusGroup, type ExtensionContext, type ExtensionStorage } from "@silo-code/sdk";
+import type { GitHubApiError, PrListItem } from "../github-pr-api";
 import { FILTER_LABELS, filterPrs, type PrFilter } from "../filters";
 import { repoStateKey, type WorkspacePrState } from "../store";
+import { ErrorBanner } from "./ErrorBanner";
 import { PrRow } from "./PrRow";
 
 export interface PrListViewProps {
+  ctx: ExtensionContext;
   storage: ExtensionStorage;
   repoStates: WorkspacePrState[];
   filter: PrFilter;
@@ -29,8 +31,8 @@ type CollapsedMap = Record<string, boolean>;
 const COLLAPSED_KEY = "collapsed";
 const EMPTY_COLLAPSED: CollapsedMap = {};
 
-function apiErrorMessage(state: WorkspacePrState): string | null {
-  return state.error?.kind === "api-error" ? state.error.error.message : null;
+function apiError(state: WorkspacePrState): GitHubApiError | null {
+  return state.error?.kind === "api-error" ? state.error.error : null;
 }
 
 function sectionRepoKey(state: WorkspacePrState): string {
@@ -38,6 +40,7 @@ function sectionRepoKey(state: WorkspacePrState): string {
 }
 
 export function PrListView({
+  ctx,
   storage,
   repoStates,
   filter,
@@ -79,7 +82,7 @@ export function PrListView({
         label: key.toUpperCase(),
         prs: filterPrs(state.openPrs, state.mergedPrs, filter, viewerLogin),
         collapsed: multi && (collapsedMap[key] ?? false),
-        errorMessage: apiErrorMessage(state),
+        error: apiError(state),
       };
     });
   }, [withRepo, filter, viewerLogin, multi, collapsedMap]);
@@ -116,7 +119,7 @@ export function PrListView({
 
   const totalVisible = flat.length;
   const anyPrs = sections.some((s) => s.prs.length > 0);
-  const singleError = !multi ? sections[0]?.errorMessage : null;
+  const singleError = !multi ? sections[0]?.error ?? null : null;
 
   if (withRepo.length === 0) {
     if (!workspaceReady) {
@@ -147,7 +150,7 @@ export function PrListView({
     if (totalVisible === 0) {
       return (
         <>
-          {singleError && <div className="ghpr-error-banner">{singleError}</div>}
+          {singleError && <ErrorBanner ctx={ctx} error={singleError} />}
           {!refreshing && (
             <div className="ghpr-empty">
               <div className="ghpr-empty__title">No pull requests</div>
@@ -159,7 +162,7 @@ export function PrListView({
     }
     return (
       <>
-        {singleError && <div className="ghpr-error-banner">{singleError}</div>}
+        {singleError && <ErrorBanner ctx={ctx} error={singleError} />}
         <ul className="ghpr-list" role="listbox" {...group.containerProps}>
           {flat.map((row, i) => (
             <li key={row.key} role="none">
@@ -183,7 +186,7 @@ export function PrListView({
           <div>Nothing matches “{FILTER_LABELS[filter]}” right now.</div>
         </div>
       )}
-      {sections.map(({ state, repoKey, label, prs, collapsed, errorMessage }) => (
+      {sections.map(({ state, repoKey, label, prs, collapsed, error }) => (
         <section key={repoKey} className="ghpr-repo">
           <button
             type="button"
@@ -202,9 +205,7 @@ export function PrListView({
           </button>
           {!collapsed && (
             <>
-              {errorMessage && (
-                <div className="ghpr-error-banner ghpr-error-banner--inline">{errorMessage}</div>
-              )}
+              {error && <ErrorBanner ctx={ctx} error={error} inline />}
               {prs.length === 0 ? (
                 refreshing ? null : (
                   <div className="ghpr-repo__empty">No matching PRs</div>

@@ -1,10 +1,13 @@
-import type { PrCommitListItem } from "../github-pr-api";
+import type { ExtensionContext } from "@silo-code/sdk";
+import type { GitHubApiError, PrCommitListItem } from "../github-pr-api";
 import { formatElapsed } from "../format-elapsed";
+import { showErrorDetail } from "./error-detail";
 
 export interface PrCommitsViewProps {
+  ctx: ExtensionContext;
   commits: PrCommitListItem[];
   loading: boolean;
-  error: string | null;
+  error: GitHubApiError | null;
   onSelectCommit: (sha: string) => void;
 }
 
@@ -12,12 +15,15 @@ export interface PrCommitsViewProps {
  * commit's changed files. Commits ride along with `PrDetail.commits` (a free
  * field on the already-fetched PR detail), so this is purely presentational —
  * `loading`/`error` mirror the detail page's own fetch state. */
-export function PrCommitsView({ commits, loading, error, onSelectCommit }: PrCommitsViewProps) {
+export function PrCommitsView({ ctx, commits, loading, error, onSelectCommit }: PrCommitsViewProps) {
   if (error && commits.length === 0) {
     return (
       <div className="ghpr-empty">
         <div className="ghpr-empty__title">Couldn’t load commits</div>
-        <div>{error}</div>
+        <div>{error.message}</div>
+        <button type="button" className="ghpr-link" onClick={() => showErrorDetail(ctx, error)}>
+          Details
+        </button>
       </div>
     );
   }
