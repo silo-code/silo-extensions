@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRow } from "./agents-panel-view";
-import { buildStatusSections } from "./agents-panel";
+import { buildStatusSections, staleSectionStartsExpanded } from "./agents-panel";
 
 function row(over: Partial<AgentRow> = {}): AgentRow {
   return {
@@ -24,7 +24,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
     expect(sections.map((s) => s.header)).toEqual([
       "Ready",
       "Working",
-      "Done",
+      "Idle",
       "8+ hours old",
     ]);
     expect(sections.every((s) => s.rows.length === 0)).toBe(true);
@@ -48,7 +48,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
     expect(sections.find((s) => s.header === "Working")?.rows.map((r) => r.terminalId)).toEqual([
       "t1",
     ]);
-    expect(sections.find((s) => s.header === "Done")?.rows).toEqual([]);
+    expect(sections.find((s) => s.header === "Idle")?.rows).toEqual([]);
     expect(sections.find((s) => s.header === "8+ hours old")?.rows).toEqual([]);
   });
 
@@ -61,7 +61,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
       true,
       8,
     );
-    expect(sections.find((s) => s.header === "Done")?.rows.map((r) => r.terminalId)).toEqual([
+    expect(sections.find((s) => s.header === "Idle")?.rows.map((r) => r.terminalId)).toEqual([
       "recent",
     ]);
     expect(
@@ -75,7 +75,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
       true,
       8,
     );
-    expect(sections.find((s) => s.header === "Done")?.rows).toEqual([]);
+    expect(sections.find((s) => s.header === "Idle")?.rows).toEqual([]);
     expect(
       sections.find((s) => s.header === "8+ hours old")?.rows.map((r) => r.terminalId),
     ).toEqual(["boundary"]);
@@ -87,7 +87,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
       true,
       8,
     );
-    expect(sections.find((s) => s.header === "Done")?.rows.map((r) => r.terminalId)).toEqual([
+    expect(sections.find((s) => s.header === "Idle")?.rows.map((r) => r.terminalId)).toEqual([
       "no-since",
     ]);
     expect(sections.find((s) => s.header === "8+ hours old")?.rows).toEqual([]);
@@ -100,7 +100,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
       4,
     );
     expect(sections.map((s) => s.header)).toContain("4+ hours old");
-    expect(sections.find((s) => s.header === "Done")?.rows).toEqual([]);
+    expect(sections.find((s) => s.header === "Idle")?.rows).toEqual([]);
     expect(
       sections.find((s) => s.header === "4+ hours old")?.rows.map((r) => r.terminalId),
     ).toEqual(["t1"]);
@@ -110,7 +110,7 @@ describe("buildStatusSections (staleDoneEnabled: true)", () => {
 describe("buildStatusSections (staleDoneEnabled: false)", () => {
   it("omits the 'N+ hours old' heading entirely", () => {
     const sections = buildStatusSections([], false, 8);
-    expect(sections.map((s) => s.header)).toEqual(["Ready", "Working", "Done"]);
+    expect(sections.map((s) => s.header)).toEqual(["Ready", "Working", "Idle"]);
   });
 
   it("keeps old done rows in Done instead of splitting them out", () => {
@@ -123,7 +123,48 @@ describe("buildStatusSections (staleDoneEnabled: false)", () => {
       8,
     );
     expect(
-      sections.find((s) => s.header === "Done")?.rows.map((r) => r.terminalId).sort(),
+      sections.find((s) => s.header === "Idle")?.rows.map((r) => r.terminalId).sort(),
     ).toEqual(["recent", "stale"]);
+  });
+});
+
+describe("staleSectionStartsExpanded", () => {
+  it("opens the old heading when nothing is ready, working or idle", () => {
+    const sections = buildStatusSections(
+      [row({ section: "done", since: hoursAgo(9) })],
+      true,
+      8,
+    );
+    expect(staleSectionStartsExpanded(sections)).toBe(true);
+  });
+
+  it("stays collapsed while any other heading has rows", () => {
+    const sections = buildStatusSections(
+      [
+        row({ section: "working" }),
+        row({ terminalId: "t2", section: "done", since: hoursAgo(9) }),
+      ],
+      true,
+      8,
+    );
+    expect(staleSectionStartsExpanded(sections)).toBe(false);
+  });
+
+  it("is true when the view is completely empty", () => {
+    // Nothing to reveal either way, but the rule shouldn't special-case it.
+    expect(staleSectionStartsExpanded(buildStatusSections([], true, 8))).toBe(true);
+  });
+
+  it("ignores the old heading's own rows when deciding", () => {
+    // Two stale rows and nothing else still counts as "everything else empty".
+    const sections = buildStatusSections(
+      [
+        row({ section: "done", since: hoursAgo(9) }),
+        row({ terminalId: "t2", section: "done", since: hoursAgo(20) }),
+      ],
+      true,
+      8,
+    );
+    expect(staleSectionStartsExpanded(sections)).toBe(true);
   });
 });

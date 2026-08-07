@@ -34,7 +34,6 @@ export {
   MIN_STALE_DONE_HOURS,
   type AgentMonitorSettings,
   type FocusBehavior,
-  type GroupBy,
   type IconMode,
 } from "./settings-store";
 
@@ -103,13 +102,13 @@ export function AgentMonitorSettingsPage() {
         </div>
         <div className="am-section">
           <span className="am-section-title">Agent icons</span>
-          <SettingRow label="Show agent app icons in the Agents panel">
+          <SettingRow label="Show agent app icons in the agent views">
             <Select
               value={s.iconMode}
               onChange={(e) =>
                 settingsService.set({ iconMode: e.target.value as IconMode })
               }
-              aria-label="Show agent app icons in the Agents panel"
+              aria-label="Show agent app icons in the agent views"
             >
               {ICON_MODE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -120,7 +119,7 @@ export function AgentMonitorSettingsPage() {
           </SettingRow>
         </div>
         <div className="am-section">
-          <span className="am-section-title">Agents panel</span>
+          <span className="am-section-title">Agent views</span>
           <SettingRow
             label="Set old finished agents aside"
             hint="Keeps Done focused on recent finishes — older ones collapse into their own section that expands on hover."

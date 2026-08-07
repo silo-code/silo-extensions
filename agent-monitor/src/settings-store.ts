@@ -31,10 +31,6 @@ import { sounds, type SoundName } from "./synth";
  */
 export type FocusBehavior = "clear" | "hide" | "none";
 
-/** How the Agents panel sections its rows: by state (ready/working/done) or
- * by which workspace each agent belongs to. */
-export type GroupBy = "status" | "workspace";
-
 /** Whether/how the Agents panel shows each row's agent brand icon —
  * `"none"`, the official brand color, or a single monotone color. */
 export type IconMode = "none" | "color" | "monotone";
@@ -45,8 +41,6 @@ export interface AgentMonitorSettings {
   soundEnabled: boolean;
   /** Which synthesized sound to play. */
   soundId: SoundName;
-  /** How the Agents panel groups its rows. */
-  groupBy: GroupBy;
   /** How the Agents panel shows each row's agent icon. */
   iconMode: IconMode;
   /** Whether the Agents panel segments long-done agents out of the Done
@@ -64,7 +58,6 @@ export interface AgentMonitorSettings {
 const STORAGE_KEY_FOCUS = "focusBehavior";
 const STORAGE_KEY_SOUND_ENABLED = "soundEnabled";
 const STORAGE_KEY_SOUND_ID = "soundId";
-const STORAGE_KEY_GROUP_BY = "agentsGroupBy";
 const STORAGE_KEY_ICON_MODE = "agentsIconMode";
 const STORAGE_KEY_STALE_DONE_ENABLED = "agentsStaleDoneEnabled";
 const STORAGE_KEY_STALE_DONE_HOURS = "agentsStaleDoneHours";
@@ -72,14 +65,12 @@ const STORAGE_KEY_STALE_DONE_HOURS = "agentsStaleDoneHours";
 const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
 const DEFAULT_SOUND_ENABLED = true;
 const DEFAULT_SOUND_ID: SoundName = "chime";
-const DEFAULT_GROUP_BY: GroupBy = "status";
 const DEFAULT_ICON_MODE: IconMode = "color";
 export const DEFAULT_STALE_DONE_ENABLED = true;
 export const DEFAULT_STALE_DONE_HOURS = 4;
 export const MIN_STALE_DONE_HOURS = 1;
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
-const VALID_GROUP_BY: readonly GroupBy[] = ["status", "workspace"];
 const VALID_ICON_MODES: readonly IconMode[] = ["none", "color", "monotone"];
 // The synth's raw UI-feedback sounds (press/release/toggle) read as click
 // acknowledgements, not "come look at this" — excluded from the curated
@@ -106,10 +97,6 @@ function coerceSoundId(v: unknown): SoundName {
   return SOUND_IDS.includes(v as SoundName) ? (v as SoundName) : DEFAULT_SOUND_ID;
 }
 
-function coerceGroupBy(v: unknown): GroupBy {
-  return VALID_GROUP_BY.includes(v as GroupBy) ? (v as GroupBy) : DEFAULT_GROUP_BY;
-}
-
 function coerceIconMode(v: unknown): IconMode {
   return VALID_ICON_MODES.includes(v as IconMode) ? (v as IconMode) : DEFAULT_ICON_MODE;
 }
@@ -134,7 +121,6 @@ let settings: AgentMonitorSettings = {
   focusBehavior: DEFAULT_BEHAVIOR,
   soundEnabled: DEFAULT_SOUND_ENABLED,
   soundId: DEFAULT_SOUND_ID,
-  groupBy: DEFAULT_GROUP_BY,
   iconMode: DEFAULT_ICON_MODE,
   staleDoneEnabled: DEFAULT_STALE_DONE_ENABLED,
   staleDoneHours: DEFAULT_STALE_DONE_HOURS,
@@ -155,7 +141,6 @@ export const settingsService: ReactiveService<AgentMonitorSettings> & {
     backingStorage?.set(STORAGE_KEY_FOCUS, settings.focusBehavior);
     backingStorage?.set(STORAGE_KEY_SOUND_ENABLED, settings.soundEnabled);
     backingStorage?.set(STORAGE_KEY_SOUND_ID, settings.soundId);
-    backingStorage?.set(STORAGE_KEY_GROUP_BY, settings.groupBy);
     backingStorage?.set(STORAGE_KEY_ICON_MODE, settings.iconMode);
     backingStorage?.set(STORAGE_KEY_STALE_DONE_ENABLED, settings.staleDoneEnabled);
     backingStorage?.set(STORAGE_KEY_STALE_DONE_HOURS, settings.staleDoneHours);
@@ -183,9 +168,6 @@ export function initSettings(storage: ExtensionStorage): {
     const soundId = coerceSoundId(
       storage.get<string>(STORAGE_KEY_SOUND_ID, settings.soundId),
     );
-    const groupBy = coerceGroupBy(
-      storage.get<string>(STORAGE_KEY_GROUP_BY, settings.groupBy),
-    );
     const iconMode = coerceIconMode(
       storage.get<string>(STORAGE_KEY_ICON_MODE, settings.iconMode),
     );
@@ -199,7 +181,6 @@ export function initSettings(storage: ExtensionStorage): {
       focusBehavior !== settings.focusBehavior ||
       soundEnabled !== settings.soundEnabled ||
       soundId !== settings.soundId ||
-      groupBy !== settings.groupBy ||
       iconMode !== settings.iconMode ||
       staleDoneEnabled !== settings.staleDoneEnabled ||
       staleDoneHours !== settings.staleDoneHours
@@ -209,7 +190,6 @@ export function initSettings(storage: ExtensionStorage): {
         focusBehavior,
         soundEnabled,
         soundId,
-        groupBy,
         iconMode,
         staleDoneEnabled,
         staleDoneHours,

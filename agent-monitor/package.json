@@ -2,7 +2,7 @@
   "name": "@silo-extensions/agent-monitor",
   "displayName": "Agent Monitor",
   "version": "0.2.3",
-  "description": "At-a-glance agent status: a dedicated Agents panel across every workspace, status rows in the Workspaces panel, and terminal tab badges/icons, cleared when you view the terminal.",
+  "description": "At-a-glance agent status: Agents and Agents-by-workspace views in the Navigator, status rows on each workspace, and terminal tab badges/icons, cleared when you view the terminal.",
   "type": "module",
   "files": [
     "dist/",
@@ -10,7 +10,7 @@
   ],
   "silo": {
     "id": "silo.agent-monitor",
-    "engine": "^0.39.0",
+    "engine": "^0.42.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": []
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "^0.32.0",
+    "@silo-code/sdk": "^0.34.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",
