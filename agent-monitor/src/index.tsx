@@ -19,6 +19,7 @@ import {
   settingsService,
 } from "./settings";
 import { AgentsPanel } from "./agents-panel";
+import { initDoneSince, recordDoneSince } from "./done-since";
 import { AgentIconGlyph } from "./AgentIconGlyph";
 import styles from "./styles.css";
 
@@ -26,6 +27,7 @@ const STYLE_ID = "silo-agent-monitor-styles";
 
 function activate(ctx: ExtensionContext) {
   ctx.subscriptions.push(initSettings(ctx.storage.global));
+  initDoneSince(ctx.storage.global);
 
   // Latest host-computed agent state, keyed by terminal record id. Since Silo
   // 0.39 the host (`ctx.agents`) owns every hard part — OSC detection, the
@@ -67,6 +69,9 @@ function activate(ctx: ExtensionContext) {
     }
     agents.clear();
     for (const [id, a] of next) agents.set(id, a);
+    // Stamp newly-done rows here rather than during a panel render, so the
+    // "done for 3h" durations keep accruing even with no agent view open.
+    recordDoneSince(state);
     if (ring) maybePlayTransitionSound();
     ctx.workspaces.invalidateStatus();
     ctx.terminals.invalidateTabDecorations();
@@ -200,19 +205,32 @@ function activate(ctx: ExtensionContext) {
     }),
   );
 
-  // Sits next to the Workspaces panel (also "left", order 1) so switching
-  // between agent tabs across every workspace doesn't require the Workspaces
-  // tree — the panel reads `ctx.agents`/`ctx.workspaces` directly rather than
-  // the `agents` map above, since it needs its own re-render subscription.
-  ctx.subscriptions.push(
-    ctx.registerSidePanel({
-      id: "silo.agent-monitor.agents",
-      location: "left",
-      title: "Agents",
-      order: 2,
-      component: () => <AgentsPanel ctx={ctx} />,
-    }),
-  );
+  // Two views *of the Navigator*, not a panel of their own (RFC 0023). A second
+  // side panel would be a second navigator sitting beside the first, which
+  // leaves no rule for which one to trust — and side-panel state is
+  // per-workspace, so which navigator you were looking at could change as you
+  // switched workspaces. As views, agents are another way to read the one
+  // panel. Both read `ctx.agents`/`ctx.workspaces` directly rather than the
+  // `agents` map above, since they need their own re-render subscriptions.
+  // registerNavigatorView is auto-tracked on ctx.subscriptions, so no push.
+  ctx.registerNavigatorView({
+    id: "silo.agent-monitor.by-status",
+    // Id keeps the by-status suffix — it's the persisted key for "which view
+    // is active", so renaming it would drop the user's choice.
+    title: "Agents",
+    order: 1,
+    component: ({ active }) => (
+      <AgentsPanel ctx={ctx} mode="status" active={active} />
+    ),
+  });
+  ctx.registerNavigatorView({
+    id: "silo.agent-monitor.by-workspace",
+    title: "Agents by workspace",
+    order: 2,
+    component: ({ active }) => (
+      <AgentsPanel ctx={ctx} mode="workspace" active={active} />
+    ),
+  });
 
   injectStyles();
 }

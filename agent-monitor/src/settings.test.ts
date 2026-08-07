@@ -168,42 +168,6 @@ describe("agent-monitor sound settings", () => {
   });
 });
 
-describe("agent-monitor groupBy setting", () => {
-  beforeEach(() => {
-    clearSettingsListeners();
-    initSettings(fakeStorage({ agentsGroupBy: "status" })).dispose();
-  });
-
-  it("defaults to \"status\" with empty storage", () => {
-    const storage = fakeStorage();
-    const sub = initSettings(storage);
-    expect(settingsService.getState().groupBy).toBe("status");
-    sub.dispose();
-  });
-
-  it("hydrates a persisted \"workspace\" value", () => {
-    const storage = fakeStorage({ agentsGroupBy: "workspace" });
-    const sub = initSettings(storage);
-    expect(settingsService.getState().groupBy).toBe("workspace");
-    sub.dispose();
-  });
-
-  it("coerces an invalid persisted value to the default", () => {
-    const storage = fakeStorage({ agentsGroupBy: "nonsense" });
-    const sub = initSettings(storage);
-    expect(settingsService.getState().groupBy).toBe("status");
-    sub.dispose();
-  });
-
-  it("persists a change through settingsService.set", () => {
-    const storage = fakeStorage();
-    const sub = initSettings(storage);
-    settingsService.set({ groupBy: "workspace" });
-    expect(storage.get<string>("agentsGroupBy")).toBe("workspace");
-    sub.dispose();
-  });
-});
-
 describe("agent-monitor iconMode setting", () => {
   beforeEach(() => {
     clearSettingsListeners();

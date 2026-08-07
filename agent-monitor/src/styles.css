@@ -106,31 +106,22 @@
   color: var(--silo-color-text-lo);
 }
 
-/* Agents side panel — all classes prefixed ap-; tokens only. Root inherits
-   the column font size from `.side-pane`, so no absolute font-size here.
-   Deliberately NOT its own scroll container: the host's `.tab-pane` (the
-   direct parent every side panel renders into) already scrolls, persists,
-   and styles scroll position for whatever a panel renders. Giving `.ap-body`
+/* Agent views in the Navigator — all classes prefixed ap-; tokens
+   only. Root inherits the column font size from `.side-pane`, so no absolute
+   font-size here. Deliberately NOT its own scroll container: the host's
+   `.tab-pane` (the panel's scrolling ancestor) already scrolls, persists, and
+   styles scroll position for whatever renders inside it. Giving `.ap-body`
    its own nested `overflow-y: auto` stacked TWO scrollable regions at the
    same screen position — the outer `.tab-pane` (normally zero scroll range,
    so its thumb renders full-track, looking "already at the bottom") and the
    real one one level deeper that a real mouse/trackpad drag never reliably
    reached. Letting `.tab-pane` be the sole scroller fixes that outright. */
-.ap-panel {
-  position: relative;
-}
 .ap-body {
   padding: 4px 0;
 }
 .ap-empty {
   padding: 12px;
   color: var(--silo-color-text-lo);
-}
-.ap-view-menu {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 1;
 }
 .ap-section + .ap-section {
   margin-top: 20px;
@@ -140,6 +131,9 @@
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
+  /* Same horizontal inset as `.ap-row` so section labels stay aligned with
+     row text after the row's selection/hover margin. */
+  margin: 0 4px;
   font-size: var(--silo-font-size-sm);
   font-weight: 600;
   text-transform: uppercase;
@@ -153,19 +147,20 @@
 .ap-section-caret.expanded {
   transform: rotate(90deg);
 }
+/* The heading is uppercase + letter-spaced; a count inside it isn't. Geometry
+   and color come from the kit's `size="sm"` chip. */
 .ap-section-count {
   text-transform: none;
   letter-spacing: normal;
-}
-.ap-section-empty {
-  padding: 6px 12px;
-  color: var(--silo-color-text-lo);
 }
 .ap-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   padding: 6px 12px;
+  /* Match WorkspacesView `.ws-item` inset so hover/active backgrounds don't
+     flush to the pane edges. */
+  margin: 0 4px 2px;
   cursor: pointer;
   border-radius: var(--silo-radius-sm);
 }

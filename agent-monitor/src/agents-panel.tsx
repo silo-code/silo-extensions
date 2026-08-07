@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { CaretRight, FunnelSimple } from "@phosphor-icons/react";
-import type { Activity, ExtensionContext, ExtensionStorage } from "@silo-code/sdk";
-import { ActivityGlyph, Badge, IconButton, Tooltip, useServiceState } from "@silo-code/sdk";
+import { CaretRight } from "@phosphor-icons/react";
+import type { Activity, ExtensionContext, MenuEntry } from "@silo-code/sdk";
+import { ActivityGlyph, Badge, useServiceState } from "@silo-code/sdk";
 import {
   buildAgentRows,
   formatElapsed,
@@ -9,53 +9,41 @@ import {
   groupAgentRowsByWorkspace,
   isAtLeastHoursOld,
   SECTION_ORDER,
-  updateDoneSince,
   type AgentRow,
   type AgentSection,
 } from "./agents-panel-view";
+import { getDoneSince } from "./done-since";
 import { AgentIconGlyph } from "./AgentIconGlyph";
-import { settingsService, type GroupBy, type IconMode } from "./settings-store";
+import { settingsService, type IconMode } from "./settings-store";
 
 /** Ticks the panel so a rendered `formatElapsed` duration stays live. 1s
  * matches the host's own Workspaces-panel elapsed-time refresh. */
 function useNow(intervalMs: number): void {
   const [, setTick] = useState(0);
   useEffect(() => {
+    if (intervalMs <= 0) return;
     const id = setInterval(() => setTick((t) => t + 1), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
 }
 
-// `updateDoneSince`'s map, persisted so its "first time this row was seen
-// done" timestamps survive an extension reload or app restart — without
-// this, every reload would re-stamp every currently-done row as "just now"
-// (see the caveat on `AgentRow.since`). A plain object, not a Map: storage
-// values round-trip through JSON.
-const DONE_SINCE_STORAGE_KEY = "agentsDoneSince";
-
-function loadDoneSince(storage: ExtensionStorage): Map<string, string> {
-  const stored = storage.get<Record<string, string>>(DONE_SINCE_STORAGE_KEY, {});
-  return new Map(Object.entries(stored));
-}
-
-function persistDoneSince(storage: ExtensionStorage, map: ReadonlyMap<string, string>): void {
-  storage.set(DONE_SINCE_STORAGE_KEY, Object.fromEntries(map));
-}
-
 const SECTION_LABELS: Record<AgentSection, string> = {
   ready: "Ready",
   working: "Working",
-  done: "Done",
+  // The host's own term for the state is idle — an agent that has stopped
+  // working and isn't waiting on you. "Done" implied a finished task rather
+  // than a session sitting there.
+  done: "Idle",
 };
-const GROUP_BY_OPTIONS: { id: GroupBy; label: string }[] = [
-  { id: "status", label: "Status" },
-  { id: "workspace", label: "Workspace" },
-];
+
+/** Which axis the panel sections its rows by — one registered Navigator view
+ * per value (see `registerNavigatorView` in index.tsx). */
+export type GroupMode = "status" | "workspace";
 
 /** A section as the render below wants it, regardless of which grouping
  * produced it: a heading, its rows, and where each row's subtitle (the line
  * under the title) comes from — whichever axis isn't already the heading. */
-interface PanelSection {
+export interface PanelSection {
   key: string;
   header: string;
   rows: AgentRow[];
@@ -70,6 +58,20 @@ interface PanelSection {
 // Stable key for the "N+ hours old" section — both what buildStatusSections
 // tags it with and what the render below checks to apply the hover reveal.
 const STALE_DONE_SECTION_KEY = "stale-done";
+
+/**
+ * Whether the "N+ hours old" heading should start open rather than waiting for
+ * a hover. With nothing ready, working or idle it is the only content the view
+ * has, and a panel showing three empty headings plus a collapsed one reads as
+ * empty — the user shouldn't have to hover to discover it isn't.
+ */
+export function staleSectionStartsExpanded(
+  sections: readonly PanelSection[],
+): boolean {
+  return sections.every(
+    (s) => s.key === STALE_DONE_SECTION_KEY || s.rows.length === 0,
+  );
+}
 
 function isStaleDone(row: AgentRow, staleDoneHours: number): boolean {
   return row.since !== undefined && isAtLeastHoursOld(row.since, staleDoneHours);
@@ -113,7 +115,7 @@ export function buildStatusSections(
   ];
 }
 
-function buildWorkspaceSections(rows: readonly AgentRow[]): PanelSection[] {
+export function buildWorkspaceSections(rows: readonly AgentRow[]): PanelSection[] {
   return groupAgentRowsByWorkspace(rows).map((group) => ({
     key: group.workspaceId,
     header: group.workspaceName,
@@ -143,6 +145,7 @@ function AgentRowItem({
   active,
   iconMode,
   onFocus,
+  onContextMenu,
 }: {
   row: AgentRow;
   /** Workspace name in the "by status" view; status label in the "by
@@ -151,6 +154,7 @@ function AgentRowItem({
   active: boolean;
   iconMode: IconMode;
   onFocus: (terminalId: string) => void;
+  onContextMenu: (row: AgentRow, at: { x: number; y: number }) => void;
 }) {
   return (
     <div
@@ -161,6 +165,10 @@ function AgentRowItem({
       onClick={() => onFocus(row.terminalId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onFocus(row.terminalId);
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onContextMenu(row, { x: e.clientX, y: e.clientY });
       }}
     >
       <ActivityGlyph activity={glyphFor(row)} className="ap-row-glyph" />
@@ -183,10 +191,20 @@ function AgentRowItem({
   );
 }
 
-export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
+export function AgentsPanel({
+  ctx,
+  mode,
+  active,
+}: {
+  ctx: ExtensionContext;
+  mode: GroupMode;
+  /** False while this view is mounted but off screen — the 1s elapsed-time
+   * tick is the only per-second work here, so parking it is the whole win. */
+  active: boolean;
+}) {
   // 1s so formatElapsed's seconds-resolution display (<1 minute) ticks live;
   // rows past a minute don't strictly need it, but the tick is cheap.
-  useNow(1_000);
+  useNow(active ? 1_000 : 0);
 
   const [, setTick] = useState(0);
   useEffect(
@@ -211,7 +229,7 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
     [ctx.terminals],
   );
 
-  const { groupBy, iconMode, staleDoneEnabled, staleDoneHours } =
+  const { iconMode, staleDoneEnabled, staleDoneHours } =
     useServiceState(settingsService);
 
   // The "N+ hours old" section starts collapsed and reveals its rows only
@@ -254,72 +272,67 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
   }
 
   const agentsSnapshot = ctx.agents.getState({ allWorkspaces: true });
-  // The host doesn't expose a timestamp for how long a row has been "done"
-  // (unlike ready/working) — updateDoneSince tracks it locally instead, fed
-  // back into itself across renders via this ref, seeded from persisted
-  // storage on mount so a reload doesn't reset every row to "just now". Safe
-  // to recompute on every render (including the 1s tick): an id already
-  // present keeps its original stamp, so this only ever *adds* a fresh one,
-  // never overwrites.
-  const doneSinceRef = useRef<Map<string, string> | null>(null);
-  if (doneSinceRef.current === null) {
-    doneSinceRef.current = loadDoneSince(ctx.storage.global);
-  }
-  const doneSince = updateDoneSince(
-    doneSinceRef.current,
+  // "Done since" is tracked at extension scope (see ./done-since) rather than
+  // here: both views read the same stamps, and tracking has to keep running
+  // whichever view — if any — the user has open.
+  const rows = buildAgentRows(
     agentsSnapshot,
-    new Date().toISOString(),
-  );
-  doneSinceRef.current = doneSince;
-
-  const rows = buildAgentRows(agentsSnapshot, ctx.workspaces.getState().all, doneSince);
-
-  // Persist only when the map's contents actually changed — the dep array is
-  // a content signature (not `doneSince` itself, which is a new object every
-  // render, including the 1s tick that never changes what's in it) so this
-  // effect skips the vast majority of renders instead of writing on each one.
-  const doneSinceSignature = JSON.stringify([...doneSince].sort());
-  useEffect(() => {
-    persistDoneSince(ctx.storage.global, doneSince);
-    // doneSinceSignature is deliberately the only dep — see comment above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doneSinceSignature]);
-
-  const menuAnchorRef = useRef<HTMLSpanElement>(null);
-  function openGroupByMenu() {
-    void ctx.ui.showMenu({
-      items: [
-        { type: "header", label: "Group by" },
-        ...GROUP_BY_OPTIONS.map((opt) => ({
-          label: opt.label,
-          checked: groupBy === opt.id,
-          run: () => settingsService.set({ groupBy: opt.id }),
-        })),
-      ],
-      anchor: menuAnchorRef.current,
-      align: "end",
-    });
-  }
-  // Anchors the popover — IconButton isn't ref-forwarding, so the wrapping
-  // span (not the button itself) is what showMenu hangs the menu off of.
-  const viewMenuButton = (
-    <span ref={menuAnchorRef} className="ap-view-menu">
-      <Tooltip content="Group by">
-        <IconButton
-          size="sm"
-          aria-label="Change agent grouping"
-          onClick={openGroupByMenu}
-        >
-          <FunnelSimple size="1em" />
-        </IconButton>
-      </Tooltip>
-    </span>
+    ctx.workspaces.getState().all,
+    getDoneSince(),
   );
 
   const sections =
-    groupBy === "workspace"
+    mode === "workspace"
       ? buildWorkspaceSections(rows)
       : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
+
+  const staleStartsExpanded = staleSectionStartsExpanded(sections);
+
+  function openRowMenu(row: AgentRow, at: { x: number; y: number }) {
+    const items: MenuEntry[] = [];
+    // Only a row that's actually flagged has anything to acknowledge —
+    // `acknowledge` is a host-side no-op otherwise, and an always-present row
+    // that usually does nothing is worse than one that comes and goes.
+    if (row.section === "ready") {
+      items.push({
+        label: "Mark as seen",
+        run: () => ctx.agents.acknowledge(row.terminalId),
+      });
+      items.push({ type: "separator" });
+    }
+
+    // Rename… and any `terminal/tab` contributions — the same rows the
+    // terminal's own tab offers, rather than a menu that drifts from it.
+    items.push(...ctx.terminals.getTabMenuItems(row.terminalId));
+
+    // The workspace this agent is running in. A submenu rather than inline
+    // because rows span every workspace in the Agents view, so the actions
+    // need to say which one they apply to.
+    const workspaceItems = ctx.workspaces.getWorkspaceMenuItems(row.workspaceId);
+    if (workspaceItems.length > 0) {
+      if (items.length > 0) items.push({ type: "separator" });
+      items.push({ label: row.workspaceName, submenu: workspaceItems });
+    }
+
+    if (items.length > 0) items.push({ type: "separator" });
+    items.push({
+      label: "Close terminal",
+      danger: true,
+      run: () => {
+        void (async () => {
+          const ok = await ctx.ui.confirm({
+            title: "Close terminal?",
+            body: `"${row.title}" and anything running in it will be stopped.`,
+            confirmLabel: "Close",
+            danger: true,
+          });
+          if (ok) ctx.terminals.close(row.terminalId);
+        })();
+      },
+    });
+
+    void ctx.ui.showMenu({ items, at, toggle: false });
+  }
 
   // Only the workspace grouping can produce zero sections (no workspace to
   // group by) — the status grouping always has its three fixed headings, even
@@ -327,7 +340,6 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
   if (sections.length === 0) {
     return (
       <div className="ap-panel">
-        {viewMenuButton}
         <div className="ap-body">
           <div className="ap-empty">
             <p>No agents running.</p>
@@ -339,11 +351,11 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
 
   return (
     <div className="ap-panel">
-      {viewMenuButton}
       <div className="ap-body">
         {sections.map((section) => {
           const isStaleSection = section.key === STALE_DONE_SECTION_KEY;
-          const expanded = !isStaleSection || staleHovered;
+          const expanded =
+            !isStaleSection || staleHovered || staleStartsExpanded;
           return (
             <div
               key={section.key}
@@ -351,6 +363,9 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
               onMouseEnter={isStaleSection ? handleStaleMouseEnter : undefined}
               onMouseLeave={isStaleSection ? handleStaleMouseLeave : undefined}
             >
+              {/* Every heading carries its row count. The status grouping's
+                  three headings are fixed and so are often empty — a `0` says
+                  "nothing ready" in less space than a placeholder row. */}
               <div className="ap-section-title">
                 {isStaleSection && (
                   <CaretRight
@@ -360,24 +375,21 @@ export function AgentsPanel({ ctx }: { ctx: ExtensionContext }) {
                   />
                 )}
                 {section.header}
-                {isStaleSection && !expanded && section.rows.length > 0 && (
-                  <Badge className="ap-section-count">{section.rows.length}</Badge>
-                )}
+                <Badge size="sm" className="ap-section-count">
+                  {section.rows.length}
+                </Badge>
               </div>
               {expanded &&
-                (section.rows.length === 0 ? (
-                  <div className="ap-section-empty">—</div>
-                ) : (
-                  section.rows.map((row) => (
-                    <AgentRowItem
-                      key={row.terminalId}
-                      row={row}
-                      subtitle={section.subtitle(row)}
-                      active={row.terminalId === activeTerminalId}
-                      iconMode={iconMode}
-                      onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
-                    />
-                  ))
+                section.rows.map((row) => (
+                  <AgentRowItem
+                    key={row.terminalId}
+                    row={row}
+                    subtitle={section.subtitle(row)}
+                    active={row.terminalId === activeTerminalId}
+                    iconMode={iconMode}
+                    onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
+                    onContextMenu={openRowMenu}
+                  />
                 ))}
             </div>
           );
