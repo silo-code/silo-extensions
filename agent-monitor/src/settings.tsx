@@ -11,6 +11,7 @@ import {
   Input,
   RadioCard,
   RadioGroup,
+  Section,
   Select,
   SettingRow,
   Switch,
@@ -72,9 +73,9 @@ export function AgentMonitorSettingsPage() {
       <div className="am-header">
         <h2>Agent Monitor</h2>
       </div>
-      <div className="am-body">
-        <div className="am-section">
-          <span className="am-section-title">
+      <div className="am-body silo-scroll">
+        <div className="am-intro">
+          <span className="am-intro-title">
             When you view a finished agent's terminal
           </span>
           <span className="am-hint">
@@ -100,8 +101,7 @@ export function AgentMonitorSettingsPage() {
             </RadioGroup>
           </div>
         </div>
-        <div className="am-section">
-          <span className="am-section-title">Agent icons</span>
+        <Section label="Agent icons">
           <SettingRow label="Show agent app icons in the agent views">
             <Select
               value={s.iconMode}
@@ -117,9 +117,8 @@ export function AgentMonitorSettingsPage() {
               ))}
             </Select>
           </SettingRow>
-        </div>
-        <div className="am-section">
-          <span className="am-section-title">Agent views</span>
+        </Section>
+        <Section label="Agent views">
           <SettingRow
             label="Set old finished agents aside"
             hint="Keeps Done focused on recent finishes — older ones collapse into their own section that expands on hover."
@@ -150,9 +149,8 @@ export function AgentMonitorSettingsPage() {
               </div>
             </SettingRow>
           )}
-        </div>
-        <div className="am-section">
-          <span className="am-section-title">Sound</span>
+        </Section>
+        <Section label="Sound">
           <span className="am-hint">
             Play a sound whenever an agent stops working, whether or not
             you're watching its terminal.
@@ -188,7 +186,7 @@ export function AgentMonitorSettingsPage() {
               </IconButton>
             </div>
           </SettingRow>
-        </div>
+        </Section>
       </div>
     </div>
   );
