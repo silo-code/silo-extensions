@@ -46,34 +46,27 @@
   color: var(--silo-color-text-hi);
 }
 /* Scrolls independently of the header once the sections (focus behavior,
-   agent icons, sound) run taller than the settings pane. */
+   agent icons, sound) run taller than the settings pane. Scroll behavior and
+   scrollbar appearance come from the host's `.silo-scroll` class (applied in
+   settings.tsx) — no overflow/scrollbar rules needed here. */
 .am-body {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
 }
-.am-section {
+/* The intro block above the first proper Section — a page-level question
+   ("When you view a finished agent's terminal"), not a labeled group, so it
+   keeps its own larger, non-uppercase title instead of the SDK Section
+   label. */
+.am-intro {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-width: 560px;
 }
-/* A divider between sections (not before the first, which already sits right
-   under the page's own "Agent Monitor" heading) — the small-caps SDK Section
-   label read as too low-contrast to register as a break on its own,
-   especially over "Agent icons", which has no hint paragraph under it. */
-.am-section + .am-section {
-  padding-top: 12px;
-  border-top: 1px solid var(--silo-color-border-strong);
-}
-.am-section-title {
+.am-intro-title {
   font-weight: 600;
-  color: var(--silo-color-text-hi);
-}
-.am-label {
   color: var(--silo-color-text-hi);
 }
 .am-hint {
