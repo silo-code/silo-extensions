@@ -211,6 +211,53 @@ describe("agent-monitor iconMode setting", () => {
   });
 });
 
+describe("agent-monitor groupBy setting", () => {
+  beforeEach(() => {
+    clearSettingsListeners();
+    initSettings(fakeStorage({ agentsGroupBy: "status" })).dispose();
+  });
+
+  it("defaults to \"status\" with empty storage", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("status");
+    sub.dispose();
+  });
+
+  it("hydrates a persisted \"workspace\" value (restart case)", () => {
+    const storage = fakeStorage({ agentsGroupBy: "workspace" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("workspace");
+    sub.dispose();
+  });
+
+  it("coerces an invalid persisted value to the default", () => {
+    const storage = fakeStorage({ agentsGroupBy: "by-project" });
+    const sub = initSettings(storage);
+    expect(settingsService.getState().groupBy).toBe("status");
+    sub.dispose();
+  });
+
+  it("persists a change through settingsService.set", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    settingsService.set({ groupBy: "workspace" });
+    expect(storage.get<string>("agentsGroupBy")).toBe("workspace");
+    sub.dispose();
+  });
+
+  it("notifies subscribers so the open view regroups", () => {
+    const storage = fakeStorage();
+    const sub = initSettings(storage);
+    const seen: string[] = [];
+    const listener = settingsService.subscribe((s) => seen.push(s.groupBy));
+    settingsService.set({ groupBy: "workspace" });
+    expect(seen).toEqual(["workspace"]);
+    listener.dispose();
+    sub.dispose();
+  });
+});
+
 describe("agent-monitor staleDoneEnabled setting", () => {
   beforeEach(() => {
     clearSettingsListeners();
