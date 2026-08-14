@@ -4,6 +4,7 @@ import type {
   ExtensionContext,
   WorkspaceStatusRow,
 } from "@silo-code/sdk";
+import { Robot } from "@phosphor-icons/react";
 import {
   deriveStatusRow,
   deriveTab,
@@ -205,31 +206,62 @@ function activate(ctx: ExtensionContext) {
     }),
   );
 
-  // Two views *of the Navigator*, not a panel of their own (RFC 0023). A second
+  // A view *of the Navigator*, not a panel of its own (RFC 0023). A second
   // side panel would be a second navigator sitting beside the first, which
   // leaves no rule for which one to trust — and side-panel state is
   // per-workspace, so which navigator you were looking at could change as you
-  // switched workspaces. As views, agents are another way to read the one
-  // panel. Both read `ctx.agents`/`ctx.workspaces` directly rather than the
-  // `agents` map above, since they need their own re-render subscriptions.
+  // switched workspaces. As a view, agents are another way to read the one
+  // panel. It reads `ctx.agents`/`ctx.workspaces` directly rather than the
+  // `agents` map above, since it needs its own re-render subscriptions.
   // registerNavigatorView is auto-tracked on ctx.subscriptions, so no push.
+  //
+  // One view, not two. Status and workspace grouping were separate registered
+  // views while the Navigator's selector was a dropdown; now that every view
+  // is listed in the panel, two entries for one list cost a permanent row and
+  // made "which Agents view am I in" a question worth asking. Grouping is a
+  // preference of this view (see `groupBy` in ./settings-store), flipped from
+  // the Group by control below.
+  //
+  // The id keeps its by-status suffix: it's the persisted key for "which view
+  // is active", so renaming it would drop the choice of everyone already on
+  // it. `silo.agent-monitor.by-workspace` is retired — anyone parked on it
+  // falls back to the Workspaces view once, and picks Agents out of the
+  // Navigator's list to come back.
   ctx.registerNavigatorView({
     id: "silo.agent-monitor.by-status",
-    // Id keeps the by-status suffix — it's the persisted key for "which view
-    // is active", so renaming it would drop the user's choice.
     title: "Agents",
     order: 1,
-    component: ({ active }) => (
-      <AgentsPanel ctx={ctx} mode="status" active={active} />
-    ),
+    icon: <Robot size={16} weight="duotone" />,
+    component: ({ active }) => <AgentsPanel ctx={ctx} active={active} />,
   });
-  ctx.registerNavigatorView({
-    id: "silo.agent-monitor.by-workspace",
-    title: "Agents by workspace",
-    order: 2,
-    component: ({ active }) => (
-      <AgentsPanel ctx={ctx} mode="workspace" active={active} />
-    ),
+
+  // Grouping lives in the Navigator header rather than inside the list: it's
+  // chrome for the view, and putting it here gets the host's button + dropdown
+  // chrome, `when` scoping, and menu anchoring for free instead of spending a
+  // row of the panel on a control that's flipped occasionally.
+  ctx.registerToolbarItem({
+    id: "silo.agent-monitor.group-by",
+    surface: "navigator",
+    title: "Group by",
+    tooltip: "Group agents by status or workspace",
+    order: -1,
+    when: (_keys, target) => target.viewId === "silo.agent-monitor.by-status",
+    menu: () => {
+      const { groupBy } = settingsService.getState();
+      return [
+        { type: "header", label: "Group by" },
+        {
+          label: "Status",
+          checked: groupBy === "status",
+          run: () => settingsService.set({ groupBy: "status" }),
+        },
+        {
+          label: "Workspace",
+          checked: groupBy === "workspace",
+          run: () => settingsService.set({ groupBy: "workspace" }),
+        },
+      ];
+    },
   });
 
   injectStyles();

@@ -36,10 +36,6 @@ const SECTION_LABELS: Record<AgentSection, string> = {
   done: "Idle",
 };
 
-/** Which axis the panel sections its rows by — one registered Navigator view
- * per value (see `registerNavigatorView` in index.tsx). */
-export type GroupMode = "status" | "workspace";
-
 /** A section as the render below wants it, regardless of which grouping
  * produced it: a heading, its rows, and where each row's subtitle (the line
  * under the title) comes from — whichever axis isn't already the heading. */
@@ -193,11 +189,9 @@ function AgentRowItem({
 
 export function AgentsPanel({
   ctx,
-  mode,
   active,
 }: {
   ctx: ExtensionContext;
-  mode: GroupMode;
   /** False while this view is mounted but off screen — the 1s elapsed-time
    * tick is the only per-second work here, so parking it is the whole win. */
   active: boolean;
@@ -229,7 +223,10 @@ export function AgentsPanel({
     [ctx.terminals],
   );
 
-  const { iconMode, staleDoneEnabled, staleDoneHours } =
+  // `groupBy` is a setting rather than a prop now: the two groupings were two
+  // registered Navigator views until SDK 0.34, and are one view with a
+  // "Group by" header control since.
+  const { iconMode, groupBy, staleDoneEnabled, staleDoneHours } =
     useServiceState(settingsService);
 
   // The "N+ hours old" section starts collapsed and reveals its rows only
@@ -282,7 +279,7 @@ export function AgentsPanel({
   );
 
   const sections =
-    mode === "workspace"
+    groupBy === "workspace"
       ? buildWorkspaceSections(rows)
       : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
 
