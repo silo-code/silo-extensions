@@ -188,12 +188,20 @@ function activate(ctx: ExtensionContext) {
     }),
   );
 
+  let lastGroupBy = settingsService.getState().groupBy;
   ctx.subscriptions.push(
-    settingsService.subscribe(() => {
+    settingsService.subscribe((s) => {
       // Toggling "hide focused row" changes which rows render.
       ctx.workspaces.invalidateStatus();
       // Toggling iconMode changes what silo.agent-monitor.tab-icon returns.
       ctx.terminals.invalidateTabAdornments();
+      // The Group by control's closed-state label names the active mode, so
+      // it has to be re-registered (title isn't a function like when/checked)
+      // whenever the mode actually flips — not on every unrelated setting.
+      if (s.groupBy !== lastGroupBy) {
+        lastGroupBy = s.groupBy;
+        registerGroupByToolbarItem();
+      }
     }),
   );
 
@@ -239,30 +247,42 @@ function activate(ctx: ExtensionContext) {
   // chrome for the view, and putting it here gets the host's button + dropdown
   // chrome, `when` scoping, and menu anchoring for free instead of spending a
   // row of the panel on a control that's flipped occasionally.
-  ctx.registerToolbarItem({
-    id: "silo.agent-monitor.group-by",
-    surface: "navigator",
-    title: "Group by",
-    tooltip: "Group agents by status or workspace",
-    order: -1,
-    when: (_keys, target) => target.viewId === "silo.agent-monitor.by-status",
-    menu: () => {
-      const { groupBy } = settingsService.getState();
-      return [
-        { type: "header", label: "Group by" },
-        {
-          label: "Status",
-          checked: groupBy === "status",
-          run: () => settingsService.set({ groupBy: "status" }),
-        },
-        {
-          label: "Workspace",
-          checked: groupBy === "workspace",
-          run: () => settingsService.set({ groupBy: "workspace" }),
-        },
-      ];
-    },
-  });
+  //
+  // `title` is a plain string in the SDK, not a function like `when`/`checked`,
+  // so the closed-state label can't just read `groupBy` live — the control is
+  // re-registered under the same id whenever the mode changes (see the
+  // settingsService subscriber above) to keep the label in sync.
+  let groupByToolbarItem: { dispose(): void } | undefined;
+  function registerGroupByToolbarItem() {
+    groupByToolbarItem?.dispose();
+    const { groupBy } = settingsService.getState();
+    groupByToolbarItem = ctx.registerToolbarItem({
+      id: "silo.agent-monitor.group-by",
+      surface: "navigator",
+      title: groupBy === "workspace" ? "By workspace" : "By status",
+      tooltip: "Group agents by status or workspace",
+      order: -1,
+      when: (_keys, target) => target.viewId === "silo.agent-monitor.by-status",
+      menu: () => {
+        const { groupBy } = settingsService.getState();
+        return [
+          { type: "header", label: "Group by" },
+          {
+            label: "Status",
+            checked: groupBy === "status",
+            run: () => settingsService.set({ groupBy: "status" }),
+          },
+          {
+            label: "Workspace",
+            checked: groupBy === "workspace",
+            run: () => settingsService.set({ groupBy: "workspace" }),
+          },
+        ];
+      },
+    });
+  }
+  registerGroupByToolbarItem();
+  ctx.subscriptions.push({ dispose: () => groupByToolbarItem?.dispose() });
 
   injectStyles();
 }
