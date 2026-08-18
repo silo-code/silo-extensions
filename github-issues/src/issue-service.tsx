@@ -31,12 +31,12 @@ const INACTIVE_POLL_MS = 10 * 60_000;
 export const AUTH_RETRY_MINUTES = AUTH_RETRY_INTERVAL_MS / 60_000;
 
 // Ask `silo.git` for the folder's remotes rather than shelling out ourselves.
-// `remotes` landed in Silo 0.49 / @silo-code/git-api 0.4.0, so it's
+// `remotes` landed in Silo 0.50 / @silo-code/git-api 0.4.0, so it's
 // feature-detected: `silo.engine` is only advisory (the user can install past
 // the warning, and the update prompt doesn't check it at all), and this
 // extension works fine on an older host — so it keeps the `git config` path
 // as a fallback instead of failing with `api.remotes is not a function`.
-// Drop the fallback once 0.49 is the supported floor.
+// Drop the fallback once 0.50 is the supported floor.
 async function resolveRemote(
   ctx: ExtensionContext,
   folder: string,
@@ -62,7 +62,7 @@ async function resolveRemote(
   return resolveRemoteViaExec(ctx, folder);
 }
 
-/** Pre-0.49 fallback for {@link resolveRemote}. */
+/** Pre-0.50 fallback for {@link resolveRemote}. */
 async function resolveRemoteViaExec(
   ctx: ExtensionContext,
   folder: string,
