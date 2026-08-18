@@ -32,7 +32,6 @@ export interface RepoInfo {
 /** One workspace folder (or worktree) that resolved to this remote. */
 export interface CheckoutFolder {
   path: string;
-  branch: string;
 }
 
 export type WorkspacePrError =
