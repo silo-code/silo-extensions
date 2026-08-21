@@ -168,8 +168,15 @@ export function isAtLeastHoursOld(isoDate: string, hours: number): boolean {
  * time means a more recent `since`. (Every row normally carries one once
  * `buildAgentRows` is given a `doneSince` map; the alphabetical-by-title
  * fallback only matters for a caller that omits it.)
+ *
+ * Ordering is driven purely by the fixed ISO `since` string, never by an
+ * elapsed duration computed against `Date.now()` — so a row's position never
+ * shifts on its own as time passes between renders, only the elapsed label
+ * next to it does. Exported so the "Recent" grouping (`buildAgeSections` in
+ * `agents-panel.tsx`) can sort its flat, cross-section list with the same
+ * jitter-free rule instead of drifting from this one.
  */
-function compareRows(x: AgentRow, y: AgentRow): number {
+export function compareRows(x: AgentRow, y: AgentRow): number {
   if (x.since && y.since) return y.since.localeCompare(x.since);
   if (x.since) return -1;
   if (y.since) return 1;
@@ -236,4 +243,52 @@ export function groupAgentRowsByWorkspace(
   }
   groups.sort((a, b) => a.workspaceName.localeCompare(b.workspaceName));
   return groups;
+}
+
+/**
+ * Move the item at `from` so it sits at `to`, clamping both into range. The
+ * pure array-splice math behind the "Recent" view's drag-to-reorder, kept
+ * free of any DOM/React drag machinery so it's trivial to unit test on its
+ * own (see `manual-order.test.ts`).
+ */
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  const next = items.slice();
+  if (next.length === 0) return next;
+  const clampedFrom = Math.max(0, Math.min(from, next.length - 1));
+  const [moved] = next.splice(clampedFrom, 1);
+  const clampedTo = Math.max(0, Math.min(to, next.length));
+  next.splice(clampedTo, 0, moved);
+  return next;
+}
+
+/**
+ * Final row order for the "Recent" view's flat, non-stale section. A row the
+ * user has never dragged sorts by {@link compareRows} (most recent first)
+ * and floats above every dragged row — a freshly-started or freshly-finished
+ * agent should read as "new" without the user having to go drag it there
+ * themselves. A row present in `manualOrder` (the id sequence a previous drag
+ * left behind, persisted by `./manual-order`) instead keeps that exact
+ * relative order, below the undragged rows.
+ *
+ * Nothing here prunes `manualOrder` — an id that's dropped out of `rows`
+ * entirely (terminal closed, or the row aged into the stale section) simply
+ * has no matching row to place, so it's silently inert. `agents-panel.tsx`
+ * is the one persisting a trimmed `manualOrder` back once that happens, so
+ * storage doesn't accumulate ids forever.
+ */
+export function orderAgeRows(
+  rows: readonly AgentRow[],
+  manualOrder: readonly string[],
+): AgentRow[] {
+  const manualIndex = new Map(manualOrder.map((id, i) => [id, i]));
+  const undragged: AgentRow[] = [];
+  const dragged: AgentRow[] = [];
+  for (const row of rows) {
+    (manualIndex.has(row.terminalId) ? dragged : undragged).push(row);
+  }
+  undragged.sort(compareRows);
+  dragged.sort(
+    (a, b) => manualIndex.get(a.terminalId)! - manualIndex.get(b.terminalId)!,
+  );
+  return [...undragged, ...dragged];
 }

@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { CaretRight } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { CaretRight, DotsSixVertical } from "@phosphor-icons/react";
 import type { Activity, ExtensionContext, MenuEntry } from "@silo-code/sdk";
 import { ActivityGlyph, Badge, useServiceState } from "@silo-code/sdk";
 import {
   buildAgentRows,
+  compareRows,
   formatElapsed,
   groupAgentRows,
   groupAgentRowsByWorkspace,
   isAtLeastHoursOld,
+  moveItem,
+  orderAgeRows,
   SECTION_ORDER,
   type AgentRow,
   type AgentSection,
 } from "./agents-panel-view";
 import { getDoneSince } from "./done-since";
+import { manualOrderService } from "./manual-order";
 import { AgentIconGlyph } from "./AgentIconGlyph";
 import { settingsService, type IconMode } from "./settings-store";
 
@@ -120,6 +124,59 @@ export function buildWorkspaceSections(rows: readonly AgentRow[]): PanelSection[
   }));
 }
 
+/**
+ * The "Recent" view (internal `groupBy` value `"age"`): unlike status or
+ * workspace grouping, every row sits in one flat, unheaded-by-status list —
+ * no status or workspace bucketing above it. Rows the user hasn't
+ * drag-reordered sort by {@link compareRows} (most recently changed first);
+ * `manualOrder` (see `./manual-order`) carries whatever order a drag left
+ * behind for the rest — see {@link orderAgeRows} for exactly how the two mix.
+ * The one exception, drag or no drag, is the same "N+ hours old" split
+ * `buildStatusSections` uses: a done row that's sat past `staleDoneHours`
+ * still peels off into its own collapsible heading (tagged with the same
+ * `STALE_DONE_SECTION_KEY`, so the panel's existing hover-to-reveal behavior
+ * applies unchanged, and it stays un-reorderable — see `agents-panel.tsx`'s
+ * render, which only wires drag handlers for `key === "age"`), since burying
+ * genuinely stale rows among fresh ones defeats the point of this view.
+ *
+ * Because {@link compareRows} orders by the fixed `since` timestamp rather
+ * than an elapsed duration recomputed on every render, an undragged row's
+ * position never shifts on its own as time passes — only its displayed
+ * elapsed label does — so a row stays put unless its actual state changes or
+ * the user drags it.
+ */
+export function buildAgeSections(
+  rows: readonly AgentRow[],
+  staleDoneEnabled: boolean,
+  staleDoneHours: number,
+  manualOrder: readonly string[],
+): PanelSection[] {
+  const subtitle = (row: AgentRow) => `${SECTION_LABELS[row.section]} · ${row.workspaceName}`;
+  const isStale = (row: AgentRow) =>
+    staleDoneEnabled && row.section === "done" && isStaleDone(row, staleDoneHours);
+  const activeRows = orderAgeRows(rows.filter((row) => !isStale(row)), manualOrder);
+  // No heading: the view's own title already says "Agents" — a heading here
+  // would just restate it, unlike the by-status/by-workspace views where the
+  // heading carries real information (which status, which workspace).
+  const ageSection: PanelSection = {
+    key: "age",
+    header: "",
+    rows: activeRows,
+    subtitle,
+  };
+  if (!staleDoneEnabled) return [ageSection];
+  return [
+    ageSection,
+    {
+      key: STALE_DONE_SECTION_KEY,
+      header: `${staleDoneHours}+ hours old`,
+      rows: rows.filter(isStale).slice().sort(compareRows),
+      subtitle,
+      collapsible: true,
+    },
+  ];
+}
+
 /** The glyph for a row's section — "done" still distinguishes error/dead from
  * a plain acknowledged-idle finish (which gets the neutral gray dot). */
 function glyphFor(row: AgentRow): Activity | undefined {
@@ -135,6 +192,18 @@ function glyphFor(row: AgentRow): Activity | undefined {
   }
 }
 
+/** Drag affordance for a row, wired only in the "Recent" view's flat,
+ * non-stale section (see `AgentsPanel`'s render — the stale section and the
+ * status/workspace views never pass this). */
+interface RowDrag {
+  dragging: boolean;
+  dropTarget: boolean;
+  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+}
+
 function AgentRowItem({
   row,
   subtitle,
@@ -142,6 +211,7 @@ function AgentRowItem({
   iconMode,
   onFocus,
   onContextMenu,
+  drag,
 }: {
   row: AgentRow;
   /** Workspace name in the "by status" view; status label in the "by
@@ -151,13 +221,23 @@ function AgentRowItem({
   iconMode: IconMode;
   onFocus: (terminalId: string) => void;
   onContextMenu: (row: AgentRow, at: { x: number; y: number }) => void;
+  drag?: RowDrag;
 }) {
+  const classNames = ["ap-row"];
+  if (active) classNames.push("active");
+  if (drag?.dragging) classNames.push("ap-row-dragging");
+  if (drag?.dropTarget) classNames.push("ap-row-drop-target");
   return (
     <div
-      className={active ? "ap-row active" : "ap-row"}
+      className={classNames.join(" ")}
       role="option"
       aria-selected={active}
       tabIndex={0}
+      draggable={drag !== undefined}
+      onDragStart={drag?.onDragStart}
+      onDragOver={drag?.onDragOver}
+      onDrop={drag?.onDrop}
+      onDragEnd={drag?.onDragEnd}
       onClick={() => onFocus(row.terminalId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onFocus(row.terminalId);
@@ -183,6 +263,16 @@ function AgentRowItem({
           )}
         </span>
       </div>
+      {/* Hover-only affordance on the row's right edge — drag itself works
+          from anywhere on the row (native HTML5 drag needs `draggable` on a
+          real element, and restricting the drag source to just this icon
+          would drag a tiny glyph instead of the row), this is purely the
+          visual cue that the row is draggable. */}
+      {drag && (
+        <span className="ap-row-grip" aria-hidden title="Drag to reorder">
+          <DotsSixVertical size={14} weight="bold" />
+        </span>
+      )}
     </div>
   );
 }
@@ -225,9 +315,72 @@ export function AgentsPanel({
 
   // `groupBy` is a setting rather than a prop now: the two groupings were two
   // registered Navigator views until SDK 0.34, and are one view with a
-  // "Group by" header control since.
+  // "View by" header control since.
   const { iconMode, groupBy, staleDoneEnabled, staleDoneHours } =
     useServiceState(settingsService);
+
+  // The "Recent" view's persisted drag order (see ./manual-order) — reactive
+  // for the same reason `groupBy` above is: a drag anywhere in this
+  // component has to show up immediately, not just on the next unrelated
+  // re-render.
+  const manualOrder = useServiceState(manualOrderService);
+
+  // Drag-to-reorder state for the "Recent" view's flat section only — a ref
+  // for the dragged index (native `dragstart` fires outside React's render
+  // cycle, so nothing needs to *rerender* just because it changed) and state
+  // for the hovered drop target (which does need to rerender, to move the
+  // drop-target styling as the drag crosses rows). Mirrors
+  // `system-monitor`'s `DraggableSection`.
+  const dragIndexRef = useRef<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  function handleAgeDragStart(e: DragEvent<HTMLDivElement>, index: number, terminalId: string) {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", terminalId);
+    // WebKit's *implicit* drag image (the one it builds on its own from a
+    // `draggable` element with no explicit `setDragImage` call) only
+    // reliably rasterizes simple children here — the status dot renders, but
+    // the flex/ellipsis-heavy text column and the row's own background come
+    // out blank. Calling `setDragImage` explicitly with the row's own node
+    // forces WebKit through its *explicit* snapshot path instead, which
+    // paints the row as it actually looks. The offset keeps the image
+    // anchored under the cursor at the same point the user grabbed it,
+    // rather than snapping to the row's top-left corner.
+    const rowEl = e.currentTarget;
+    const rect = rowEl.getBoundingClientRect();
+    e.dataTransfer.setDragImage(rowEl, e.clientX - rect.left, e.clientY - rect.top);
+    dragIndexRef.current = index;
+  }
+  function handleAgeDragOver(e: DragEvent<HTMLDivElement>, index: number) {
+    e.preventDefault();
+    if (
+      dragIndexRef.current !== null &&
+      dragIndexRef.current !== index &&
+      dropTargetIndex !== index
+    ) {
+      setDropTargetIndex(index);
+    }
+  }
+  function handleAgeDrop(index: number, sectionRows: readonly AgentRow[]) {
+    const from = dragIndexRef.current;
+    if (from !== null && from !== index) {
+      // The whole visible order becomes the new manual order, not just the
+      // two swapped rows — so a row that was sorting purely by recency (not
+      // yet in `manualOrder`) gets carried into it too, exactly where it
+      // was sitting when the drag happened.
+      manualOrderService.set(
+        moveItem(
+          sectionRows.map((r) => r.terminalId),
+          from,
+          index,
+        ),
+      );
+    }
+    resetAgeDrag();
+  }
+  function resetAgeDrag() {
+    dragIndexRef.current = null;
+    setDropTargetIndex(null);
+  }
 
   // The "N+ hours old" section starts collapsed and reveals its rows only
   // while the mouse is over it — attached to the section's own container
@@ -281,9 +434,26 @@ export function AgentsPanel({
   const sections =
     groupBy === "workspace"
       ? buildWorkspaceSections(rows)
-      : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
+      : groupBy === "age"
+        ? buildAgeSections(rows, staleDoneEnabled, staleDoneHours, manualOrder)
+        : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
 
   const staleStartsExpanded = staleSectionStartsExpanded(sections);
+
+  // Trim `manualOrder` once a dragged row drops out of the flat section for
+  // good (terminal closed, or it aged into "N+ hours old") — otherwise
+  // storage would carry that id forever. `orderAgeRows` already treats a
+  // manual-order id with no matching row as inert, so this is pure
+  // housekeeping, not correctness: it only ever removes ids, never changes
+  // display order.
+  useEffect(() => {
+    if (groupBy !== "age") return;
+    const flatIds = new Set(
+      sections.find((s) => s.key === "age")?.rows.map((r) => r.terminalId),
+    );
+    const trimmed = manualOrder.filter((id) => flatIds.has(id));
+    if (trimmed.length !== manualOrder.length) manualOrderService.set(trimmed);
+  });
 
   function openRowMenu(row: AgentRow, at: { x: number; y: number }) {
     const items: MenuEntry[] = [];
@@ -351,6 +521,7 @@ export function AgentsPanel({
       <div className="ap-body">
         {sections.map((section) => {
           const isStaleSection = section.key === STALE_DONE_SECTION_KEY;
+          const isDraggableSection = section.key === "age";
           const expanded =
             !isStaleSection || staleHovered || staleStartsExpanded;
           return (
@@ -359,25 +530,31 @@ export function AgentsPanel({
               className="ap-section"
               onMouseEnter={isStaleSection ? handleStaleMouseEnter : undefined}
               onMouseLeave={isStaleSection ? handleStaleMouseLeave : undefined}
+              onDragLeave={isDraggableSection ? () => setDropTargetIndex(null) : undefined}
             >
               {/* Every heading carries its row count. The status grouping's
                   three headings are fixed and so are often empty — a `0` says
-                  "nothing ready" in less space than a placeholder row. */}
-              <div className="ap-section-title">
-                {isStaleSection && (
-                  <CaretRight
-                    size="0.7em"
-                    weight="bold"
-                    className={expanded ? "ap-section-caret expanded" : "ap-section-caret"}
-                  />
-                )}
-                {section.header}
-                <Badge size="sm" className="ap-section-count">
-                  {section.rows.length}
-                </Badge>
-              </div>
+                  "nothing ready" in less space than a placeholder row. An
+                  empty `header` (the "Recent" view's flat list) skips the
+                  heading row entirely — "Agents" would only restate the
+                  view's own title. */}
+              {section.header !== "" && (
+                <div className="ap-section-title">
+                  {isStaleSection && (
+                    <CaretRight
+                      size="0.7em"
+                      weight="bold"
+                      className={expanded ? "ap-section-caret expanded" : "ap-section-caret"}
+                    />
+                  )}
+                  {section.header}
+                  <Badge size="sm" className="ap-section-count">
+                    {section.rows.length}
+                  </Badge>
+                </div>
+              )}
               {expanded &&
-                section.rows.map((row) => (
+                section.rows.map((row, i) => (
                   <AgentRowItem
                     key={row.terminalId}
                     row={row}
@@ -386,6 +563,18 @@ export function AgentsPanel({
                     iconMode={iconMode}
                     onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
                     onContextMenu={openRowMenu}
+                    drag={
+                      isDraggableSection
+                        ? {
+                            dragging: dragIndexRef.current === i,
+                            dropTarget: dropTargetIndex === i,
+                            onDragStart: (e) => handleAgeDragStart(e, i, row.terminalId),
+                            onDragOver: (e) => handleAgeDragOver(e, i),
+                            onDrop: () => handleAgeDrop(i, section.rows),
+                            onDragEnd: resetAgeDrag,
+                          }
+                        : undefined
+                    }
                   />
                 ))}
             </div>
