@@ -235,6 +235,10 @@
   color: var(--silo-color-text-lo);
   opacity: 0;
   cursor: grab;
+  /* The drag gesture starts here (pointerdown) rather than on the row as a
+     whole — without this, touch/trackpad input can try to scroll or
+     gesture-navigate before our own pointermove handler gets a chance. */
+  touch-action: none;
 }
 .ap-row:hover .ap-row-grip {
   opacity: 1;
@@ -245,8 +249,42 @@
 .ap-row-dragging {
   opacity: 0.4;
 }
-.ap-row-drop-target {
-  background: var(--silo-color-bg-active);
+/* Square corners deliberately, on both — a rounded border reads as another
+   row's outline; a plain straight rule reads as an insertion point.
+   `-before` is the common case (every insertion point except "at the very
+   end" has a next row to draw it above); `-after` only ever applies to the
+   section's last row, for that one remaining case — see the `insertAfter`
+   comment on `RowDrag` in agents-panel.tsx. */
+.ap-row-drop-target-before {
+  border-radius: 0;
   border-top: 2px solid var(--silo-color-accent);
   margin-top: -1px;
+}
+.ap-row-drop-target-after {
+  border-radius: 0;
+  border-bottom: 2px solid var(--silo-color-accent);
+  margin-bottom: -1px;
+}
+/* The floating "card" that follows the cursor during a drag — a cloned copy
+   of the real row (see `handleAgePointerDown` in agents-panel.tsx), repositioned
+   on every pointermove via inline `left`/`top` rather than a CSS transition,
+   since it needs to track the cursor exactly, not ease toward it. Needs its
+   own solid background because `.ap-row` itself only paints one on
+   hover/active — floating over the panel with no fill would look like
+   see-through text rather than a lifted card. `pointer-events: none` keeps
+   it out of the way of the row-rect hit-testing that drives the drop-target
+   detection. */
+.ap-row-ghost {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
+  background: var(--silo-color-bg);
+  border-radius: var(--silo-radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0.5;
+  cursor: grabbing;
+}
+.ap-row-ghost .ap-row-grip {
+  opacity: 1;
 }

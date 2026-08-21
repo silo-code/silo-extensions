@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { CaretRight, DotsSixVertical } from "@phosphor-icons/react";
 import type { Activity, ExtensionContext, MenuEntry } from "@silo-code/sdk";
 import { ActivityGlyph, Badge, useServiceState } from "@silo-code/sdk";
@@ -194,14 +194,24 @@ function glyphFor(row: AgentRow): Activity | undefined {
 
 /** Drag affordance for a row, wired only in the "Recent" view's flat,
  * non-stale section (see `AgentsPanel`'s render — the stale section and the
- * status/workspace views never pass this). */
+ * status/workspace views never pass this). Pointer-based rather than native
+ * HTML5 drag-and-drop — see the comment on `handleAgePointerDown` in
+ * `AgentsPanel` for why. */
 interface RowDrag {
+  /** This row's position within the flat section — both for the checks
+   * below and as the `data-drag-index` `AgentsPanel` uses to scope its
+   * pointermove rect-measuring to just the draggable rows. */
+  index: number;
   dragging: boolean;
-  dropTarget: boolean;
-  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
-  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
-  onDrop: () => void;
-  onDragEnd: () => void;
+  /** The drop indicator goes on whichever row edge is adjacent to the
+   * insertion point: `insertBefore` draws it above this row (the common
+   * case — every insertion point except the very last has a "next row" to
+   * anchor to), `insertAfter` draws it below this row instead, and only the
+   * section's last row ever gets it (there's no row after the very last
+   * insertion point to be "before"). */
+  insertBefore: boolean;
+  insertAfter: boolean;
+  onPointerDown: (e: ReactPointerEvent<HTMLSpanElement>) => void;
 }
 
 function AgentRowItem({
@@ -226,18 +236,15 @@ function AgentRowItem({
   const classNames = ["ap-row"];
   if (active) classNames.push("active");
   if (drag?.dragging) classNames.push("ap-row-dragging");
-  if (drag?.dropTarget) classNames.push("ap-row-drop-target");
+  if (drag?.insertBefore) classNames.push("ap-row-drop-target-before");
+  if (drag?.insertAfter) classNames.push("ap-row-drop-target-after");
   return (
     <div
       className={classNames.join(" ")}
       role="option"
       aria-selected={active}
       tabIndex={0}
-      draggable={drag !== undefined}
-      onDragStart={drag?.onDragStart}
-      onDragOver={drag?.onDragOver}
-      onDrop={drag?.onDrop}
-      onDragEnd={drag?.onDragEnd}
+      data-drag-index={drag?.index}
       onClick={() => onFocus(row.terminalId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onFocus(row.terminalId);
@@ -263,13 +270,18 @@ function AgentRowItem({
           )}
         </span>
       </div>
-      {/* Hover-only affordance on the row's right edge — drag itself works
-          from anywhere on the row (native HTML5 drag needs `draggable` on a
-          real element, and restricting the drag source to just this icon
-          would drag a tiny glyph instead of the row), this is purely the
-          visual cue that the row is draggable. */}
+      {/* Hover-only affordance on the row's right edge — and, since this is a
+          pointer-driven drag rather than native HTML5 drag-and-drop, the
+          actual drag gesture starts here too (not from anywhere on the row):
+          full control over the pointer means there's no need for the old
+          "draggable has to be the whole row or the drag image is a tiny
+          glyph" tradeoff. */}
       {drag && (
-        <span className="ap-row-grip" aria-hidden title="Drag to reorder">
+        <span
+          className="ap-row-grip"
+          title="Drag to reorder"
+          onPointerDown={drag.onPointerDown}
+        >
           <DotsSixVertical size={14} weight="bold" />
         </span>
       )}
@@ -325,61 +337,143 @@ export function AgentsPanel({
   // re-render.
   const manualOrder = useServiceState(manualOrderService);
 
-  // Drag-to-reorder state for the "Recent" view's flat section only — a ref
-  // for the dragged index (native `dragstart` fires outside React's render
-  // cycle, so nothing needs to *rerender* just because it changed) and state
-  // for the hovered drop target (which does need to rerender, to move the
-  // drop-target styling as the drag crosses rows). Mirrors
-  // `system-monitor`'s `DraggableSection`.
+  // Drag-to-reorder for the "Recent" view's flat section only, driven by raw
+  // Pointer Events rather than native HTML5 drag-and-drop. Native drag was
+  // the first cut here, but WebKit (Silo's Tauri webview) only rasterizes
+  // *some* of a row into its automatic drag image — the status dot came
+  // through, the flex/ellipsis-heavy text column and the row's own
+  // background didn't — and that held even after switching to an explicit
+  // `setDragImage` call. Pointer Events sidestep the browser's drag-image
+  // machinery entirely: `handleAgePointerDown` below clones the row into a
+  // plain `position: fixed` element we move ourselves on every
+  // `pointermove`, so what follows the cursor is guaranteed to be a real,
+  // fully-painted copy of the row, not a browser-generated snapshot.
+  //
+  // `dragIndexRef`/`dropTargetIndexRef` are refs because the move/up
+  // listeners below are plain `window.addEventListener` callbacks (outside
+  // React's render cycle) — they need a synchronously-current value, not
+  // whatever `dropTargetIndex` closed over back when the drag started.
+  // `setDropTargetIndex` keeps the ref and the state (which the row-map below
+  // reads, to rerender the drop-target styling as the drag crosses rows) in
+  // lockstep.
+  //
+  // `dropTargetIndex` is an *insertion point*, not "which row is hovered" —
+  // it ranges from `0` (before the first row) through `sectionRows.length`
+  // (after the last row) inclusive. That extra value past the last row's own
+  // index is what makes "drop at the very bottom" representable at all: a
+  // hit-test keyed on "which row am I over" has no row to report once the
+  // cursor passes the last one, so it went stale there and both the border
+  // and the final drop position silently fell back to a smaller row instead.
   const dragIndexRef = useRef<number | null>(null);
-  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
-  function handleAgeDragStart(e: DragEvent<HTMLDivElement>, index: number, terminalId: string) {
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", terminalId);
-    // WebKit's *implicit* drag image (the one it builds on its own from a
-    // `draggable` element with no explicit `setDragImage` call) only
-    // reliably rasterizes simple children here — the status dot renders, but
-    // the flex/ellipsis-heavy text column and the row's own background come
-    // out blank. Calling `setDragImage` explicitly with the row's own node
-    // forces WebKit through its *explicit* snapshot path instead, which
-    // paints the row as it actually looks. The offset keeps the image
-    // anchored under the cursor at the same point the user grabbed it,
-    // rather than snapping to the row's top-left corner.
-    const rowEl = e.currentTarget;
-    const rect = rowEl.getBoundingClientRect();
-    e.dataTransfer.setDragImage(rowEl, e.clientX - rect.left, e.clientY - rect.top);
-    dragIndexRef.current = index;
+  const dropTargetIndexRef = useRef<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndexState] = useState<number | null>(null);
+  function setDropTargetIndex(index: number | null) {
+    dropTargetIndexRef.current = index;
+    setDropTargetIndexState(index);
   }
-  function handleAgeDragOver(e: DragEvent<HTMLDivElement>, index: number) {
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Set only while a drag is in flight, so the panel can tear down its ghost
+  // element and window listeners if it unmounts mid-drag (e.g. the user
+  // switches Navigator views without releasing the pointer).
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  function handleAgePointerDown(
+    e: ReactPointerEvent<HTMLSpanElement>,
+    index: number,
+    sectionRows: readonly AgentRow[],
+  ) {
+    const rowEl = e.currentTarget.closest<HTMLDivElement>(".ap-row");
+    if (!rowEl) return;
     e.preventDefault();
-    if (
-      dragIndexRef.current !== null &&
-      dragIndexRef.current !== index &&
-      dropTargetIndex !== index
-    ) {
-      setDropTargetIndex(index);
+
+    const rect = rowEl.getBoundingClientRect();
+    dragOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragIndexRef.current = index;
+    setDropTargetIndex(index);
+
+    const ghost = rowEl.cloneNode(true) as HTMLDivElement;
+    ghost.classList.add("ap-row-ghost");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.appendChild(ghost);
+    dragGhostRef.current = ghost;
+
+    // Every row still in the DOM for this section, in display order —
+    // measured once here rather than re-queried on every `pointermove`. Rows
+    // don't reorder mid-drag (`manualOrder` only changes on drop), so their
+    // relative order stays valid for the whole gesture; each row's *rect* is
+    // still re-read live below, so scrolling mid-drag is accounted for.
+    const rowEls = Array.from(
+      rowEl.parentElement?.querySelectorAll<HTMLElement>(":scope > .ap-row[data-drag-index]") ??
+        [],
+    );
+
+    // Cursor-relative-to-row-midpoints hit-testing, not
+    // `elementFromPoint`-on-a-row: the cursor spends plenty of time over
+    // blank space below the last row (or between rows, given the row
+    // spacing) where no row element exists to hit-test against at all, and
+    // that blank space is exactly where "insert at the very end" lives.
+    // Comparing against midpoints instead means every cursor position maps
+    // to *some* insertion point, all the way through `rowEls.length`.
+    function insertionIndexAt(clientY: number): number {
+      for (let i = 0; i < rowEls.length; i++) {
+        const r = rowEls[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) return i;
+      }
+      return rowEls.length;
     }
-  }
-  function handleAgeDrop(index: number, sectionRows: readonly AgentRow[]) {
-    const from = dragIndexRef.current;
-    if (from !== null && from !== index) {
-      // The whole visible order becomes the new manual order, not just the
-      // two swapped rows — so a row that was sorting purely by recency (not
-      // yet in `manualOrder`) gets carried into it too, exactly where it
-      // was sitting when the drag happened.
-      manualOrderService.set(
-        moveItem(
-          sectionRows.map((r) => r.terminalId),
-          from,
-          index,
-        ),
-      );
+
+    function handleMove(ev: PointerEvent) {
+      const g = dragGhostRef.current;
+      if (g) {
+        g.style.left = `${ev.clientX - dragOffsetRef.current.x}px`;
+        g.style.top = `${ev.clientY - dragOffsetRef.current.y}px`;
+      }
+      const idx = insertionIndexAt(ev.clientY);
+      if (idx !== dropTargetIndexRef.current) setDropTargetIndex(idx);
     }
-    resetAgeDrag();
-  }
-  function resetAgeDrag() {
-    dragIndexRef.current = null;
-    setDropTargetIndex(null);
+
+    function cleanup() {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", cleanup);
+      dragGhostRef.current?.remove();
+      dragGhostRef.current = null;
+      dragIndexRef.current = null;
+      setDropTargetIndex(null);
+      dragCleanupRef.current = null;
+    }
+
+    function handleUp() {
+      const from = dragIndexRef.current;
+      const insertAt = dropTargetIndexRef.current;
+      if (from !== null && insertAt !== null && insertAt !== from) {
+        // `insertAt` is expressed in the *original* (pre-removal) row order
+        // — "insert before whichever row used to sit at this index" — but
+        // `moveItem`'s `to` means "the moved item's index in the final
+        // array". Those only coincide when `insertAt <= from`: dragging
+        // downward past `from` shifts everything between `from` and
+        // `insertAt` up by one once the dragged row is removed, so the
+        // final index is one less than the original insertion point.
+        const finalIndex = insertAt > from ? insertAt - 1 : insertAt;
+        // The whole visible order becomes the new manual order, not just the
+        // two swapped rows — so a row that was sorting purely by recency
+        // (not yet in `manualOrder`) gets carried into it too, exactly where
+        // it was sitting when the drag happened.
+        manualOrderService.set(
+          moveItem(sectionRows.map((r) => r.terminalId), from, finalIndex),
+        );
+      }
+      cleanup();
+    }
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", cleanup);
+    dragCleanupRef.current = cleanup;
   }
 
   // The "N+ hours old" section starts collapsed and reveals its rows only
@@ -530,7 +624,6 @@ export function AgentsPanel({
               className="ap-section"
               onMouseEnter={isStaleSection ? handleStaleMouseEnter : undefined}
               onMouseLeave={isStaleSection ? handleStaleMouseLeave : undefined}
-              onDragLeave={isDraggableSection ? () => setDropTargetIndex(null) : undefined}
             >
               {/* Every heading carries its row count. The status grouping's
                   three headings are fixed and so are often empty — a `0` says
@@ -566,12 +659,13 @@ export function AgentsPanel({
                     drag={
                       isDraggableSection
                         ? {
+                            index: i,
                             dragging: dragIndexRef.current === i,
-                            dropTarget: dropTargetIndex === i,
-                            onDragStart: (e) => handleAgeDragStart(e, i, row.terminalId),
-                            onDragOver: (e) => handleAgeDragOver(e, i),
-                            onDrop: () => handleAgeDrop(i, section.rows),
-                            onDragEnd: resetAgeDrag,
+                            insertBefore: dropTargetIndex === i,
+                            insertAfter:
+                              i === section.rows.length - 1 &&
+                              dropTargetIndex === section.rows.length,
+                            onPointerDown: (e) => handleAgePointerDown(e, i, section.rows),
                           }
                         : undefined
                     }
