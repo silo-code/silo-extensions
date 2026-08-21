@@ -239,7 +239,7 @@ function activate(ctx: ExtensionContext) {
     id: "silo.agent-monitor.by-status",
     title: "Agents",
     order: 1,
-    icon: <Robot size={16} weight="duotone" />,
+    icon: <Robot size={19} weight="duotone" />,
     component: ({ active }) => <AgentsPanel ctx={ctx} active={active} />,
   });
 
