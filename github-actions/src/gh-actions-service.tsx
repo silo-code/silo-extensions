@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@silo-code/sdk";
-import { parseGitHubRemote } from "./parse-remote";
+import type { GitAPI } from "@silo-code/git-api";
+import { parseGitHubRemote, pickGitHubRemote } from "./parse-remote";
 import { fetchRuns, checkAuth, resolveGhBin, rerunWorkflow, WorkflowRun } from "./github-api";
 import {
   ghStore,
@@ -22,7 +23,40 @@ const AUTH_RETRY_INTERVAL_MS = 2 * 60_000;
 const RECONCILE_DEBOUNCE_MS = 150;
 const MIN_FETCH_INTERVAL_MS = 10_000;
 
+// Ask `silo.git` for the folder's remotes rather than shelling out ourselves.
+// `remotes` landed in Silo 0.50 / @silo-code/git-api 0.4.0, so it's
+// feature-detected: `silo.engine` is only advisory (the user can install past
+// the warning, and the update prompt doesn't check it at all), and this
+// extension works fine on an older host — so it keeps the `git config` path
+// as a fallback instead of failing with `api.remotes is not a function`.
+// Drop the fallback once 0.50 is the supported floor.
 async function resolveRemote(
+  ctx: ExtensionContext,
+  folder: string,
+): Promise<{ owner: string; repo: string } | null> {
+  const git = ctx.getExtension<GitAPI>("silo.git")?.api;
+  if (typeof git?.remotes === "function") {
+    const remotes = await git.remotes(folder);
+    if (remotes.length === 0) {
+      ctx.log.debug(`No git remote found in ${folder}`);
+      return null;
+    }
+    const parsed = pickGitHubRemote(remotes);
+    if (!parsed) {
+      const origin = remotes.find((r) => r.name === "origin");
+      ctx.log.debug(
+        origin
+          ? `Remote URL is not a GitHub remote — skipping (url: "${origin.fetchUrl}")`
+          : `No "origin" remote in ${folder} — skipping`,
+      );
+    }
+    return parsed;
+  }
+  return resolveRemoteViaExec(ctx, folder);
+}
+
+/** Pre-0.50 fallback for {@link resolveRemote}. */
+async function resolveRemoteViaExec(
   ctx: ExtensionContext,
   folder: string,
 ): Promise<{ owner: string; repo: string } | null> {

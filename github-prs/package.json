@@ -2,7 +2,7 @@
   "name": "@silo-extensions/github-prs",
   "displayName": "GitHub Pull Requests",
   "version": "0.1.13",
-  "description": "GitHub pull requests for workspace repos in a side panel — review state, CI checks, and drill-in details at a glance.",
+  "description": "GitHub pull requests for workspace repos in a side panel \u2014 review state, CI checks, and drill-in details at a glance.",
   "type": "module",
   "files": [
     "dist/",
@@ -22,7 +22,8 @@
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "^0.29.0",
+    "@silo-code/git-api": "^0.4.0",
+    "@silo-code/sdk": "^0.34.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.4",
     "esbuild": "^0.28.0",

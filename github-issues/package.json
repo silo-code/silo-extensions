@@ -2,7 +2,7 @@
   "name": "@silo-extensions/github-issues",
   "displayName": "GitHub Issues",
   "version": "0.1.2",
-  "description": "GitHub issues for workspace repos in a side panel — status, labels, assignees, and drill-in details, with quick copy for handing work to an agent.",
+  "description": "GitHub issues for workspace repos in a side panel \u2014 status, labels, assignees, and drill-in details, with quick copy for handing work to an agent.",
   "type": "module",
   "files": [
     "dist/",
@@ -22,7 +22,8 @@
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.10",
-    "@silo-code/sdk": "^0.29.0",
+    "@silo-code/git-api": "^0.4.0",
+    "@silo-code/sdk": "^0.34.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",

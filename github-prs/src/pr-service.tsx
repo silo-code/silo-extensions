@@ -1,5 +1,6 @@
 import type { Disposable, ExtensionContext } from "@silo-code/sdk";
-import { parseGitHubRemote } from "./parse-remote";
+import type { GitAPI } from "@silo-code/git-api";
+import { parseGitHubRemote, pickGitHubRemote } from "./parse-remote";
 import {
   checkAuth,
   fetchMergedPrs,
@@ -31,7 +32,40 @@ const MIN_FETCH_INTERVAL_MS = 10_000;
 /** Auth-retry interval — also used in user-facing gate copy. */
 export const AUTH_RETRY_MINUTES = AUTH_RETRY_INTERVAL_MS / 60_000;
 
+// Ask `silo.git` for the folder's remotes rather than shelling out ourselves.
+// `remotes` landed in Silo 0.50 / @silo-code/git-api 0.4.0, so it's
+// feature-detected: `silo.engine` is only advisory (the user can install past
+// the warning, and the update prompt doesn't check it at all), and this
+// extension works fine on an older host — so it keeps the `git config` path
+// as a fallback instead of failing with `api.remotes is not a function`.
+// Drop the fallback once 0.50 is the supported floor.
 async function resolveRemote(
+  ctx: ExtensionContext,
+  folder: string,
+): Promise<{ owner: string; repo: string } | null> {
+  const git = ctx.getExtension<GitAPI>("silo.git")?.api;
+  if (typeof git?.remotes === "function") {
+    const remotes = await git.remotes(folder);
+    if (remotes.length === 0) {
+      ctx.log.debug(`No git remote found in ${folder}`);
+      return null;
+    }
+    const parsed = pickGitHubRemote(remotes);
+    if (!parsed) {
+      const origin = remotes.find((r) => r.name === "origin");
+      ctx.log.debug(
+        origin
+          ? `Remote URL is not a GitHub remote — skipping (url: "${origin.fetchUrl}")`
+          : `No "origin" remote in ${folder} — skipping`,
+      );
+    }
+    return parsed;
+  }
+  return resolveRemoteViaExec(ctx, folder);
+}
+
+/** Pre-0.50 fallback for {@link resolveRemote}. */
+async function resolveRemoteViaExec(
   ctx: ExtensionContext,
   folder: string,
 ): Promise<{ owner: string; repo: string } | null> {
@@ -52,23 +86,9 @@ async function resolveRemote(
   return parsed;
 }
 
-async function resolveHeadBranch(
-  ctx: ExtensionContext,
-  folder: string,
-): Promise<string | null> {
-  const result = await ctx.process.exec(
-    "git",
-    ["rev-parse", "--abbrev-ref", "HEAD"],
-    { cwd: folder },
-  );
-  if (result.code !== 0) return null;
-  return result.stdout.trim() || null;
-}
-
 interface ResolvedCheckout {
   path: string;
   repoInfo: { owner: string; repo: string };
-  branch: string;
 }
 
 function groupByRemote(
@@ -82,7 +102,7 @@ function groupByRemote(
       group = { repoInfo: c.repoInfo, folders: [] };
       byRemote.set(key, group);
     }
-    group.folders.push({ path: c.path, branch: c.branch });
+    group.folders.push({ path: c.path });
   }
   return byRemote;
 }
@@ -326,12 +346,9 @@ export class PrService {
       const folderPaths = [ws.folder, ...(ws.extraFolders ?? [])];
       const resolved = await Promise.all(
         folderPaths.map(async (path) => {
-          const [repoInfo, headBranch] = await Promise.all([
-            resolveRemote(ctx, path),
-            resolveHeadBranch(ctx, path),
-          ]);
+          const repoInfo = await resolveRemote(ctx, path);
           if (!repoInfo) return null;
-          return { path, repoInfo, branch: headBranch ?? "main" } satisfies ResolvedCheckout;
+          return { path, repoInfo } satisfies ResolvedCheckout;
         }),
       );
       const checkouts = resolved.filter((c): c is ResolvedCheckout => c !== null);

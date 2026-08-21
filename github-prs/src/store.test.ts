@@ -30,7 +30,7 @@ function pr(partial: Partial<PrListItem> = {}): PrListItem {
 
 function folderState(overrides: Partial<WorkspacePrState> = {}): WorkspacePrState {
   return {
-    folders: [{ path: "/repo", branch: "main" }],
+    folders: [{ path: "/repo" }],
     repoInfo: { owner: "o", repo: "r" },
     openPrs: [],
     mergedPrs: [],
@@ -96,17 +96,17 @@ describe("PrStore repo state + detail cache", () => {
   it("stores and retrieves repo states by workspace", () => {
     const store = new PrStore();
     store.setRepoState("ws-1", "o", "a", folderState({
-      folders: [{ path: "/a", branch: "main" }],
+      folders: [{ path: "/a" }],
       repoInfo: { owner: "o", repo: "a" },
       openPrs: [pr({ number: 1 })],
     }));
     store.setRepoState("ws-1", "o", "b", folderState({
-      folders: [{ path: "/b", branch: "main" }],
+      folders: [{ path: "/b" }],
       repoInfo: { owner: "o", repo: "b" },
       openPrs: [pr({ number: 2 })],
     }));
     store.setRepoState("ws-2", "o", "a", folderState({
-      folders: [{ path: "/a", branch: "main" }],
+      folders: [{ path: "/a" }],
       repoInfo: { owner: "o", repo: "a" },
       openPrs: [pr({ number: 3 })],
     }));
@@ -118,8 +118,8 @@ describe("PrStore repo state + detail cache", () => {
     const store = new PrStore();
     store.setRepoState("ws-1", "o", "r", folderState({
       folders: [
-        { path: "/wt-a", branch: "feat/a" },
-        { path: "/wt-b", branch: "feat/b" },
+        { path: "/wt-a" },
+        { path: "/wt-b" },
       ],
       openPrs: [pr({ number: 1 })],
     }));
@@ -130,11 +130,11 @@ describe("PrStore repo state + detail cache", () => {
   it("removeRepoState drops one remote", () => {
     const store = new PrStore();
     store.setRepoState("ws-1", "o", "a", folderState({
-      folders: [{ path: "/a", branch: "main" }],
+      folders: [{ path: "/a" }],
       repoInfo: { owner: "o", repo: "a" },
     }));
     store.setRepoState("ws-1", "o", "b", folderState({
-      folders: [{ path: "/b", branch: "main" }],
+      folders: [{ path: "/b" }],
       repoInfo: { owner: "o", repo: "b" },
     }));
     store.removeRepoState("ws-1", "o", "a");
@@ -144,11 +144,11 @@ describe("PrStore repo state + detail cache", () => {
   it("removeWorkspace drops all remotes for that workspace", () => {
     const store = new PrStore();
     store.setRepoState("ws-1", "o", "a", folderState({
-      folders: [{ path: "/a", branch: "main" }],
+      folders: [{ path: "/a" }],
       repoInfo: { owner: "o", repo: "a" },
     }));
     store.setRepoState("ws-2", "o", "a", folderState({
-      folders: [{ path: "/a", branch: "main" }],
+      folders: [{ path: "/a" }],
       repoInfo: { owner: "o", repo: "a" },
     }));
     store.removeWorkspace("ws-1");
@@ -236,8 +236,8 @@ describe("PrStore repo state + detail cache", () => {
 describe("preferredFetchCwd", () => {
   it("prefers the workspace primary folder when present", () => {
     const folders = [
-      { path: "/wt-a", branch: "feat/a" },
-      { path: "/primary", branch: "main" },
+      { path: "/wt-a" },
+      { path: "/primary" },
     ];
     expect(preferredFetchCwd("/primary", folders)).toBe("/primary");
     expect(preferredFetchCwd("/other", folders)).toBe("/wt-a");
