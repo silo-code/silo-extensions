@@ -1,8 +1,8 @@
 {
   "name": "@silo-extensions/github-prs",
   "displayName": "GitHub Pull Requests",
-  "version": "0.1.13",
-  "description": "GitHub pull requests for workspace repos in a side panel \u2014 review state, CI checks, and drill-in details at a glance.",
+  "version": "0.1.14",
+  "description": "GitHub pull requests for workspace repos in a side panel — review state, CI checks, and drill-in details at a glance.",
   "type": "module",
   "files": [
     "dist/",
