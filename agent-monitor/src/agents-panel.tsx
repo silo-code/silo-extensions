@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { CaretRight } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { CaretRight, DotsSixVertical } from "@phosphor-icons/react";
 import type { Activity, ExtensionContext, MenuEntry } from "@silo-code/sdk";
 import { ActivityGlyph, Badge, useServiceState } from "@silo-code/sdk";
 import {
   buildAgentRows,
+  compareRows,
   formatElapsed,
   groupAgentRows,
   groupAgentRowsByWorkspace,
   isAtLeastHoursOld,
+  moveItem,
+  orderAgeRows,
   SECTION_ORDER,
   type AgentRow,
   type AgentSection,
 } from "./agents-panel-view";
 import { getDoneSince } from "./done-since";
+import { manualOrderService } from "./manual-order";
 import { AgentIconGlyph } from "./AgentIconGlyph";
 import { settingsService, type IconMode } from "./settings-store";
 
@@ -120,6 +124,59 @@ export function buildWorkspaceSections(rows: readonly AgentRow[]): PanelSection[
   }));
 }
 
+/**
+ * The "Recent" view (internal `groupBy` value `"age"`): unlike status or
+ * workspace grouping, every row sits in one flat, unheaded-by-status list —
+ * no status or workspace bucketing above it. Rows the user hasn't
+ * drag-reordered sort by {@link compareRows} (most recently changed first);
+ * `manualOrder` (see `./manual-order`) carries whatever order a drag left
+ * behind for the rest — see {@link orderAgeRows} for exactly how the two mix.
+ * The one exception, drag or no drag, is the same "N+ hours old" split
+ * `buildStatusSections` uses: a done row that's sat past `staleDoneHours`
+ * still peels off into its own collapsible heading (tagged with the same
+ * `STALE_DONE_SECTION_KEY`, so the panel's existing hover-to-reveal behavior
+ * applies unchanged, and it stays un-reorderable — see `agents-panel.tsx`'s
+ * render, which only wires drag handlers for `key === "age"`), since burying
+ * genuinely stale rows among fresh ones defeats the point of this view.
+ *
+ * Because {@link compareRows} orders by the fixed `since` timestamp rather
+ * than an elapsed duration recomputed on every render, an undragged row's
+ * position never shifts on its own as time passes — only its displayed
+ * elapsed label does — so a row stays put unless its actual state changes or
+ * the user drags it.
+ */
+export function buildAgeSections(
+  rows: readonly AgentRow[],
+  staleDoneEnabled: boolean,
+  staleDoneHours: number,
+  manualOrder: readonly string[],
+): PanelSection[] {
+  const subtitle = (row: AgentRow) => `${SECTION_LABELS[row.section]} · ${row.workspaceName}`;
+  const isStale = (row: AgentRow) =>
+    staleDoneEnabled && row.section === "done" && isStaleDone(row, staleDoneHours);
+  const activeRows = orderAgeRows(rows.filter((row) => !isStale(row)), manualOrder);
+  // No heading: the view's own title already says "Agents" — a heading here
+  // would just restate it, unlike the by-status/by-workspace views where the
+  // heading carries real information (which status, which workspace).
+  const ageSection: PanelSection = {
+    key: "age",
+    header: "",
+    rows: activeRows,
+    subtitle,
+  };
+  if (!staleDoneEnabled) return [ageSection];
+  return [
+    ageSection,
+    {
+      key: STALE_DONE_SECTION_KEY,
+      header: `${staleDoneHours}+ hours old`,
+      rows: rows.filter(isStale).slice().sort(compareRows),
+      subtitle,
+      collapsible: true,
+    },
+  ];
+}
+
 /** The glyph for a row's section — "done" still distinguishes error/dead from
  * a plain acknowledged-idle finish (which gets the neutral gray dot). */
 function glyphFor(row: AgentRow): Activity | undefined {
@@ -135,6 +192,28 @@ function glyphFor(row: AgentRow): Activity | undefined {
   }
 }
 
+/** Drag affordance for a row, wired only in the "Recent" view's flat,
+ * non-stale section (see `AgentsPanel`'s render — the stale section and the
+ * status/workspace views never pass this). Pointer-based rather than native
+ * HTML5 drag-and-drop — see the comment on `handleAgePointerDown` in
+ * `AgentsPanel` for why. */
+interface RowDrag {
+  /** This row's position within the flat section — both for the checks
+   * below and as the `data-drag-index` `AgentsPanel` uses to scope its
+   * pointermove rect-measuring to just the draggable rows. */
+  index: number;
+  dragging: boolean;
+  /** The drop indicator goes on whichever row edge is adjacent to the
+   * insertion point: `insertBefore` draws it above this row (the common
+   * case — every insertion point except the very last has a "next row" to
+   * anchor to), `insertAfter` draws it below this row instead, and only the
+   * section's last row ever gets it (there's no row after the very last
+   * insertion point to be "before"). */
+  insertBefore: boolean;
+  insertAfter: boolean;
+  onPointerDown: (e: ReactPointerEvent<HTMLSpanElement>) => void;
+}
+
 function AgentRowItem({
   row,
   subtitle,
@@ -142,6 +221,7 @@ function AgentRowItem({
   iconMode,
   onFocus,
   onContextMenu,
+  drag,
 }: {
   row: AgentRow;
   /** Workspace name in the "by status" view; status label in the "by
@@ -151,13 +231,20 @@ function AgentRowItem({
   iconMode: IconMode;
   onFocus: (terminalId: string) => void;
   onContextMenu: (row: AgentRow, at: { x: number; y: number }) => void;
+  drag?: RowDrag;
 }) {
+  const classNames = ["ap-row"];
+  if (active) classNames.push("active");
+  if (drag?.dragging) classNames.push("ap-row-dragging");
+  if (drag?.insertBefore) classNames.push("ap-row-drop-target-before");
+  if (drag?.insertAfter) classNames.push("ap-row-drop-target-after");
   return (
     <div
-      className={active ? "ap-row active" : "ap-row"}
+      className={classNames.join(" ")}
       role="option"
       aria-selected={active}
       tabIndex={0}
+      data-drag-index={drag?.index}
       onClick={() => onFocus(row.terminalId)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") onFocus(row.terminalId);
@@ -183,6 +270,21 @@ function AgentRowItem({
           )}
         </span>
       </div>
+      {/* Hover-only affordance on the row's right edge — and, since this is a
+          pointer-driven drag rather than native HTML5 drag-and-drop, the
+          actual drag gesture starts here too (not from anywhere on the row):
+          full control over the pointer means there's no need for the old
+          "draggable has to be the whole row or the drag image is a tiny
+          glyph" tradeoff. */}
+      {drag && (
+        <span
+          className="ap-row-grip"
+          title="Drag to reorder"
+          onPointerDown={drag.onPointerDown}
+        >
+          <DotsSixVertical size={14} weight="bold" />
+        </span>
+      )}
     </div>
   );
 }
@@ -225,9 +327,154 @@ export function AgentsPanel({
 
   // `groupBy` is a setting rather than a prop now: the two groupings were two
   // registered Navigator views until SDK 0.34, and are one view with a
-  // "Group by" header control since.
+  // "View by" header control since.
   const { iconMode, groupBy, staleDoneEnabled, staleDoneHours } =
     useServiceState(settingsService);
+
+  // The "Recent" view's persisted drag order (see ./manual-order) — reactive
+  // for the same reason `groupBy` above is: a drag anywhere in this
+  // component has to show up immediately, not just on the next unrelated
+  // re-render.
+  const manualOrder = useServiceState(manualOrderService);
+
+  // Drag-to-reorder for the "Recent" view's flat section only, driven by raw
+  // Pointer Events rather than native HTML5 drag-and-drop. Native drag was
+  // the first cut here, but WebKit (Silo's Tauri webview) only rasterizes
+  // *some* of a row into its automatic drag image — the status dot came
+  // through, the flex/ellipsis-heavy text column and the row's own
+  // background didn't — and that held even after switching to an explicit
+  // `setDragImage` call. Pointer Events sidestep the browser's drag-image
+  // machinery entirely: `handleAgePointerDown` below clones the row into a
+  // plain `position: fixed` element we move ourselves on every
+  // `pointermove`, so what follows the cursor is guaranteed to be a real,
+  // fully-painted copy of the row, not a browser-generated snapshot.
+  //
+  // `dragIndexRef`/`dropTargetIndexRef` are refs because the move/up
+  // listeners below are plain `window.addEventListener` callbacks (outside
+  // React's render cycle) — they need a synchronously-current value, not
+  // whatever `dropTargetIndex` closed over back when the drag started.
+  // `setDropTargetIndex` keeps the ref and the state (which the row-map below
+  // reads, to rerender the drop-target styling as the drag crosses rows) in
+  // lockstep.
+  //
+  // `dropTargetIndex` is an *insertion point*, not "which row is hovered" —
+  // it ranges from `0` (before the first row) through `sectionRows.length`
+  // (after the last row) inclusive. That extra value past the last row's own
+  // index is what makes "drop at the very bottom" representable at all: a
+  // hit-test keyed on "which row am I over" has no row to report once the
+  // cursor passes the last one, so it went stale there and both the border
+  // and the final drop position silently fell back to a smaller row instead.
+  const dragIndexRef = useRef<number | null>(null);
+  const dropTargetIndexRef = useRef<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndexState] = useState<number | null>(null);
+  function setDropTargetIndex(index: number | null) {
+    dropTargetIndexRef.current = index;
+    setDropTargetIndexState(index);
+  }
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Set only while a drag is in flight, so the panel can tear down its ghost
+  // element and window listeners if it unmounts mid-drag (e.g. the user
+  // switches Navigator views without releasing the pointer).
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  function handleAgePointerDown(
+    e: ReactPointerEvent<HTMLSpanElement>,
+    index: number,
+    sectionRows: readonly AgentRow[],
+  ) {
+    const rowEl = e.currentTarget.closest<HTMLDivElement>(".ap-row");
+    if (!rowEl) return;
+    e.preventDefault();
+
+    const rect = rowEl.getBoundingClientRect();
+    dragOffsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragIndexRef.current = index;
+    setDropTargetIndex(index);
+
+    const ghost = rowEl.cloneNode(true) as HTMLDivElement;
+    ghost.classList.add("ap-row-ghost");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.appendChild(ghost);
+    dragGhostRef.current = ghost;
+
+    // Every row still in the DOM for this section, in display order —
+    // measured once here rather than re-queried on every `pointermove`. Rows
+    // don't reorder mid-drag (`manualOrder` only changes on drop), so their
+    // relative order stays valid for the whole gesture; each row's *rect* is
+    // still re-read live below, so scrolling mid-drag is accounted for.
+    const rowEls = Array.from(
+      rowEl.parentElement?.querySelectorAll<HTMLElement>(":scope > .ap-row[data-drag-index]") ??
+        [],
+    );
+
+    // Cursor-relative-to-row-midpoints hit-testing, not
+    // `elementFromPoint`-on-a-row: the cursor spends plenty of time over
+    // blank space below the last row (or between rows, given the row
+    // spacing) where no row element exists to hit-test against at all, and
+    // that blank space is exactly where "insert at the very end" lives.
+    // Comparing against midpoints instead means every cursor position maps
+    // to *some* insertion point, all the way through `rowEls.length`.
+    function insertionIndexAt(clientY: number): number {
+      for (let i = 0; i < rowEls.length; i++) {
+        const r = rowEls[i].getBoundingClientRect();
+        if (clientY < r.top + r.height / 2) return i;
+      }
+      return rowEls.length;
+    }
+
+    function handleMove(ev: PointerEvent) {
+      const g = dragGhostRef.current;
+      if (g) {
+        g.style.left = `${ev.clientX - dragOffsetRef.current.x}px`;
+        g.style.top = `${ev.clientY - dragOffsetRef.current.y}px`;
+      }
+      const idx = insertionIndexAt(ev.clientY);
+      if (idx !== dropTargetIndexRef.current) setDropTargetIndex(idx);
+    }
+
+    function cleanup() {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+      window.removeEventListener("pointercancel", cleanup);
+      dragGhostRef.current?.remove();
+      dragGhostRef.current = null;
+      dragIndexRef.current = null;
+      setDropTargetIndex(null);
+      dragCleanupRef.current = null;
+    }
+
+    function handleUp() {
+      const from = dragIndexRef.current;
+      const insertAt = dropTargetIndexRef.current;
+      if (from !== null && insertAt !== null && insertAt !== from) {
+        // `insertAt` is expressed in the *original* (pre-removal) row order
+        // — "insert before whichever row used to sit at this index" — but
+        // `moveItem`'s `to` means "the moved item's index in the final
+        // array". Those only coincide when `insertAt <= from`: dragging
+        // downward past `from` shifts everything between `from` and
+        // `insertAt` up by one once the dragged row is removed, so the
+        // final index is one less than the original insertion point.
+        const finalIndex = insertAt > from ? insertAt - 1 : insertAt;
+        // The whole visible order becomes the new manual order, not just the
+        // two swapped rows — so a row that was sorting purely by recency
+        // (not yet in `manualOrder`) gets carried into it too, exactly where
+        // it was sitting when the drag happened.
+        manualOrderService.set(
+          moveItem(sectionRows.map((r) => r.terminalId), from, finalIndex),
+        );
+      }
+      cleanup();
+    }
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", cleanup);
+    dragCleanupRef.current = cleanup;
+  }
 
   // The "N+ hours old" section starts collapsed and reveals its rows only
   // while the mouse is over it — attached to the section's own container
@@ -281,9 +528,26 @@ export function AgentsPanel({
   const sections =
     groupBy === "workspace"
       ? buildWorkspaceSections(rows)
-      : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
+      : groupBy === "age"
+        ? buildAgeSections(rows, staleDoneEnabled, staleDoneHours, manualOrder)
+        : buildStatusSections(rows, staleDoneEnabled, staleDoneHours);
 
   const staleStartsExpanded = staleSectionStartsExpanded(sections);
+
+  // Trim `manualOrder` once a dragged row drops out of the flat section for
+  // good (terminal closed, or it aged into "N+ hours old") — otherwise
+  // storage would carry that id forever. `orderAgeRows` already treats a
+  // manual-order id with no matching row as inert, so this is pure
+  // housekeeping, not correctness: it only ever removes ids, never changes
+  // display order.
+  useEffect(() => {
+    if (groupBy !== "age") return;
+    const flatIds = new Set(
+      sections.find((s) => s.key === "age")?.rows.map((r) => r.terminalId),
+    );
+    const trimmed = manualOrder.filter((id) => flatIds.has(id));
+    if (trimmed.length !== manualOrder.length) manualOrderService.set(trimmed);
+  });
 
   function openRowMenu(row: AgentRow, at: { x: number; y: number }) {
     const items: MenuEntry[] = [];
@@ -351,6 +615,7 @@ export function AgentsPanel({
       <div className="ap-body">
         {sections.map((section) => {
           const isStaleSection = section.key === STALE_DONE_SECTION_KEY;
+          const isDraggableSection = section.key === "age";
           const expanded =
             !isStaleSection || staleHovered || staleStartsExpanded;
           return (
@@ -362,22 +627,27 @@ export function AgentsPanel({
             >
               {/* Every heading carries its row count. The status grouping's
                   three headings are fixed and so are often empty — a `0` says
-                  "nothing ready" in less space than a placeholder row. */}
-              <div className="ap-section-title">
-                {isStaleSection && (
-                  <CaretRight
-                    size="0.7em"
-                    weight="bold"
-                    className={expanded ? "ap-section-caret expanded" : "ap-section-caret"}
-                  />
-                )}
-                {section.header}
-                <Badge size="sm" className="ap-section-count">
-                  {section.rows.length}
-                </Badge>
-              </div>
+                  "nothing ready" in less space than a placeholder row. An
+                  empty `header` (the "Recent" view's flat list) skips the
+                  heading row entirely — "Agents" would only restate the
+                  view's own title. */}
+              {section.header !== "" && (
+                <div className="ap-section-title">
+                  {isStaleSection && (
+                    <CaretRight
+                      size="0.7em"
+                      weight="bold"
+                      className={expanded ? "ap-section-caret expanded" : "ap-section-caret"}
+                    />
+                  )}
+                  {section.header}
+                  <Badge size="sm" className="ap-section-count">
+                    {section.rows.length}
+                  </Badge>
+                </div>
+              )}
               {expanded &&
-                section.rows.map((row) => (
+                section.rows.map((row, i) => (
                   <AgentRowItem
                     key={row.terminalId}
                     row={row}
@@ -386,6 +656,19 @@ export function AgentsPanel({
                     iconMode={iconMode}
                     onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
                     onContextMenu={openRowMenu}
+                    drag={
+                      isDraggableSection
+                        ? {
+                            index: i,
+                            dragging: dragIndexRef.current === i,
+                            insertBefore: dropTargetIndex === i,
+                            insertAfter:
+                              i === section.rows.length - 1 &&
+                              dropTargetIndex === section.rows.length,
+                            onPointerDown: (e) => handleAgePointerDown(e, i, section.rows),
+                          }
+                        : undefined
+                    }
                   />
                 ))}
             </div>

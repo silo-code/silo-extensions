@@ -21,6 +21,7 @@ import {
 } from "./settings";
 import { AgentsPanel } from "./agents-panel";
 import { initDoneSince, recordDoneSince } from "./done-since";
+import { initManualOrder } from "./manual-order";
 import { AgentIconGlyph } from "./AgentIconGlyph";
 import styles from "./styles.css";
 
@@ -29,6 +30,7 @@ const STYLE_ID = "silo-agent-monitor-styles";
 function activate(ctx: ExtensionContext) {
   ctx.subscriptions.push(initSettings(ctx.storage.global));
   initDoneSince(ctx.storage.global);
+  initManualOrder(ctx.storage.global);
 
   // Latest host-computed agent state, keyed by terminal record id. Since Silo
   // 0.39 the host (`ctx.agents`) owns every hard part — OSC detection, the
@@ -195,7 +197,7 @@ function activate(ctx: ExtensionContext) {
       ctx.workspaces.invalidateStatus();
       // Toggling iconMode changes what silo.agent-monitor.tab-icon returns.
       ctx.terminals.invalidateTabAdornments();
-      // The Group by control's closed-state label names the active mode, so
+      // The View by control's closed-state label names the active mode, so
       // it has to be re-registered (title isn't a function like when/checked)
       // whenever the mode actually flips — not on every unrelated setting.
       if (s.groupBy !== lastGroupBy) {
@@ -228,7 +230,7 @@ function activate(ctx: ExtensionContext) {
   // is listed in the panel, two entries for one list cost a permanent row and
   // made "which Agents view am I in" a question worth asking. Grouping is a
   // preference of this view (see `groupBy` in ./settings-store), flipped from
-  // the Group by control below.
+  // the View by control below.
   //
   // The id keeps its by-status suffix: it's the persisted key for "which view
   // is active", so renaming it would drop the choice of everyone already on
@@ -259,14 +261,22 @@ function activate(ctx: ExtensionContext) {
     groupByToolbarItem = ctx.registerToolbarItem({
       id: "silo.agent-monitor.group-by",
       surface: "navigator",
-      title: groupBy === "workspace" ? "By workspace" : "By status",
-      tooltip: "Group agents by status or workspace",
+      // The closed-state label is the picked menu item's own label verbatim
+      // (no "By ..." transform) — one string to keep in sync with the menu
+      // below instead of two.
+      title: groupBy === "age" ? "Recent" : groupBy === "workspace" ? "Workspace" : "Status",
+      tooltip: "View agents by status, workspace, or recent activity",
       order: -1,
       when: (_keys, target) => target.viewId === "silo.agent-monitor.by-status",
       menu: () => {
         const { groupBy } = settingsService.getState();
         return [
-          { type: "header", label: "Group by" },
+          { type: "header", label: "View by" },
+          {
+            label: "Recent",
+            checked: groupBy === "age",
+            run: () => settingsService.set({ groupBy: "age" }),
+          },
           {
             label: "Status",
             checked: groupBy === "status",

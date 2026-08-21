@@ -6,7 +6,10 @@ import {
   groupAgentRowsByWorkspace,
   formatElapsed,
   isAtLeastHoursOld,
+  moveItem,
+  orderAgeRows,
   updateDoneSince,
+  type AgentRow,
 } from "./agents-panel-view";
 
 function agent(over: Partial<AgentInfo> = {}): AgentInfo {
@@ -375,5 +378,93 @@ describe("buildAgentRows + groupAgentRows with a doneSince map", () => {
       "2026-01-01T00:05:00Z",
     ]);
     expect(groupAgentRows(rows).done.map((r) => r.terminalId)).toEqual(["t2", "t1"]);
+  });
+});
+
+function row(over: Partial<AgentRow> = {}): AgentRow {
+  return {
+    terminalId: "t1",
+    workspaceId: "w1",
+    section: "working",
+    title: "agent",
+    workspaceName: "ws",
+    activity: "working",
+    ...over,
+  };
+}
+
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+}
+
+describe("moveItem", () => {
+  it("moves an item forward", () => {
+    expect(moveItem(["a", "b", "c", "d"], 0, 2)).toEqual(["b", "c", "a", "d"]);
+  });
+
+  it("moves an item backward", () => {
+    expect(moveItem(["a", "b", "c", "d"], 3, 1)).toEqual(["a", "d", "b", "c"]);
+  });
+
+  it("is a no-op when from equals to", () => {
+    expect(moveItem(["a", "b", "c"], 1, 1)).toEqual(["a", "b", "c"]);
+  });
+
+  it("clamps an out-of-range from into bounds", () => {
+    expect(moveItem(["a", "b", "c"], 99, 0)).toEqual(["c", "a", "b"]);
+  });
+
+  it("clamps an out-of-range to into bounds", () => {
+    expect(moveItem(["a", "b", "c"], 0, 99)).toEqual(["b", "c", "a"]);
+  });
+
+  it("returns an empty array unchanged", () => {
+    expect(moveItem([], 0, 0)).toEqual([]);
+  });
+
+  it("doesn't mutate the input array", () => {
+    const input = ["a", "b", "c"];
+    moveItem(input, 0, 2);
+    expect(input).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("orderAgeRows", () => {
+  it("with an empty manualOrder, sorts every row by since (most recent first)", () => {
+    const rows = [
+      row({ terminalId: "oldest", since: hoursAgo(3) }),
+      row({ terminalId: "newest", since: hoursAgo(1) }),
+      row({ terminalId: "middle", since: hoursAgo(2) }),
+    ];
+    expect(orderAgeRows(rows, []).map((r) => r.terminalId)).toEqual([
+      "newest",
+      "middle",
+      "oldest",
+    ]);
+  });
+
+  it("puts every undragged row above every dragged row", () => {
+    const rows = [
+      row({ terminalId: "dragged-1", since: hoursAgo(1) }),
+      row({ terminalId: "undragged", since: hoursAgo(9) }),
+      row({ terminalId: "dragged-2", since: hoursAgo(2) }),
+    ];
+    expect(
+      orderAgeRows(rows, ["dragged-1", "dragged-2"]).map((r) => r.terminalId),
+    ).toEqual(["undragged", "dragged-1", "dragged-2"]);
+  });
+
+  it("orders dragged rows by their position in manualOrder, not by since", () => {
+    const rows = [
+      row({ terminalId: "a", since: hoursAgo(1) }),
+      row({ terminalId: "b", since: hoursAgo(9) }),
+    ];
+    // "b" is older but listed first in manualOrder — manualOrder wins.
+    expect(orderAgeRows(rows, ["b", "a"]).map((r) => r.terminalId)).toEqual(["b", "a"]);
+  });
+
+  it("silently ignores a manualOrder id with no matching row", () => {
+    const rows = [row({ terminalId: "a", since: hoursAgo(1) })];
+    expect(orderAgeRows(rows, ["gone", "a"]).map((r) => r.terminalId)).toEqual(["a"]);
   });
 });

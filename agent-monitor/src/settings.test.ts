@@ -217,10 +217,17 @@ describe("agent-monitor groupBy setting", () => {
     initSettings(fakeStorage({ agentsGroupBy: "status" })).dispose();
   });
 
-  it("defaults to \"status\" with empty storage", () => {
+  it("defaults to \"age\" with empty storage", () => {
+    // Restore module state to the compiled default before testing empty
+    // storage — `beforeEach` above seeds "status", and `read()` falls back to
+    // the *current* in-memory value when storage has nothing persisted, so
+    // without this reset the test would just reflect that seed rather than
+    // DEFAULT_GROUP_BY. Mirrors the `resetTo("clear")` pattern for
+    // focusBehavior above.
+    initSettings(fakeStorage({ agentsGroupBy: "age" })).dispose();
     const storage = fakeStorage();
     const sub = initSettings(storage);
-    expect(settingsService.getState().groupBy).toBe("status");
+    expect(settingsService.getState().groupBy).toBe("age");
     sub.dispose();
   });
 
@@ -234,7 +241,7 @@ describe("agent-monitor groupBy setting", () => {
   it("coerces an invalid persisted value to the default", () => {
     const storage = fakeStorage({ agentsGroupBy: "by-project" });
     const sub = initSettings(storage);
-    expect(settingsService.getState().groupBy).toBe("status");
+    expect(settingsService.getState().groupBy).toBe("age");
     sub.dispose();
   });
 

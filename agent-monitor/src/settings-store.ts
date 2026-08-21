@@ -39,9 +39,11 @@ export type IconMode = "none" | "color" | "monotone";
  * Which axis the Agents view sections its rows by. Until SDK 0.34 these were
  * two separately registered Navigator views ("Agents" and "Agents by
  * workspace"); they are one view and one persisted preference now, flipped
- * from the "Group by" control in the Navigator's header.
+ * from the "View by" control in the Navigator's header. `"age"` is labeled
+ * "Recent" in that control — the setting value keeps the shorter internal
+ * name.
  */
-export type GroupMode = "status" | "workspace";
+export type GroupMode = "status" | "workspace" | "age";
 
 export interface AgentMonitorSettings {
   focusBehavior: FocusBehavior;
@@ -77,17 +79,14 @@ const DEFAULT_BEHAVIOR: FocusBehavior = "clear";
 const DEFAULT_SOUND_ENABLED = true;
 const DEFAULT_SOUND_ID: SoundName = "chime";
 const DEFAULT_ICON_MODE: IconMode = "color";
-// Status is what the view has always opened on, and it's the reading that
-// answers "does anything need me right now" — workspace grouping answers a
-// different, less urgent question.
-const DEFAULT_GROUP_BY: GroupMode = "status";
+const DEFAULT_GROUP_BY: GroupMode = "age";
 export const DEFAULT_STALE_DONE_ENABLED = true;
 export const DEFAULT_STALE_DONE_HOURS = 4;
 export const MIN_STALE_DONE_HOURS = 1;
 
 const VALID_BEHAVIORS: readonly FocusBehavior[] = ["clear", "hide", "none"];
 const VALID_ICON_MODES: readonly IconMode[] = ["none", "color", "monotone"];
-const VALID_GROUP_MODES: readonly GroupMode[] = ["status", "workspace"];
+const VALID_GROUP_MODES: readonly GroupMode[] = ["status", "workspace", "age"];
 // The synth's raw UI-feedback sounds (press/release/toggle) read as click
 // acknowledgements, not "come look at this" — excluded from the curated
 // list offered here. Everything else is `sounds`' own names, reused
