@@ -1,8 +1,6 @@
 import type {
   Extension,
   ExtensionContext,
-  MenuContext,
-  ToolbarItemContext,
   WorkspaceStatusRow,
 } from "@silo-code/sdk";
 import {
@@ -18,6 +16,7 @@ import {
   type MarksState,
   type PanelKind,
 } from "./store";
+import { resolveTarget } from "./target";
 
 const STORAGE_KEY = "marks";
 
@@ -35,10 +34,7 @@ function activate(ctx: ExtensionContext) {
     ctx.workspaces.invalidateStatus();
   }
 
-  function findWorkspaceFor(
-    kind: PanelKind,
-    id: string,
-  ): string | undefined {
+  function findWorkspaceFor(kind: PanelKind, id: string): string | undefined {
     for (const ws of ctx.workspaces.getState().all) {
       if (kind === "editor") {
         if (ws.editors.some((e) => e.id === id)) return ws.id;
@@ -64,35 +60,18 @@ function activate(ctx: ExtensionContext) {
     invalidateChrome();
   }
 
-  function targetFromArgs(
-    args: unknown[],
-  ): { kind: PanelKind; id: string; workspaceId: string } | null {
-    const t = args[0] as
-      | ToolbarItemContext["editor"]
-      | ToolbarItemContext["terminal"]
-      | MenuContext["editor/tab"]
-      | MenuContext["terminal/tab"]
-      | undefined;
-    if (!t || typeof t !== "object") return null;
-    if ("editorId" in t && typeof t.editorId === "string") {
-      const workspaceId = findWorkspaceFor("editor", t.editorId);
-      if (!workspaceId) return null;
-      return { kind: "editor", id: t.editorId, workspaceId };
-    }
-    if ("terminalId" in t && typeof t.terminalId === "string") {
-      const workspaceId =
-        "workspaceId" in t && typeof t.workspaceId === "string"
-          ? t.workspaceId
-          : findWorkspaceFor("terminal", t.terminalId);
-      if (!workspaceId) return null;
-      return { kind: "terminal", id: t.terminalId, workspaceId };
-    }
-    return null;
-  }
-
   function runAction(action: "toggle" | "mark" | "clear") {
     return (...args: unknown[]) => {
-      const target = targetFromArgs(args);
+      // Toolbar/context-menu invocations name their tab in args[0]; a
+      // keybinding passes nothing and falls back to the active tab.
+      const target = resolveTarget(
+        args,
+        {
+          editorId: ctx.editors.getState().active?.editorId ?? null,
+          terminalId: ctx.terminals.getActive(),
+        },
+        findWorkspaceFor,
+      );
       if (!target) return;
       apply(target.workspaceId, target.kind, target.id, action);
     };
