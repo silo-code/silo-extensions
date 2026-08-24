@@ -219,6 +219,7 @@ function AgentRowItem({
   subtitle,
   active,
   iconMode,
+  colorScheme,
   onFocus,
   onContextMenu,
   drag,
@@ -229,6 +230,7 @@ function AgentRowItem({
   subtitle: string;
   active: boolean;
   iconMode: IconMode;
+  colorScheme: "dark" | "light";
   onFocus: (terminalId: string) => void;
   onContextMenu: (row: AgentRow, at: { x: number; y: number }) => void;
   drag?: RowDrag;
@@ -257,7 +259,12 @@ function AgentRowItem({
       <ActivityGlyph activity={glyphFor(row)} className="ap-row-glyph" />
       <div className="ap-row-text">
         <span className="ap-row-title-line">
-          <AgentIconGlyph agentId={row.agentId} mode={iconMode} className="ap-row-icon" />
+          <AgentIconGlyph
+            agentId={row.agentId}
+            mode={iconMode}
+            colorScheme={colorScheme}
+            className="ap-row-icon"
+          />
           <span className="ap-row-title">{row.title}</span>
         </span>
         <span className="ap-row-subtitle">
@@ -330,6 +337,13 @@ export function AgentsPanel({
   // "View by" header control since.
   const { iconMode, groupBy, staleDoneEnabled, staleDoneHours } =
     useServiceState(settingsService);
+
+  // "color" mode picks a brand hex that has to have contrast against the
+  // host's actual active background, not just against Silo's dark theme —
+  // see AgentIconGlyph. `ctx.theme` matches ReactiveService's getState/
+  // subscribe shape directly, so useServiceState works without adapting it.
+  const themeState = useServiceState(ctx.theme);
+  const colorScheme = ctx.theme.resolve(themeState.activeId).base;
 
   // The "Recent" view's persisted drag order (see ./manual-order) — reactive
   // for the same reason `groupBy` above is: a drag anywhere in this
@@ -654,6 +668,7 @@ export function AgentsPanel({
                     subtitle={section.subtitle(row)}
                     active={row.terminalId === activeTerminalId}
                     iconMode={iconMode}
+                    colorScheme={colorScheme}
                     onFocus={(terminalId) => ctx.terminals.focus(terminalId)}
                     onContextMenu={openRowMenu}
                     drag={

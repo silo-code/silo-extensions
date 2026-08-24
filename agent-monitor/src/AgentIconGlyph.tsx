@@ -16,20 +16,26 @@ import { agentIconFor } from "./agent-icons";
 export function AgentIconGlyph({
   agentId,
   mode,
+  colorScheme,
   className,
 }: {
   agentId: string | undefined;
   mode: IconMode;
+  /** The host's active light/dark base — "color" mode picks the icon's
+   * {@link AgentIcon.hexLight}/{@link AgentIcon.hexDark} accordingly, since a
+   * single hex can't have enough contrast against both. */
+  colorScheme: "dark" | "light";
   className?: string;
 }) {
   if (mode === "none") return null;
   const icon = agentIconFor(agentId);
   if (!icon) return null;
+  const hex = colorScheme === "light" ? icon.hexLight : icon.hexDark;
   return (
     <svg
       viewBox="0 0 24 24"
       className={className}
-      style={mode === "color" ? { color: `#${icon.hex}` } : undefined}
+      style={mode === "color" ? { color: `#${hex}` } : undefined}
       aria-hidden="true"
     >
       <path d={icon.path} fill="currentColor" fillRule={icon.fillRule} />
