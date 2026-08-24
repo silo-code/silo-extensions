@@ -49,6 +49,17 @@ function activate(ctx: ExtensionContext) {
   const finishedUnseen = new Map<string, string>();
   let activeTerminalId = ctx.terminals.getActive();
 
+  // "color" icon mode needs to know the host's actual active light/dark base
+  // to pick a hex with contrast — see AgentIconGlyph. Tracked imperatively
+  // (like `agents` above) since bindIcon's provide() isn't a React component.
+  let colorScheme = ctx.theme.resolve(ctx.theme.getState().activeId).base;
+  ctx.subscriptions.push(
+    ctx.theme.subscribe(() => {
+      colorScheme = ctx.theme.resolve(ctx.theme.getState().activeId).base;
+      ctx.terminals.invalidateTabAdornments();
+    }),
+  );
+
   function applySnapshot(state: AgentInfo[]) {
     let ring = false;
     const next = new Map<string, AgentInfo>();
@@ -160,6 +171,7 @@ function activate(ctx: ExtensionContext) {
         const icon = AgentIconGlyph({
           agentId: a.agentId,
           mode: settingsService.getState().iconMode,
+          colorScheme,
         });
         return icon ? { icon } : null;
       },
