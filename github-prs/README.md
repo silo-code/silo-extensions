@@ -62,7 +62,9 @@ Open **Settings → GitHub Pull Requests**:
 
 ## Permissions
 
-None declared — every `gh` invocation runs scoped to an open workspace folder, which doesn't require the `process` permission.
+Declared in `package.json` under `silo.permissions`:
+
+- **`process`** — run `gh` / `git` to resolve remotes, list pull requests, and check authentication
 
 ## Building
 
