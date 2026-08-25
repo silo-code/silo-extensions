@@ -14,6 +14,7 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 | [GitHub Issues](./github-issues/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=github-issues*&label=)](https://github.com/silo-code/silo-extensions/releases?q=github-issues) | Side panel of workspace issues with labels, assignees, status updates, and quick copy for handing work to an agent (requires `gh` CLI) |
 | [Agent Monitor](./agent-monitor/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=agent-monitor*&label=)](https://github.com/silo-code/silo-extensions/releases?q=agent-monitor) | At-a-glance status rows and tab badges for coding agents running in your terminals |
 | [Follow-ups](./follow-ups/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=follow-ups*&label=)](https://github.com/silo-code/silo-extensions/releases?q=follow-ups) | Mark editor and terminal tabs to come back to later — toolbar toggle, tab flag, and Workspaces rollup |
+| [Skills Manager](./skills-manager/) | _unreleased — requires Silo 0.53+, see its README_ | Agent Skills side panel: inventory of installed skills, browse/install from skills.sh |
 
 ## Installing an extension
 
