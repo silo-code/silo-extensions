@@ -19,12 +19,13 @@ const GH_CANDIDATE_PATHS = [
   "/home/linuxbrew/.linuxbrew/bin/gh", // Linux Homebrew
 ];
 
-// Host `ctx.process.exec` defaults cwd to the active workspace root and denies
-// paths outside any open workspace. Auth and version probes don't need a repo,
-// but we still run them from a real workspace folder so we never execute `gh`
-// outside the workspace sandbox. When no folder is available yet, return
-// undefined — callers skip the probe and let the retry loop pick it up once a
-// workspace opens.
+// Host `ctx.process.exec` defaults cwd to the active workspace root. Its path
+// scope is the *active* workspace only — not every open one — so polling a
+// background workspace's folder is out of scope; that's what the `process`
+// permission in `package.json` lifts. Auth and version probes don't need a repo,
+// but we still run them from a real workspace folder rather than an arbitrary
+// cwd. When no folder is available yet, return undefined — callers skip the
+// probe and let the retry loop pick it up once a workspace opens.
 export async function probeCwd(ctx: ExtensionContext): Promise<string | undefined> {
   const state = ctx.workspaces.getState();
   if (state.activeId) {
