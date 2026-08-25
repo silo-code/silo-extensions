@@ -1,0 +1,696 @@
+/* Skills side panel + browse sheet.
+ *
+ * Typography matches Files / Git (see docs/side-panel-design.md):
+ * - The host sets the column font on `.side-pane[data-location]` —
+ *   right = `--silo-font-size-base + 2px` (15px at default uiFontSize 13).
+ * - Panel content inherits; do not pin a root font-size.
+ * - Kit `.silo-list-row` pins `--silo-font-size-sm` (absolute, ignores the
+ *   column) — override to `1em` so rows match Files/Git tree rows.
+ * - Secondary copy steps down one px via `calc(1em - 1px)` → 14px at default.
+ * - Dock sheets portal outside the pane, so `.skills-browse` re-applies the
+ *   right-panel formula explicitly.
+ */
+
+.skills-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--silo-font-ui);
+  color: var(--silo-color-text);
+  /* Inherit `.side-pane[data-location="right"]` → base + 2px. */
+}
+
+.skills-panel.placeholder {
+  padding: 10px 12px;
+  color: var(--silo-color-text-lo);
+}
+
+/* Kit List rows use --silo-font-size-sm (12px); Files/Git trees inherit the
+   column (15px). Bring Skills lists up to the column scale.
+   Horizontal pad: left is git `.git-file-row` 8px + 2px optical nudge;
+   right is tighter so the ⋮ sits near the panel edge (git status/actions
+   live at ~8px from the pane after the 4px panel inset). */
+.skills-panel .silo-list-row {
+  font-size: 1em;
+  gap: 4px;
+  padding: 4px 2px 4px 10px;
+}
+
+.skills-browse .silo-list-row {
+  font-size: 1em;
+}
+
+.skills-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Horizontal 4px matches git; top pad near-zero under the side-tab strip. */
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--silo-color-border);
+  flex-shrink: 0;
+}
+
+/* Actions above the filter, trailing-aligned like git `.git-root-actions`.
+   Hit targets match git `.branch-action` (26×26, gap 2px). */
+.skills-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  min-height: 26px;
+}
+
+.skills-toolbar-browse,
+.skills-toolbar-icon {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--silo-color-text-lo);
+  height: 26px;
+  border-radius: var(--silo-radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  font: inherit;
+}
+
+.skills-toolbar-browse {
+  padding: 0 6px;
+}
+
+.skills-toolbar-icon {
+  width: 26px;
+}
+
+.skills-toolbar-browse:hover,
+.skills-toolbar-icon:hover:not(:disabled) {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text-hi);
+}
+
+.skills-toolbar-icon:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.skills-body {
+  flex: 1;
+  min-height: 0;
+  /* overflow via host `.silo-scroll` */
+  /* Horizontal 4px matches git `.git-panel` / files `.file-tree`. */
+  padding: 0 4px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Match git explorer `.section-head` / CHANGES header. */
+.skills-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--silo-color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--silo-font-size-chrome);
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--silo-radius-sm);
+  box-sizing: border-box;
+}
+
+.skills-section-head:hover {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text-hi);
+}
+
+.skills-section-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: var(--silo-color-text-lo);
+  flex-shrink: 0;
+}
+
+.skills-section-title {
+  flex: 0;
+  white-space: nowrap;
+}
+
+.skills-section-count {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.skills-section-body {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+}
+
+.skills-section-empty {
+  margin: 0;
+  padding: 4px 2px 8px;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+}
+
+.skills-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skills-row-name {
+  color: var(--silo-color-text-hi);
+  font-weight: 500;
+  font-size: 1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-row-sub {
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Agent roots — quieter than the description so name/summary stay primary. */
+.skills-row-agents {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--silo-color-text-lo) 70%, transparent);
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 2px);
+}
+
+/* ── Browse sheet ─────────────────────────────────────────────────────────── */
+
+.skills-browse {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: var(--silo-font-ui);
+  /* Sheets portal out of the side pane — re-apply the right-panel slot size
+     (SideColumn.css: base + 2px) so browse matches the Skills panel. */
+  font-size: calc(var(--silo-font-size-base) + 2px);
+  color: var(--silo-color-text);
+}
+
+/* Sheet chrome title is our brand mark — let it size itself; don't force 1em
+   from the pane scale onto the wordmark. */
+.skills-sheet .silo-sheet-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: visible;
+}
+
+.skills-sheet .silo-sheet-header {
+  /* Compact caption — brand mark reads as a title bar, not a padded card header.
+     Host default is 10px; no sheet-caption standard yet (see side-panel-design). */
+  padding-top: 6px;
+  padding-bottom: 7px;
+}
+
+/* Match the header's 10px right inset so body chrome (⋮, cmd box) lines up
+   with the close control — default sheet body is 16px all around. */
+.skills-sheet .silo-sheet-body {
+  padding-right: 10px;
+}
+
+/* ── skills.sh wordmark ───────────────────────────────────────────────────── */
+
+.skills-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  user-select: none;
+}
+
+.skills-brand-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skills-brand-word {
+  position: relative;
+  display: inline-block;
+  font-family: var(--silo-font-mono);
+  font-size: calc(var(--silo-font-size-base) + 3px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* Offset outline ghost — a quiet nod to skills.sh's wireframe drop shadow,
+   using theme tokens so it works in light and dark. */
+.skills-brand-ghost {
+  position: absolute;
+  left: 1.5px;
+  top: 1.5px;
+  color: transparent;
+  -webkit-text-stroke: 1px color-mix(in srgb, var(--silo-color-text-lo) 55%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+.skills-brand-fill {
+  position: relative;
+  color: var(--silo-color-text-hi);
+}
+
+.skills-brand-sub {
+  font-family: var(--silo-font-mono);
+  font-size: var(--silo-font-size-sm);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--silo-color-text-lo);
+  text-transform: lowercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Compact panel entry — same ghost offset as the sheet mark, lowercase host. */
+.skills-brand--toolbar {
+  gap: 0;
+}
+
+.skills-brand--toolbar .skills-brand-word {
+  font-size: calc(1em - 3px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+}
+
+.skills-brand--toolbar .skills-brand-ghost {
+  left: 1px;
+  top: 1px;
+  -webkit-text-stroke: 1px color-mix(in srgb, var(--silo-color-text-lo) 45%, transparent);
+}
+
+.skills-brand--toolbar .skills-brand-fill {
+  color: currentColor;
+}
+
+.skills-toolbar-browse:hover .skills-brand--toolbar .skills-brand-fill {
+  color: var(--silo-color-text-hi);
+}
+
+.skills-browse-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  flex-shrink: 0;
+}
+
+/* Leaderboard chips — match Extensions `.ext-cat` (settings-font − 2px
+   ≡ `--silo-font-size-sm` at app root; not pane `1em`). */
+.skills-views-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skills-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.skills-view {
+  background: transparent;
+  border: 1px solid var(--silo-color-border);
+  color: var(--silo-color-text-lo);
+  padding: 1px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--silo-font-size-sm);
+  font-family: var(--silo-font-mono, monospace);
+  line-height: 1.4;
+}
+
+.skills-view:hover {
+  color: var(--silo-color-text-hi);
+}
+
+.skills-view-active {
+  color: var(--silo-color-accent);
+  border-color: var(--silo-color-accent);
+}
+
+.skills-browse-meta {
+  color: var(--silo-color-text-lo);
+  font-size: var(--silo-font-size-sm);
+  text-align: right;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.skills-browse-list {
+  flex: 1;
+  min-height: 0;
+  /* overflow via host `.silo-scroll` */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skills-browse-skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+}
+
+.skills-browse-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-width: 0;
+}
+
+.skills-browse-skeleton-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.skills-skeleton-line {
+  display: block;
+  height: 0.85em;
+  border-radius: var(--silo-radius-sm);
+  background: color-mix(in srgb, var(--silo-color-text-lo) 18%, transparent);
+  animation: skills-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.skills-skeleton-line--sub {
+  height: 0.7em;
+}
+
+.skills-skeleton-line--trail {
+  flex-shrink: 0;
+  height: 0.75em;
+}
+
+@keyframes skills-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.skills-browse-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-installs {
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  min-width: 3.2em;
+  text-align: right;
+}
+
+.skills-installs-hi {
+  font-family: var(--silo-font-mono);
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+}
+
+.skills-sparkline {
+  color: var(--silo-color-accent);
+  flex-shrink: 0;
+}
+
+.skills-browse-more {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 8px;
+}
+
+/* Detail page — fills the whole sheet body (list chrome is unmounted). */
+
+.skills-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  /* overflow via host `.silo-scroll` */
+}
+
+.skills-detail-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  flex-shrink: 0;
+}
+
+.skills-detail-nav-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* Navigation, not an action — quiet accent link (git takeover / ext detail).
+   Chrome size only: `--silo-font-size-sm` + fixed 14px caret (same as
+   `.git-takeover-back`). Do not use `1em` here — the browse sheet root is
+   pane-scaled (base+2), and 1em would inflate Back with the body. */
+.skills-browse .skills-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: var(--silo-color-accent);
+  font-family: var(--silo-font-ui);
+  font-size: var(--silo-font-size-sm);
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border-radius: var(--silo-radius-sm);
+  cursor: pointer;
+}
+
+.skills-browse .skills-back:hover:not(:disabled) {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-accent);
+}
+
+.skills-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.skills-detail-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skills-detail-title {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+  line-height: 1.3;
+}
+
+.skills-detail-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skills-detail-source,
+.skills-detail-stats,
+.skills-detail-hint {
+  margin: 0;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+}
+
+.skills-detail-source {
+  font-family: var(--silo-font-mono);
+}
+
+/* Match github-prs `.ghpr-detail__section-title`: pane-relative size
+   (`1em - 2px`), uppercase, semibold, muted. */
+.skills-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Extra air after Summary before Install/Uninstall. */
+.skills-detail-section+.skills-detail-section {
+  margin-top: 10px;
+}
+
+.skills-detail-section-title {
+  margin: 0 0 8px;
+  font-size: calc(1em - 2px);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--silo-color-text-lo);
+}
+
+.skills-detail-description {
+  margin: 0;
+  color: var(--silo-color-text);
+  font-size: 1em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.skills-detail-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.skills-detail-skeleton-line {
+  display: block;
+  height: 0.85em;
+  border-radius: var(--silo-radius-sm);
+  background: color-mix(in srgb, var(--silo-color-text-lo) 18%, transparent);
+  animation: skills-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.skills-detail-skeleton-line:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.skills-detail-skeleton-line:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.skills-detail-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skills-detail-divider {
+  height: 0;
+  border: 0;
+  border-top: 1px solid var(--silo-color-border);
+  margin: 2px 0;
+}
+
+.skills-detail-cmd-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.skills-detail-cmd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.skills-detail-cmd-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.skills-detail-cmd-caption {
+  margin: 0;
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+}
+
+.skills-detail-cmd {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 36px 8px 10px;
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-color-input-bg);
+  border: 1px solid var(--silo-color-border);
+  color: var(--silo-color-text);
+  font-family: var(--silo-font-mono);
+  font-size: calc(1em - 1px);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  cursor: text;
+}
+
+.skills-detail-cmd-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.skills-detail-cmd-options {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+
+.skills-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

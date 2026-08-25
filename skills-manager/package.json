@@ -1,0 +1,33 @@
+{
+  "name": "@silo-extensions/skills-manager",
+  "displayName": "Skills Manager",
+  "version": "0.1.0",
+  "description": "Agent Skills side panel — inventory of project + user installs, with a dock-anchored sheet to browse and install from skills.sh.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.skills-manager",
+    "engine": "^0.53.0",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": ["fs:read", "network"]
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.40.1",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}
