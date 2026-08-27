@@ -64,6 +64,10 @@ export const extension: Extension = {
       },
     });
   },
+  // The host disposes every ctx.register* contribution (and this extension's
+  // timers/watchers, which are React-owned and unmount with the panel) on
+  // teardown — the injected <style> tag is the one manual DOM mutation that
+  // needs its own cleanup here.
   deactivate() {
     document.getElementById(STYLE_ID)?.remove();
   },

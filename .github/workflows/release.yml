@@ -84,6 +84,7 @@ jobs:
             "github-issues:true"
             "github-prs:true"
             "local-web-viewer:false"
+            "skills-manager:true"
             "system-monitor:true"
           )
 
