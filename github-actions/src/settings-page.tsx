@@ -23,7 +23,6 @@ export function GhActionsSettings({ ctx: _ctx }: Props) {
 
   return (
     <div className="gha-settings-page">
-      <h2 className="gha-settings-title">GitHub Actions</h2>
       <div className="silo-scroll gha-settings-scroll">
         <Section label="Authentication">
           <SettingRow

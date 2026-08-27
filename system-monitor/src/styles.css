@@ -250,16 +250,12 @@
    The pane itself doesn't scroll (each page owns its scroll region via the
    public .silo-scroll class). Tab switching itself is the SDK's Tabs/TabPanel
    (.silo-tabs/.silo-tab/.silo-tab-panel) — no local tab styling needed. ── */
+/* Body only — the host draws the page title from SettingsPage.title. */
 .sms-settings-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   gap: 12px;
-}
-.sms-settings-title {
-  margin: 0;
-  font-size: 1.1em;
-  color: var(--silo-color-text-hi);
 }
 /* TabPanel takes the remaining page height so its .silo-scroll child has a
    bounded height to actually scroll within — TabPanel has no className prop

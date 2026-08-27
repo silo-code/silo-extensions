@@ -997,20 +997,14 @@
 .ghpr-status-U,
 .ghpr-status-X { color: var(--silo-color-text-lo); }
 
-/* Settings page shell — built locally rather than relying on the host's
-   internal .es-* classes (SettingsDialog.css), which aren't part of the
-   public extension contract. The pane itself doesn't scroll (each page owns
+/* Settings page shell — body only; the host draws the page title from
+   SettingsPage.title. The pane itself doesn't scroll (each page owns
    its own scroll region via the public .silo-scroll class). */
 .ghpr-settings-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   gap: 12px;
-}
-.ghpr-settings-title {
-  margin: 0;
-  font-size: 1.1em;
-  color: var(--silo-color-text-hi);
 }
 .ghpr-settings-scroll {
   flex: 1 1 auto;
