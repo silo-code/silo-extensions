@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/skills-manager",
   "displayName": "Skills Manager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent Skills side panel — inventory of project + user installs, with a dock-anchored sheet to browse and install from skills.sh.",
   "type": "module",
   "files": [
@@ -13,7 +13,10 @@
     "engine": "^0.53.0",
     "main": "dist/index.js",
     "publisher": "Silo",
-    "permissions": ["fs:read", "network"]
+    "permissions": [
+      "fs:read",
+      "network"
+    ]
   },
   "scripts": {
     "build": "node build.mjs",
