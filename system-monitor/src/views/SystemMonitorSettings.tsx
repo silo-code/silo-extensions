@@ -79,7 +79,6 @@ export function SystemMonitorSettings() {
 
   return (
     <div className="sms-settings-page">
-      <h2 className="sms-settings-title">System Monitor</h2>
       <Tabs tabs={TABS} active={tab} onSelect={setTab} />
       <TabPanel>
         <div className="silo-scroll sms-settings-scroll">

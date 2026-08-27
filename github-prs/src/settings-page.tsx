@@ -16,7 +16,6 @@ export function PrSettingsPage({ ctx }: PrSettingsPageProps) {
 
   return (
     <div className="ghpr-settings-page">
-      <h2 className="ghpr-settings-title">GitHub Pull Requests</h2>
       <div className="silo-scroll ghpr-settings-scroll">
         <Section label="Authentication">
           <SettingRow

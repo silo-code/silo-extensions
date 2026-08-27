@@ -70,9 +70,6 @@ export function AgentMonitorSettingsPage() {
   const s = useServiceState(settingsService);
   return (
     <div className="am-page">
-      <div className="am-header">
-        <h2>Agent Monitor</h2>
-      </div>
       <div className="am-body silo-scroll">
         <div className="am-intro">
           <span className="am-intro-title">
