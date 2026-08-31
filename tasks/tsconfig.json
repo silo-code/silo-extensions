@@ -1,15 +1,8 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    // Local-development link to the SDK source (RFC 0032's
-    // ctx.storage.globalDir() / workspaceDir() are on `main` but not yet in a
-    // published @silo-code/sdk). Replace with a real
-    // `"@silo-code/sdk": "^0.42.0"` devDependency and delete this mapping
-    // (and the matching alias in vitest.config.ts) once that SDK ships.
-    "paths": {
-      "@silo-code/sdk": ["../../xerro-edit/packages/sdk/src/index.ts"]
-    }
+    "outDir": "dist",
+    "rootDir": "src"
   },
   "include": ["src"]
 }

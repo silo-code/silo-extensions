@@ -70,14 +70,9 @@ lost line.
 ## Development
 
 This extension depends on RFC 0032's `ctx.storage.globalDir()` /
-`workspaceDir()`, which are on `main` in `silo-code/silo` but **not yet in a
-published `@silo-code/sdk`**. Until that release:
-
-- `tsconfig.json` and `vitest.config.ts` alias `@silo-code/sdk` to the SDK
-  **source** in a sibling `silo` checkout (`../../xerro-edit/packages/sdk` here).
-- `package.json` has no `@silo-code/sdk` dependency yet, and `silo.engine` /
-  the SDK devDependency pins are **provisional** — set them to the real app and
-  SDK releases that carry RFC 0032 before publishing.
+`workspaceDir()` and the `ctx.files` own-dir sandbox lift, which ship in
+`@silo-code/sdk` **0.42.0** and Silo **0.59.0** — the `silo.engine` and SDK
+devDependency pins. Standard extension build:
 
 ```
 npm install
