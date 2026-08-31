@@ -563,13 +563,18 @@ export function PrPanel({ ctx, service, storage, hydrated, active }: PrPanelProp
       <div className="ghpr-viewport">
         <div className={`ghpr-page ghpr-page--${listPageSlot(view)}`}>
           <div className="ghpr-header">
+            {/* Collapsed dropdown — mirrors the SDK <MenuButton size="sm">
+                (docs/side-panel-design.md). Hand-rolled only because the
+                published @silo-code/sdk here predates MenuButton; the CSS
+                tracks `.silo-menu-button-sm` verbatim. */}
             <button
               type="button"
-              className="ghpr-filter-btn"
+              className="ghpr-menu-btn"
+              aria-haspopup="menu"
               onClick={(e) => openFilterMenu(e.currentTarget)}
             >
-              <span className="ghpr-filter-btn__label">{FILTER_LABELS[filter]}</span>
-              <CaretDown size={12} weight="bold" />
+              <span className="ghpr-menu-btn__label">{FILTER_LABELS[filter]}</span>
+              <CaretDown className="ghpr-menu-btn__chevron" size="1em" />
             </button>
             <Tooltip content="Refresh">
               <button

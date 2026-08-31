@@ -323,13 +323,18 @@ export function IssuePanel({ ctx, service, storage, hydrated, active }: IssuePan
       <div className="ghi-viewport">
         <div className={`ghi-page ghi-page--${listPageSlot(view)}`}>
           <div className="ghi-header">
+            {/* Collapsed dropdown — mirrors the SDK <MenuButton size="sm">
+                (docs/side-panel-design.md). Hand-rolled only because the
+                published @silo-code/sdk here predates MenuButton; the CSS
+                tracks `.silo-menu-button-sm` verbatim. */}
             <button
               type="button"
-              className="ghi-filter-btn"
+              className="ghi-menu-btn"
+              aria-haspopup="menu"
               onClick={(e) => openFilterMenu(e.currentTarget)}
             >
-              <span className="ghi-filter-btn__label">{FILTER_LABELS[filter]}</span>
-              <CaretDown size={12} weight="bold" />
+              <span className="ghi-menu-btn__label">{FILTER_LABELS[filter]}</span>
+              <CaretDown className="ghi-menu-btn__chevron" size="1em" />
             </button>
             <Tooltip content="Refresh">
               <button
