@@ -1,0 +1,34 @@
+{
+  "name": "@silo-extensions/tasks",
+  "displayName": "Tasks",
+  "version": "0.1.0",
+  "description": "Silo-managed task lists — a global personal list and one per workspace, with a side panel to scan, drill in, and create/edit/complete. No external tracker required, nothing written into a repo.",
+  "type": "module",
+  "files": [
+    "dist/",
+    "build.mjs"
+  ],
+  "silo": {
+    "id": "silo.tasks",
+    "engine": "^0.59.0",
+    "main": "dist/index.js",
+    "publisher": "Silo",
+    "permissions": []
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "build:watch": "node --watch build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.42.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.7"
+  }
+}

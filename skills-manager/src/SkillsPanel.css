@@ -45,8 +45,10 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Horizontal 4px matches git; top pad near-zero under the side-tab strip. */
-  padding: 2px 4px 8px;
+  /* Chrome inset 10px (matches silo.tasks toolbar / quick-add); the list body
+   * below stays at the tighter 4px container + per-item staircase. Top pad
+   * near-zero under the side-tab strip. */
+  padding: 2px 10px 8px;
   border-bottom: 1px solid var(--silo-color-border);
   flex-shrink: 0;
 }
@@ -119,7 +121,9 @@
   padding: 4px 8px;
   background: transparent;
   border: none;
-  color: var(--silo-color-text);
+  /* Muted by default so the header reads quieter than the rows it groups; it
+     brightens on hover (it's a collapse toggle). */
+  color: var(--silo-color-text-lo);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: var(--silo-font-size-chrome);
