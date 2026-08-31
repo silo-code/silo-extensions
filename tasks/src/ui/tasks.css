@@ -1,0 +1,516 @@
+/*
+ * Tasks panel styling. Design tokens only for color / font / radius (ADR 0017);
+ * the literal layout px are chrome geometry `docs/side-panel-design.md`
+ * prescribes (26×26 toolbar hits, `gap: 2px`, `.panel-back`'s `3px 6px`).
+ *
+ * Two horizontal insets, both from `docs/side-panel-design.md` (the git /
+ * skills-manager reference model):
+ *   - Chrome regions (toolbar, quick-add dock, drill-in detail, empty line)
+ *     sit at `--tasks-pad-x` (10px).
+ *   - The scrolling list uses a 4px container (`.tasks-panel-body`) with the
+ *     shared per-item staircase on top — headers `4px 8px` (→ 12px), rows
+ *     `4px 2px 4px 10px` (→ 14px left / 6px right) — identical to git
+ *     `.section-head` / `.git-file-row` and skills `.skills-section-head` /
+ *     `.silo-list-row`. Don't flatten the list back onto `--tasks-pad-x`.
+ */
+
+.tasks-panel {
+  --tasks-pad-x: 10px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  /* Panel root: font-family only — inherit the pane's absolute size. */
+  font-family: var(--silo-font-ui);
+  color: var(--silo-color-text);
+}
+
+/* Kit List rows are pinned to an absolute small token; pull them back to the
+ * pane scale (belt-and-braces — this panel renders bespoke rows). */
+.tasks-panel .silo-list-row {
+  font-size: 1em;
+}
+
+/* ---- Toolbar -------------------------------------------------------------- */
+
+.tasks-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px var(--tasks-pad-x);
+  border-bottom: 1px solid var(--silo-color-border);
+}
+
+.tasks-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Dropdown labels read at the app base size (13px at default uiFontSize),
+ * a touch smaller than the pane so they sit as chrome, not content. */
+.tasks-toolbar .tasks-menu-btn {
+  font-size: var(--silo-font-size-base);
+}
+
+.tasks-toolbar-spacer {
+  flex: 1;
+}
+
+.tasks-icon-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--silo-radius-sm);
+  background: transparent;
+  color: var(--silo-color-text-lo);
+  cursor: pointer;
+}
+
+.tasks-icon-hit:hover {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text);
+}
+
+/* ---- Body -------------------------------------------------------------- */
+
+.tasks-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* 4px list container + per-item staircase on top — matches skills-manager
+   * `.skills-body` (`0 4px 16px`) and git `.git-panel`. Top pad is 0 so the
+   * toolbar's bottom pad + the first header's own top pad set the gap under
+   * the filter. */
+  padding: 0 4px 12px;
+}
+
+/* Docked at the bottom of the panel, below the scrolling list. */
+.tasks-quickadd-dock {
+  flex-shrink: 0;
+  padding: 8px var(--tasks-pad-x);
+}
+
+.tasks-quickadd {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-quickadd > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Square primary button to the right of the input. */
+.tasks-add-btn {
+  flex: none;
+  width: 2.15em;
+  height: 2.15em;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- List rows -------------------------------------------------------------- */
+
+/* Empty / no-match line — plain muted italic, left-aligned (github-prs
+ * `.ghpr-empty` style), not a big centered block. */
+/* Sits inside the 4px list body — 6px more lands it at the 10px chrome inset. */
+.tasks-empty {
+  padding: 16px 6px;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.tasks-empty-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--silo-color-accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  /* Between groups, not before the first — matches skills-manager
+   * `.skills-body` gap. The first header's gap under the filter is set by the
+   * toolbar's bottom pad alone (body top pad is 0, header has no margin-top). */
+  gap: 14px;
+}
+
+.tasks-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Group header — the shared side-panel section-header pattern
+ * (docs/side-panel-design.md): uppercase chrome label, collapse chevron,
+ * right-aligned count. Byte-identical geometry to skills-manager
+ * `.skills-section-head` / git `.section-head` — `4px 8px` on the 4px list
+ * container lands the label at 12px from the pane edge. */
+.tasks-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--silo-radius-sm);
+  /* Muted by default so the header reads quieter than the rows it groups; it
+   * brightens on hover (it's a collapse toggle). */
+  color: var(--silo-color-text-lo);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--silo-font-size-chrome);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tasks-section-head:hover {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-text-hi);
+}
+
+.tasks-section-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-section-title {
+  white-space: nowrap;
+}
+
+.tasks-section-count {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Byte-identical to skills-manager `.skills-panel .silo-list-row`
+ * (`gap: 4px; padding: 4px 2px 4px 10px`): content lands at 14px from the
+ * pane edge (2px past the 12px header — the intentional list staircase), the
+ * trailing priority mark sits ~6px off the right edge. */
+.tasks-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px 4px 10px;
+  border-radius: var(--silo-radius-sm);
+  cursor: pointer;
+  color: var(--silo-color-text);
+}
+
+.tasks-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+
+.tasks-row-selected {
+  background: var(--silo-color-bg-active);
+}
+
+.tasks-row-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 1em;
+  font-weight: 400;
+}
+
+.tasks-row-done .tasks-row-title {
+  text-decoration: line-through;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-status-glyph {
+  flex-shrink: 0;
+  color: var(--silo-color-text-lo);
+}
+
+/* Status glyphs are colored by lane (matches the panel prototype): ready stays
+ * muted, in-progress warns, blocked errs, done is success. */
+.tasks-status-in-progress {
+  color: var(--silo-color-warn);
+}
+
+.tasks-status-blocked {
+  color: var(--silo-color-err);
+}
+
+.tasks-status-done,
+.tasks-row-done .tasks-status-glyph {
+  color: var(--silo-color-ok);
+}
+
+.tasks-priority-mark {
+  flex-shrink: 0;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-priority-high {
+  color: var(--silo-color-warn);
+}
+
+/* ---- Detail page -------------------------------------------------------------- */
+
+.tasks-detail {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px var(--tasks-pad-x) 16px;
+}
+
+/* Detail header — the shared side-panel detail-header pattern
+ * (docs/side-panel-design.md › Drill-in). Two rows: a toolbar row (Back +
+ * right-aligned secondary icon-tools) and a title row (bold title + primary
+ * action button). Geometry / tokens match github-prs `.ghpr-header__*` /
+ * `.ghpr-open-btn` / `.ghpr-merge-btn` and github-issues. */
+.tasks-detail-backrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-detail-backrow-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+/* Back control CSS contract — docs/side-panel-design.md. Chrome, not body:
+ * --silo-font-size-sm and a fixed caret size, never 1em. */
+.panel-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: var(--silo-color-accent);
+  font-family: var(--silo-font-ui);
+  font-size: var(--silo-font-size-sm);
+  font-weight: 600;
+  padding: 3px 6px;
+  margin-left: -6px;
+  border-radius: var(--silo-radius-sm);
+  cursor: pointer;
+}
+
+.panel-back:hover:not(:disabled) {
+  background: var(--silo-color-bg-hover);
+  color: var(--silo-color-accent);
+}
+
+.tasks-detail-titlerow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.tasks-detail-titlerow .silo-inline-edit,
+.tasks-detail-titlerow > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Title text: pane-scale (1em → base+2px in the right column, like every
+ * other detail-header title), bold, high-contrast, wraps. Matches
+ * `.ghpr-header__title`. The `1em` overrides the kit's
+ * `.silo-inline-edit-value`, which pins itself to `--silo-font-size-base`. */
+.tasks-detail-titlerow .silo-inline-edit-value {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* Primary / secondary action buttons on the title row. Same geometry and
+ * button-treatment tokens as github-prs `.ghpr-open-btn` / `.ghpr-merge-btn`.
+ * Swap for an SDK button once the published @silo-code/sdk here carries one at
+ * this size. */
+.tasks-detail-cta {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.tasks-detail-btn {
+  appearance: none;
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid var(--silo-button-border, var(--silo-color-border));
+  border-radius: var(--silo-radius-sm);
+  background: var(--silo-button-bg, var(--silo-color-input-bg));
+  color: var(--silo-button-text, var(--silo-color-text-hi));
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.tasks-detail-btn:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--silo-button-bg, var(--silo-color-input-bg)) 85%,
+    #000
+  );
+}
+
+.tasks-detail-btn--primary {
+  background: var(
+    --silo-button-primary-bg,
+    var(--silo-button-bg, var(--silo-color-input-bg))
+  );
+  color: var(
+    --silo-button-primary-text,
+    var(--silo-button-text, var(--silo-color-text-hi))
+  );
+}
+
+.tasks-detail-btn--primary:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--silo-button-primary-bg, var(--silo-button-bg, var(--silo-color-input-bg)))
+      85%,
+    #000
+  );
+}
+
+.tasks-detail-id {
+  font-family: var(--silo-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* Labels field — filled colored chips (github-issues label style; color per
+ * `labelChipStyle`, applied inline) + a pencil to edit the list. */
+.tasks-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-label-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--silo-radius-sm);
+  font-size: calc(var(--silo-font-size-chrome) - 1px);
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.tasks-labels-empty {
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-detail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Field labels use the shared modal / settings form-label style — the SDK
+ * `.silo-section-label` (the uppercase NAME / FOLDERS headers in every Silo
+ * modal): chrome−1, weight 600, 0.07em tracking, `text-lo`. */
+.tasks-detail-label {
+  font-size: calc(var(--silo-font-size-chrome) - 1px);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-detail-text {
+  margin: 0;
+  font-size: calc(1em - 1px);
+  white-space: pre-wrap;
+}
+
+.tasks-detail-checklist {
+  margin: 0;
+  padding-left: 18px;
+  font-size: calc(1em - 1px);
+}
+
+.tasks-detail-checklist .is-done {
+  text-decoration: line-through;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-date-input {
+  font-family: var(--silo-font-ui);
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-input-text);
+  background: var(--silo-color-input-bg);
+  border: 1px solid var(--silo-color-input-border);
+  border-radius: var(--silo-radius-sm);
+  padding: 6px 8px;
+}
+
+/* Lane / Priority use the kit `SegmentedTabs`. Both wells hug their content
+ * (the kit default). Two scoped tweaks the shared `.silo-segmented*` chrome
+ * doesn't cover for a side pane (same "chrome geometry px" licence as the rest
+ * of this file — no colors, fonts, or component tokens):
+ *   1. Priority renders a `PriorityMark` glyph in the segment's `icon` slot —
+ *      lay that segment out as a row with a gap.
+ *   2. If a narrow pane can't fit the four-segment Lane row, scroll the well
+ *      rather than let it overflow the panel. */
+.tasks-priority-field .silo-segmented-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-detail .silo-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tasks-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tasks-checklist-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tasks-checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-checklist-row .silo-checkbox-row {
+  flex: 1;
+}
