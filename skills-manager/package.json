@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/skills-manager",
   "displayName": "Skills Manager",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent Skills side panel — inventory of project + user installs, with a dock-anchored sheet to browse and install from skills.sh.",
   "type": "module",
   "files": [
