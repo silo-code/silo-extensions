@@ -267,8 +267,16 @@
   color: var(--silo-color-text-lo);
 }
 
+/* High priority reads as a warm orange the flat `warn` gold can't hit on its
+ * own — a warn/err mix, staying within the palette (ADR 0017, no literals). */
 .tasks-priority-high {
-  color: var(--silo-color-warn);
+  color: color-mix(in srgb, var(--silo-color-warn) 40%, var(--silo-color-err));
+}
+
+/* Low priority recedes: the muted row tone faded toward the pane, so it sits
+ * quieter than the status glyphs without introducing a new color. */
+.tasks-priority-low {
+  color: color-mix(in srgb, var(--silo-color-text-lo) 50%, transparent);
 }
 
 /* ---- Detail page -------------------------------------------------------------- */
@@ -478,8 +486,9 @@
  * (the kit default). Two scoped tweaks the shared `.silo-segmented*` chrome
  * doesn't cover for a side pane (same "chrome geometry px" licence as the rest
  * of this file — no colors, fonts, or component tokens):
- *   1. Priority renders a `PriorityMark` glyph in the segment's `icon` slot —
- *      lay that segment out as a row with a gap.
+ *   1. Priority renders a `PriorityMark` glyph in the segment's `icon` slot
+ *      for high / low (normal has no mark) — lay that segment out as a row
+ *      with a gap.
  *   2. If a narrow pane can't fit the four-segment Lane row, scroll the well
  *      rather than let it overflow the panel. */
 .tasks-priority-field .silo-segmented-tab {

@@ -4,12 +4,11 @@
  */
 
 import {
-  ArrowDown,
-  ArrowUp,
+  CaretDoubleDown,
+  CaretDoubleUp,
   CheckCircle,
   Circle,
   CircleHalf,
-  Minus,
   Prohibit,
 } from "@phosphor-icons/react";
 import type { TaskLane, TaskPriority } from "../model/task";
@@ -67,15 +66,16 @@ export function StatusGlyph({ lane }: { lane: TaskLane }) {
 }
 
 /**
- * Priority as an arrow: small and bold. Up for high takes color (warn); down
- * for low and the dash for normal stay muted.
+ * Priority as a double chevron, small and bold: high points up in a warm orange
+ * (a warn/err mix) so it carries across a dense list; low points down in the
+ * muted row tone. Normal is the default and shows no mark at all.
  */
 export function PriorityMark({ priority }: { priority: TaskPriority }) {
   switch (priority) {
     case "high":
       return (
-        <ArrowUp
-          size="0.85em"
+        <CaretDoubleUp
+          size="0.95em"
           weight="bold"
           className="tasks-priority-mark tasks-priority-high"
           aria-label="High priority"
@@ -83,21 +83,14 @@ export function PriorityMark({ priority }: { priority: TaskPriority }) {
       );
     case "low":
       return (
-        <ArrowDown
-          size="0.85em"
+        <CaretDoubleDown
+          size="0.95em"
           weight="bold"
-          className="tasks-priority-mark"
+          className="tasks-priority-mark tasks-priority-low"
           aria-label="Low priority"
         />
       );
     case "normal":
-      return (
-        <Minus
-          size="0.85em"
-          weight="bold"
-          className="tasks-priority-mark"
-          aria-label="Normal priority"
-        />
-      );
+      return null;
   }
 }
