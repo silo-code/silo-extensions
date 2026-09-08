@@ -15,11 +15,11 @@ export interface IssueRowProps {
 function stateIcon(state: IssueState) {
   switch (state) {
     case "open":
-      return <Circle size={16} weight="fill" className="ghi-row__icon ghi-row__icon--ok" />;
+      return <Circle size="1em" weight="fill" className="ghi-row__icon ghi-row__icon--ok" />;
     case "closed-completed":
-      return <CheckCircle size={16} weight="fill" className="ghi-row__icon ghi-row__icon--accent" />;
+      return <CheckCircle size="1em" weight="fill" className="ghi-row__icon ghi-row__icon--accent" />;
     case "closed-not-planned":
-      return <XCircle size={16} weight="regular" className="ghi-row__icon ghi-row__icon--muted" />;
+      return <XCircle size="1em" weight="regular" className="ghi-row__icon ghi-row__icon--muted" />;
   }
 }
 
