@@ -1,20 +1,24 @@
 /**
- * One task row: **status glyph · title · priority**. One line. The id lives in
- * the row's `Tooltip` and nowhere else in the row (R7); the provider a task
- * came from is not shown at all.
+ * One task row: **status glyph · title · priority**. One line. Hovering the
+ * title opens a {@link TaskHoverCard} with the rest of the task's detail (the
+ * row body deliberately shows almost none of it — R7).
  */
 
-import { Tooltip } from "@silo-code/sdk";
 import type { Task } from "../model/task";
 import { PriorityMark, StatusGlyph } from "./glyphs";
+import { HoverCard } from "./HoverCard";
+import { TaskHoverCard } from "./TaskHoverCard";
 
 export function TaskRow({
   task,
   selected,
+  sourceName,
   onOpen,
 }: {
   task: Task;
   selected: boolean;
+  /** The task's list — shown in the hover card; omitted for the global list. */
+  sourceName?: string;
   onOpen: () => void;
 }) {
   const done = task.lane === "done";
@@ -37,9 +41,9 @@ export function TaskRow({
       }}
     >
       <StatusGlyph lane={task.lane} />
-      <Tooltip content={task.id}>
+      <HoverCard card={<TaskHoverCard task={task} sourceName={sourceName} />}>
         <span className="tasks-row-title">{task.title}</span>
-      </Tooltip>
+      </HoverCard>
       <PriorityMark priority={task.priority} />
     </div>
   );

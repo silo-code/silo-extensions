@@ -18,7 +18,7 @@ export interface TaskSource {
   readonly scope: "global" | "workspace";
   /** Set when `scope === "workspace"`; used to derive the workspace label. */
   readonly workspaceId?: string;
-  /** "Personal" for the global source, else the workspace's name. */
+  /** `""` for the global source (deliberately unnamed), else the workspace's name. */
   readonly name: string;
 }
 

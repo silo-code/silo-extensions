@@ -6,10 +6,12 @@
  * show it renders a plain muted line (github-prs `.ghpr-empty` style).
  */
 
+import { useMemo } from "react";
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { Badge } from "@silo-code/sdk";
 import type { Task } from "../model/task";
 import type { TaskGroup } from "../lib/view";
+import type { TaskSource } from "../model/source";
 import { TaskRow } from "./TaskRow";
 
 export function TaskList({
@@ -19,6 +21,7 @@ export function TaskList({
   filtered,
   collapsedGroups,
   openTaskId,
+  sources,
   onOpen,
   onToggleGroup,
   onClearFilters,
@@ -32,10 +35,16 @@ export function TaskList({
   filtered: boolean;
   collapsedGroups: Readonly<Record<string, boolean>>;
   openTaskId: string | null;
+  /** Resolved sources — for the hover card's list name (empty for global). */
+  sources: readonly TaskSource[];
   onOpen: (task: Task) => void;
   onToggleGroup: (key: string) => void;
   onClearFilters: () => void;
 }) {
+  const sourceNames = useMemo(
+    () => new Map(sources.map((s) => [s.id, s.name] as const)),
+    [sources],
+  );
   if (totalVisible === 0) {
     if (hasAnyTask && filtered) {
       return (
@@ -95,6 +104,7 @@ export function TaskList({
                   key={task.id}
                   task={task}
                   selected={task.id === openTaskId}
+                  sourceName={sourceNames.get(task.sourceId) || undefined}
                   onOpen={() => onOpen(task)}
                 />
               ))}

@@ -1,21 +1,24 @@
 /**
- * The one stateful object in the extension. Resolves the live sources —
- * always the global one, plus the active workspace's when a workspace is open
- * — owns a watch per source, and exposes the {@link ReactiveService} shape so
- * the panel reads it with `useServiceState`.
+ * The one stateful object in the extension. Resolves the live sources — always
+ * the global one, plus **one per open workspace** — owns a watch per source,
+ * and exposes the {@link ReactiveService} shape so every surface reads it with
+ * `useServiceState`.
  *
  * Because the source set is created once in `activate` and owned by the
- * extension (not the panel), lazily mounting or unmounting the panel neither
- * reloads nor drops a watch — R2's "loaded once, not per consumer".
+ * extension (not a panel), lazily mounting or unmounting any one surface
+ * neither reloads a source nor drops a watch — R2's "loaded once, not per
+ * consumer". Phase 2 cashes that in: the side panel reads a two-source slice
+ * (`selectScopedSources`), the Navigator view and the Tasks app sheet read the
+ * whole set.
  *
- * `globalDir()` is resolved once and cached; `workspaceDir()` is re-resolved
- * on every workspace change (the SDK documents that its path changes with the
- * active workspace). Only `NoWorkspaceError` maps to "no workspace source";
- * any other rejection is a genuine storage fault and surfaces.
+ * `globalDir()` is resolved once and cached; the per-workspace directories come
+ * from one `workspaceDirs({ create: false })` round-trip on every workspace
+ * change — read-only resolution, so no directory is created for a workspace
+ * that has no tasks yet.
  */
 
 import type { ExtensionContext, ReactiveService } from "@silo-code/sdk";
-import { NoWorkspaceError, path } from "@silo-code/sdk";
+import { path } from "@silo-code/sdk";
 import type { Task, TaskDraft, TaskLane, TaskPatch } from "../model/task";
 import type { DetailSection } from "../model/detail";
 import { hashLocator, type TaskProvider, type TaskSource } from "../model/source";
@@ -23,14 +26,32 @@ import type { ProviderRegistry } from "../providers/registry";
 
 const TASKS_FILE = "tasks.jsonl";
 const SILO_PROVIDER_ID = "silo";
-const GLOBAL_SOURCE_NAME = "Personal";
+// Deliberately unnamed: the global list isn't tied to a workspace, so it gets
+// no proper noun (tried "Personal", then "My Tasks" — both read oddly as one
+// option in a dropdown of workspace names; see domain-language.md's Task
+// Source entry). A group header for it renders with no label (TaskList /
+// TaskRows already treat an empty `TaskGroup.title` as "the unnamed
+// group"); TaskDetail's List field hides itself rather than show a blank
+// value; the composer's list picker shows the placeholder word "No list"
+// for it specifically (UI copy for an absent value, not this source's name).
+const GLOBAL_SOURCE_NAME = "";
 
 export interface SourceSetState {
   readonly sources: readonly TaskSource[];
   readonly tasksBySource: ReadonlyMap<string, readonly Task[]>;
   readonly loading: boolean;
-  /** A storage fault (e.g. `globalDir()` rejected). `null` when healthy. */
+  /**
+   * A **wholesale** storage fault — `globalDir()` or `workspaceDirs()`
+   * rejected, so nothing could be resolved. `null` when healthy. A single
+   * workspace failing is not this; see
+   * {@link SourceSetState.errorsBySource}.
+   */
   readonly error: string | null;
+  /**
+   * Per-source load failures, keyed by source id. One unreadable workspace
+   * lands here with an empty task list; every other source still loads.
+   */
+  readonly errorsBySource: ReadonlyMap<string, string>;
 }
 
 const EMPTY_STATE: SourceSetState = {
@@ -38,6 +59,7 @@ const EMPTY_STATE: SourceSetState = {
   tasksBySource: new Map(),
   loading: true,
   error: null,
+  errorsBySource: new Map(),
 };
 
 type Ctx = Pick<ExtensionContext, "workspaces" | "storage" | "log">;
@@ -59,12 +81,29 @@ export interface SourceSet extends ReactiveService<SourceSetState> {
   dispose(): void;
 }
 
+/**
+ * The side panel's slice of the full set: the global source plus the **active**
+ * workspace's, in that order. Pure — the panel's phase-1 behavior is unchanged
+ * even though the set behind it now spans every open workspace.
+ */
+export function selectScopedSources(
+  sources: readonly TaskSource[],
+  activeWorkspaceId: string | null,
+): readonly TaskSource[] {
+  return sources.filter(
+    (s) =>
+      s.scope === "global" ||
+      (activeWorkspaceId != null && s.workspaceId === activeWorkspaceId),
+  );
+}
+
 export function createSourceSet(
   ctx: Ctx,
   providers: ProviderRegistry,
 ): SourceSet {
   let state: SourceSetState = EMPTY_STATE;
   let signature = "";
+  let resolveSignature: string | null = null;
   let sources: readonly TaskSource[] = [];
   let globalDir: string | null = null;
   let disposed = false;
@@ -72,6 +111,7 @@ export function createSourceSet(
   const listeners = new Set<(s: SourceSetState) => void>();
   const watches = new Map<string, { dispose(): void }>();
   const tasks = new Map<string, readonly Task[]>();
+  const sourceErrors = new Map<string, string>();
 
   function provider(): TaskProvider {
     const p = providers.get(SILO_PROVIDER_ID);
@@ -81,11 +121,13 @@ export function createSourceSet(
 
   function commit(loading: boolean, error: string | null): void {
     const tasksBySource = new Map(tasks);
+    const errorsBySource = new Map(sourceErrors);
     const sig = JSON.stringify({
       s: sources.map((s) => `${s.id}:${s.name}`),
       t: sources.map((s) =>
         (tasksBySource.get(s.id) ?? []).map((x) => `${x.id}@${x.updatedAt}`),
       ),
+      e: sources.map((s) => errorsBySource.get(s.id) ?? ""),
       loading,
       error,
     });
@@ -93,12 +135,13 @@ export function createSourceSet(
     // useSyncExternalStore contract.
     if (sig === signature) return;
     signature = sig;
-    state = { sources, tasksBySource, loading, error };
+    state = { sources, tasksBySource, loading, error, errorsBySource };
     for (const l of listeners) l(state);
   }
 
   async function loadSource(source: TaskSource): Promise<void> {
     tasks.set(source.id, await provider().list(source));
+    sourceErrors.delete(source.id);
   }
 
   async function resolveSources(): Promise<TaskSource[]> {
@@ -114,23 +157,27 @@ export function createSourceSet(
       },
     ];
 
+    // `create: false` — the aggregation only ever reads each workspace's file
+    // (a missing one already reads as an empty list), so a workspace with no
+    // tasks gets no directory written on its behalf. Writes still go through
+    // `workspaceDir()` with its `create: true` default.
+    const dirs = await ctx.storage.workspaceDirs({ create: false });
     const ws = ctx.workspaces.getState();
-    if (ws.activeId) {
-      try {
-        const dir = await ctx.storage.workspaceDir();
-        const locator = path.join(dir, TASKS_FILE);
-        const active = ws.all.find((w) => w.id === ws.activeId);
-        out.push({
-          id: hashLocator(SILO_PROVIDER_ID, locator),
-          providerId: SILO_PROVIDER_ID,
-          locator,
-          scope: "workspace",
-          workspaceId: ws.activeId,
-          name: active?.name ?? "Workspace",
-        });
-      } catch (err) {
-        if (!(err instanceof NoWorkspaceError)) throw err;
-      }
+    const byId = new Map(ws.open.map((w) => [w.id, w]));
+    for (const { workspaceId, dir } of dirs) {
+      const workspace = byId.get(workspaceId);
+      // `workspaceDirs()` is keyed off the same `open` list, but a workspace
+      // closed between the two reads would have no record to name.
+      if (!workspace) continue;
+      const locator = path.join(dir, TASKS_FILE);
+      out.push({
+        id: hashLocator(SILO_PROVIDER_ID, locator),
+        providerId: SILO_PROVIDER_ID,
+        locator,
+        scope: "workspace",
+        workspaceId,
+        name: workspace.name,
+      });
     }
 
     const seen = new Set<string>();
@@ -148,6 +195,7 @@ export function createSourceSet(
         w.dispose();
         watches.delete(id);
         tasks.delete(id);
+        sourceErrors.delete(id);
       }
     }
     const p = provider();
@@ -184,8 +232,11 @@ export function createSourceSet(
     await Promise.all(
       next.map((s) =>
         loadSource(s).catch((err) => {
+          // One workspace's failure is isolated: it becomes an errored, empty
+          // source and the rest of the set still loads (R1).
           ctx.log.error(`loading ${s.name} failed`, err);
           tasks.set(s.id, []);
+          sourceErrors.set(s.id, err instanceof Error ? err.message : String(err));
         }),
       ),
     );
@@ -197,7 +248,25 @@ export function createSourceSet(
     commit(false, null);
   }
 
-  const wsSub = ctx.workspaces.subscribe(() => void resolve());
+  /**
+   * The workspace facts resolution depends on: which workspaces are open and
+   * what they're called. Any other workspace-state churn (a switch of the
+   * active id, say) leaves the source set identical, so it must not re-resolve
+   * and re-load N lists.
+   */
+  function workspaceSignature(): string {
+    return ctx.workspaces
+      .getState()
+      .open.map((w) => `${w.id}:${w.name}`)
+      .join("\n");
+  }
+
+  const wsSub = ctx.workspaces.subscribe(() => {
+    const sig = workspaceSignature();
+    if (sig === resolveSignature) return;
+    resolveSignature = sig;
+    void resolve();
+  });
 
   async function mutateVia<T>(
     sourceId: string,
@@ -217,7 +286,10 @@ export function createSourceSet(
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
     },
-    start: resolve,
+    start: async () => {
+      resolveSignature = workspaceSignature();
+      await resolve();
+    },
     refresh: async () => {
       await Promise.all(sources.map((s) => loadSource(s)));
       commit(false, state.error);
@@ -248,7 +320,12 @@ export function createSourceSet(
         return p.deleteTask(source, taskId);
       }),
     resolveDestination: (pref) => {
-      const workspace = sources.find((s) => s.scope === "workspace");
+      // With N workspace sources resolved, "the workspace list" can only mean
+      // the *active* workspace's — never whichever one happens to sort first.
+      const activeId = ctx.workspaces.getState().activeId;
+      const workspace = sources.find(
+        (s) => s.scope === "workspace" && s.workspaceId === activeId,
+      );
       const global = sources.find((s) => s.scope === "global");
       return pref === "workspace" && workspace ? workspace : global;
     },

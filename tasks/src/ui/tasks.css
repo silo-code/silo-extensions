@@ -83,6 +83,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Rows and headers truncate; nothing here should ever scroll sideways
+   * (without this, `overflow-y: auto` alone computes `overflow-x` to `auto`). */
+  overflow-x: hidden;
   /* 4px list container + per-item staircase on top — matches skills-manager
    * `.skills-body` (`0 4px 16px`) and git `.git-panel`. Top pad is 0 so the
    * toolbar's bottom pad + the first header's own top pad set the gap under
@@ -228,8 +231,18 @@
   background: var(--silo-color-bg-active);
 }
 
-.tasks-row-title {
+/* The title is wrapped in an SDK Tooltip, whose host span is the real flex
+ * child — let it shrink so a long title ellipsis-truncates instead of pushing
+ * the row wide and the panel body into a horizontal scrollbar. */
+.tasks-row > .silo-tooltip-host {
   flex: 1;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.tasks-row-title {
+  display: block;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -522,4 +535,454 @@
 
 .tasks-checklist-row .silo-checkbox-row {
   flex: 1;
+}
+
+/* ---- Detailed rows (sheet list page only) ----------------------------------- */
+
+/*
+ * The sheet's `variant="rows"` list page (R15) — one multiline row per task,
+ * replacing the R9–R14 `<table>` (TanStack, resizable/sortable columns): the
+ * sheet aggregates too much per task (description, labels, list, id,
+ * updated time) for a fixed-width table to show without truncating
+ * something. `TaskList` / `.tasks-row` above are untouched — the panel and
+ * the Navigator view still render those.
+ */
+
+.tasks-mrows {
+  display: flex;
+  flex-direction: column;
+}
+
+.tasks-mrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px var(--tasks-pad-x);
+  /* -strong, not the plain seam token: --silo-color-border is a "region
+   * seam" (transparent in dark, page-colored in light — see theme.css), so
+   * it draws nothing here. Inner gridlines only — dropped on the last row. */
+  border-bottom: 1px solid var(--silo-color-border-strong);
+  cursor: pointer;
+  color: var(--silo-color-text);
+}
+
+.tasks-mrow:last-child {
+  border-bottom: none;
+}
+
+.tasks-mrow:hover {
+  background: var(--silo-color-bg-hover);
+}
+
+/* Only the drilled-open row gets a fill; a picked row is marked by its checked
+ * box alone, not a row highlight. */
+.tasks-row-selected.tasks-mrow {
+  background: var(--silo-color-bg-active);
+}
+
+.tasks-mrow .tasks-status-glyph {
+  margin-top: 2px;
+}
+
+.tasks-mrow-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tasks-mrow-line1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tasks-mrow-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-size: 1em;
+  font-weight: 500;
+  color: var(--silo-color-text-hi);
+}
+
+.tasks-mrow.tasks-row-done .tasks-mrow-title {
+  text-decoration: line-through;
+  color: var(--silo-color-text-lo);
+  font-weight: 400;
+}
+
+/* Clamped to two lines — a preview, not the full description (that stays on
+ * the detail page's own text field). */
+.tasks-mrow-desc {
+  font-size: calc(1em - 1px);
+  color: var(--silo-color-text-lo);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tasks-mrow.tasks-row-done .tasks-mrow-desc {
+  text-decoration: line-through;
+}
+
+.tasks-mrow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: calc(var(--silo-font-size-chrome) - 1px);
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-mrow-labels {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.tasks-mrow-id {
+  font-family: var(--silo-font-mono);
+}
+
+.tasks-mrow-sep {
+  color: var(--silo-color-border-strong);
+}
+
+/* Always visible (R12) — a batch-selection surface reads better when the
+ * checkbox is a constant, scannable column than when it only appears on
+ * hover (was hover-revealed like a file explorer's row checkbox; changed on
+ * request). */
+.tasks-mrow-pick {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--silo-color-border);
+  border-radius: 3px;
+  background: var(--silo-color-input-bg);
+  color: var(--silo-color-accent);
+  cursor: pointer;
+}
+
+/* ---- Batch bar (sheet list page only) --------------------------------------- */
+
+/* No fill in either state — the checked boxes are feedback enough; the bar
+ * stays a quiet strip whether or not rows are picked. */
+.tasks-batchbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px var(--tasks-pad-x);
+  border-bottom: 1px solid var(--silo-color-border);
+  color: var(--silo-color-text);
+}
+
+.tasks-batchbar-idle {
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-batchbar-count {
+  font-weight: 600;
+}
+
+.tasks-batchbar-spacer {
+  flex: 1;
+}
+
+.tasks-batchbar-label {
+  width: 140px;
+}
+
+.tasks-batchbar-clear,
+.tasks-batchbar-danger {
+  background: none;
+  border: none;
+  padding: 3px 6px;
+  color: var(--silo-color-text-lo);
+  cursor: pointer;
+  font: inherit;
+  border-radius: var(--silo-radius-sm);
+}
+
+.tasks-batchbar-danger {
+  color: var(--silo-color-err);
+}
+
+.tasks-batchbar-clear:hover,
+.tasks-batchbar-danger:hover {
+  color: var(--silo-color-err);
+  background: var(--silo-color-bg-hover);
+}
+
+/* ---- Composer (sheet only) --------------------------------------------------- */
+
+/*
+ * The sheet's create row — richer than `.tasks-quickadd`, which stays
+ * panel-only. Docked at the bottom like the quick-add dock.
+ */
+
+.tasks-composer-dock {
+  flex-shrink: 0;
+  padding: 10px var(--tasks-pad-x) 12px;
+  /* A visibly heavier rule than the toolbar's hairline border — this dock is
+   * its own section, not one more row under the list. -strong so it draws in
+   * both themes (--silo-color-border is a transparent-in-dark region seam). */
+  border-top: 2px solid var(--silo-color-border-strong);
+}
+
+/* The header doubles as the collapse toggle — full-width button, chrome label
+ * on the left, caret on the right. */
+.tasks-composer-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--silo-radius-sm);
+  font-family: inherit;
+  font-size: var(--silo-font-size-chrome);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--silo-color-text-lo);
+  cursor: pointer;
+}
+
+.tasks-composer-hdr:hover {
+  color: var(--silo-color-text-hi);
+}
+
+/* Only pad below the header when the body is showing; collapsed it's the whole
+ * dock. */
+.tasks-composer > .tasks-composer-hdr:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+.tasks-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tasks-composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.tasks-composer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Labels share the second row with Priority / List (which hug their content) —
+ * it takes the remaining width and wraps its chips below when the row is
+ * narrow. */
+.tasks-composer-field-labels {
+  flex: 1 1 12em;
+  min-width: 0;
+}
+
+.tasks-composer .silo-segmented {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* The composer's controls sit beside pane-scale content (the table above it),
+ * not toolbar chrome — pull SegmentedTabs / MenuButton back up from their
+ * chrome-pinned sizes (ADR 0017: extensions size relatively and never name
+ * the internal token; this sets a plain `1em`, the same technique
+ * `.tasks-priority-field .silo-segmented-tab` already uses for layout). */
+.tasks-composer .silo-segmented-tab,
+.tasks-composer .silo-menu-button {
+  font-size: 1em;
+}
+
+.tasks-composer-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-composer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.tasks-composer-label-input {
+  flex: 1;
+  min-width: 90px;
+}
+
+.tasks-composer-add {
+  align-self: flex-end;
+}
+
+/* ---- Aggregated surfaces ---------------------------------------------------- */
+
+/*
+ * The Navigator cross-workspace view and the Tasks app sheet render the same
+ * `.tasks-panel` body as the side panel, so everything above applies. These
+ * two modifiers carry only what differs.
+ */
+
+/* In the Navigator the arrange / filter controls live in the host's view
+ * header, so the body's toolbar is the search box alone — drop its bottom rule
+ * and let the first group header set the gap. */
+.tasks-panel.tasks-cross .tasks-toolbar {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+/* The Navigator column is the most cramped list surface — give its rows a
+ * hair more air than the side panel's tight 1px stack. */
+.tasks-panel.tasks-cross .tasks-group {
+  gap: 3px;
+}
+
+/* The sheet is a workbench-width surface, not a ~250px rail: give the list the
+ * same chrome inset as the toolbar so rows don't hug the edge. */
+.tasks-panel.tasks-sheet {
+  --tasks-pad-x: 12px;
+  /* Sheets portal outside the side pane, so they lose its base+2px
+   * inheritance (docs/side-panel-design.md — "Sheets specifically"); without
+   * this every `1em` in the table/detail below silently fell back to app
+   * base (13px) instead of the pane's 15px, reading a full step small.
+   * Explicit formula, matching skills-manager's `.skills-browse` — the
+   * internal token is lint-blocked for extensions. */
+  font-size: calc(var(--silo-font-size-base) + 2px);
+}
+
+.tasks-panel.tasks-sheet .tasks-panel-body {
+  padding: 0 8px 16px;
+}
+
+/* The host's own sheet title ("Manage Tasks") pins its own absolute chrome size
+ * (`.silo-sheet-title` → `--silo-font-size-base`, 13px) regardless of what
+ * the body re-applies above — pull it up to the same pane scale so the
+ * header doesn't read a step smaller than its own content. `className:
+ * "tasks-sheet"` on the `openPanelSheet` call (index.ts) is what makes this
+ * selector reach the host's title, one DOM level up from `.tasks-panel`. */
+.tasks-sheet .silo-sheet-title {
+  font-size: calc(var(--silo-font-size-base) + 2px);
+}
+
+/* The host sheet header (`.silo-sheet-header`, Sheet.css) pads 10px top/bottom
+ * around the title, which drops it a few px below the Navigator's own 32px
+ * `.panel-header` sitting right beside it. Collapse to the same height so the
+ * "Manage Tasks" title lines up with the "NAVIGATOR" label. */
+.tasks-sheet .silo-sheet-header {
+  min-height: 32px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+/* The host `.silo-sheet-body` pads 16px on every side and the tasks toolbar
+ * adds its own 8px top — too big a gap under the title. Trim the body's top
+ * pad so the controls sit close under the header, like the side panel. */
+.tasks-sheet .silo-sheet-body {
+  padding-top: 4px;
+}
+
+/* One workspace failing to load never blanks the list — it is named here,
+ * above the rows that did load. */
+.tasks-source-error {
+  padding: 8px 6px;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ---- Row hover card (HoverCard + TaskHoverCard) --------------------------- */
+
+/*
+ * `.tasks-hovercard` is the portaled popup shell that `HoverCard` positions
+ * (the local preview-card primitive — the SDK `Tooltip` is string-only).
+ * Chrome mirrors the SDK `.silo-tooltip`; `.tasks-tipcard` is the body
+ * `TaskHoverCard` renders. Sizes are `em` so the card tracks `uiFontSize`.
+ */
+.tasks-hovercard {
+  position: fixed;
+  z-index: 10000;
+  padding: 8px 10px;
+  background: var(--silo-color-button-bg);
+  border: 1px solid var(--silo-color-border-strong);
+  border-radius: var(--silo-radius-sm);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  color: var(--silo-color-text);
+  font-family: var(--silo-font-ui);
+  font-size: var(--silo-font-size-sm);
+  pointer-events: none;
+}
+
+.tasks-tipcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 19em;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.tasks-tipcard-title {
+  font-size: calc(1em + 1px);
+  font-weight: 600;
+  color: var(--silo-color-text-hi);
+}
+
+.tasks-tipcard-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 10px;
+  color: var(--silo-color-text-lo);
+}
+
+.tasks-tipcard-metaitem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tasks-tipcard-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.tasks-tipcard-desc {
+  color: var(--silo-color-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tasks-tipcard-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+}
+
+.tasks-tipcard-id {
+  font-family: var(--silo-font-mono);
 }
