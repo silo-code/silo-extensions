@@ -143,11 +143,15 @@ export function TaskDetail({
       />
 
       {/* Identity footer — read-only rows next to the provider's "Created"
-          field rather than a subtitle under the task title. */}
-      <div className="tasks-detail-field">
-        <div className="tasks-detail-label">List</div>
-        <p className="tasks-detail-text">{source.name}</p>
-      </div>
+          field rather than a subtitle under the task title. The global
+          source is deliberately unnamed (source-set.ts); the row hides
+          itself rather than show a blank value. */}
+      {source.name && (
+        <div className="tasks-detail-field">
+          <div className="tasks-detail-label">List</div>
+          <p className="tasks-detail-text">{source.name}</p>
+        </div>
+      )}
 
       {workspaceName && workspaceName !== source.name && (
         <div className="tasks-detail-field">

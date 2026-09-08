@@ -7,10 +7,16 @@
 export interface PanelBridge {
   /** Reveal the panel and focus the quick-add input. `null` while unmounted. */
   focusQuickAdd: (() => void) | null;
-  /** The task currently drilled into, or `null`. */
-  drilledTaskId: string | null;
-  /** The source of the drilled-into task, or `null`. */
-  drilledSourceId: string | null;
+  /**
+   * Expand the sheet's composer and focus its title input. Set only by the
+   * surface that renders the composer (the sheet); `null` otherwise.
+   */
+  focusComposer: (() => void) | null;
+  /**
+   * Focus the toolbar's search input. Set only by a surface that renders it
+   * (the sheet); `null` otherwise.
+   */
+  focusSearch: (() => void) | null;
   /** Open the detail page for a task. `null` while unmounted. */
   drillTo: ((sourceId: string, taskId: string) => void) | null;
 }
@@ -18,8 +24,8 @@ export interface PanelBridge {
 export function createPanelBridge(): PanelBridge {
   return {
     focusQuickAdd: null,
-    drilledTaskId: null,
-    drilledSourceId: null,
+    focusComposer: null,
+    focusSearch: null,
     drillTo: null,
   };
 }

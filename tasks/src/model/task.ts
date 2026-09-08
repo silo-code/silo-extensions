@@ -1,9 +1,11 @@
 /**
  * The normalized **core** task model — the lowest common denominator every
  * provider maps into. It holds only what a list sorts, filters, groups, or
- * lays out by. Everything richer (description, due date, acceptance criteria,
- * dependencies) reaches the UI as a provider-rendered {@link DetailSection},
- * never as a field here.
+ * lays out by, plus (R15) `descriptionPreview` — a display-only truncated
+ * string, not sorted/filtered/grouped by, carried because the sheet's
+ * multiline row shows one. Everything else richer (the full description,
+ * due date, acceptance criteria, dependencies) reaches the UI as a
+ * provider-rendered {@link DetailSection}, never as a field here.
  *
  * Nothing in this file imports React or `ctx`; it is pure data.
  */
@@ -39,6 +41,16 @@ export interface Task {
   /** Carried and round-tripped; not editable in phase 1 (no user directory). */
   readonly assignees: readonly string[];
   readonly updatedAt: number;
+  /**
+   * A short, plain-text preview of the task's description, if the provider
+   * has one — truncated (see `lib/text.ts`'s `truncatePreview`), for a list
+   * row to show a line of context under the title (R15). This is **not**
+   * the full description: that stays exclusively on a provider's
+   * `DetailSection` (never round-tripped through a patch), same as every
+   * other rich field this core model deliberately excludes. Absent when the
+   * provider has no description or doesn't support one.
+   */
+  readonly descriptionPreview?: string;
 }
 
 /**

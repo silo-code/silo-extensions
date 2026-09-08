@@ -11,6 +11,7 @@ import type {
   FileMeta,
   FileService,
   WorkspaceState,
+  WorkspaceStorageDir,
 } from "@silo-code/sdk";
 
 export interface FakeFile {
@@ -203,7 +204,16 @@ export interface FakeCtx {
 
 export function makeCtx(opts: {
   globalDir: string;
+  /** The **active** workspace's dir — what `ctx.storage.workspaceDir()` returns. */
   workspaceDir?: string | (() => Promise<string>);
+  /**
+   * What `ctx.storage.workspaceDirs()` resolves: a workspace id → dir map, or a
+   * thunk for the failure cases. Omitted = no workspace directories at all
+   * (the no-workspace-open case).
+   */
+  workspaceDirs?:
+    | Record<string, string>
+    | (() => Promise<readonly WorkspaceStorageDir[]>);
 }): FakeCtx {
   const files = createFakeFileService();
   const storageGlobal = createFakeStorage();
@@ -223,6 +233,18 @@ export function makeCtx(opts: {
           return opts.workspaceDir as string;
         };
 
+  const dirMap: Record<string, string> =
+    typeof opts.workspaceDirs === "object" ? opts.workspaceDirs : {};
+  const workspaceDirs =
+    typeof opts.workspaceDirs === "function"
+      ? opts.workspaceDirs
+      : async (): Promise<readonly WorkspaceStorageDir[]> =>
+          // Mirrors the host: one entry per *open* workspace that has a dir.
+          workspaces.service
+            .getState()
+            .open.filter((w) => dirMap[w.id] != null)
+            .map((w) => ({ workspaceId: w.id, dir: dirMap[w.id] }));
+
   const ctx = {
     files,
     storage: {
@@ -230,6 +252,7 @@ export function makeCtx(opts: {
       workspace: storageWorkspace,
       globalDir: async () => opts.globalDir,
       workspaceDir,
+      workspaceDirs,
     },
     workspaces: workspaces.service,
     ui: {

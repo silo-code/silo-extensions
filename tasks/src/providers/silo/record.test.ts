@@ -48,6 +48,24 @@ describe("toTask", () => {
     expect(toTask(rec({ lane: "blocked" }), "s").statusLabel).toBe("Blocked");
     expect(toTask(rec({ lane: "done" }), "s").statusLabel).toBe("Done");
   });
+
+  it("R15: leaves descriptionPreview undefined when the record has no description", () => {
+    expect(toTask(rec(), "s").descriptionPreview).toBeUndefined();
+    expect(toTask(rec({ description: "" }), "s").descriptionPreview).toBeUndefined();
+  });
+
+  it("R15: maps a short description straight through as descriptionPreview", () => {
+    expect(toTask(rec({ description: "Why this matters" }), "s").descriptionPreview).toBe(
+      "Why this matters",
+    );
+  });
+
+  it("R15: truncates a long description rather than carrying it whole", () => {
+    const long = "word ".repeat(60).trim();
+    const preview = toTask(rec({ description: long }), "s").descriptionPreview;
+    expect(preview!.length).toBeLessThan(long.length);
+    expect(preview!.endsWith("…")).toBe(true);
+  });
 });
 
 describe("toDetailSections", () => {

@@ -18,6 +18,7 @@ import {
   type TaskLane,
   type TaskPriority,
 } from "../../model/task";
+import { truncatePreview } from "../../lib/text";
 
 /** The current schema version. A record with any other `v` routes to `unparsed`. */
 export const SCHEMA_VERSION = 1 as const;
@@ -86,6 +87,7 @@ export function toTask(record: SiloTaskRecord, sourceId: string): Task {
     labels: record.labels ?? [],
     assignees: record.assignees ?? [],
     updatedAt: record.updatedAt,
+    descriptionPreview: truncatePreview(record.description),
   };
 }
 
