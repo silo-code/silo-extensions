@@ -16,9 +16,23 @@ export interface ActiveTab {
   terminalId: string | null;
 }
 
+/**
+ * The RFC 0039 host-drawn "panel" toolbar target: the terminal's toolbar item
+ * is `surface: "panel"` now, so its invocation passes `{ panelId, kindId,
+ * params }` and the terminal id lives at `params.terminalId`. The published
+ * SDK (^0.33.0) predates the "panel" surface, so this shape is declared here
+ * rather than read off `ToolbarItemContext`.
+ */
+interface PanelToolbarContext {
+  panelId: string;
+  kindId: string;
+  params: Readonly<Record<string, unknown>>;
+}
+
 type SurfaceContext =
   | ToolbarItemContext["editor"]
   | ToolbarItemContext["terminal"]
+  | PanelToolbarContext
   | MenuContext["editor/tab"]
   | MenuContext["terminal/tab"]
   | undefined;
@@ -49,6 +63,15 @@ function fromArgs(
   if (!t || typeof t !== "object") return null;
   if ("editorId" in t && typeof t.editorId === "string") {
     return withWorkspace("editor", t.editorId, workspaceFor);
+  }
+  if ("kindId" in t && t.kindId === "terminal") {
+    // RFC 0039: the terminal toolbar item is `surface: "panel"`. The panel
+    // target carries no workspace id of its own, so always look it up.
+    const terminalId = (t.params as { terminalId?: string }).terminalId;
+    if (typeof terminalId !== "string") return null;
+    const workspaceId = workspaceFor("terminal", terminalId);
+    if (!workspaceId) return null;
+    return { kind: "terminal", id: terminalId, workspaceId };
   }
   if ("terminalId" in t && typeof t.terminalId === "string") {
     // The terminal surfaces carry their own workspace id; a terminal can be

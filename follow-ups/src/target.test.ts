@@ -31,6 +31,38 @@ describe("resolveTarget — from the invoking surface", () => {
     ).toEqual({ kind: "terminal", id: "t1", workspaceId: "ws1" });
   });
 
+  it("takes the terminal from the RFC 0039 panel toolbar target", () => {
+    expect(
+      resolveTarget(
+        [
+          {
+            panelId: "terminal:t1",
+            kindId: "terminal",
+            params: { terminalId: "t1" },
+          },
+        ],
+        NO_ACTIVE,
+        workspaceFor,
+      ),
+    ).toEqual({ kind: "terminal", id: "t1", workspaceId: "ws1" });
+  });
+
+  it("is null for a panel target whose terminal's workspace is gone", () => {
+    expect(
+      resolveTarget(
+        [
+          {
+            panelId: "terminal:orphan1",
+            kindId: "terminal",
+            params: { terminalId: "orphan1" },
+          },
+        ],
+        NO_ACTIVE,
+        workspaceFor,
+      ),
+    ).toBeNull();
+  });
+
   it("wins over the active tab", () => {
     const active: ActiveTab = { editorId: "e-active", terminalId: null };
     expect(resolveTarget([{ editorId: "e1" }], active, workspaceFor)).toEqual({

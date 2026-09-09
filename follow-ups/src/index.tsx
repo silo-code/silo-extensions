@@ -152,14 +152,23 @@ function activate(ctx: ExtensionContext) {
     }),
     ctx.registerToolbarItem({
       id: "silo.follow-ups.toolbar.terminal",
-      surface: "terminal",
+      // RFC 0039: the terminal's toolbar now lives on the host-drawn "panel"
+      // strip, and the terminal id comes off the panel's `params`. The
+      // published SDK (^0.33.0) predates this — it still types ToolbarSurface
+      // as "editor" | "terminal" with no `params` on the target — so both the
+      // surface and the `params` read are cast here. Remove the casts once the
+      // SDK carrying the "panel" surface ships.
+      surface: "panel" as "terminal",
       command: "silo.follow-ups.toggle",
       icon: "Flag",
       tooltip: "Mark as follow-up",
       label: "Follow-up",
+      when: (_k, t) => (t as { kindId?: string }).kindId === "terminal",
       checked: (_k, t) => {
-        const ws = findWorkspaceFor("terminal", t.terminalId);
-        return ws ? isMarked(state, ws, "terminal", t.terminalId) : false;
+        const terminalId = (t as unknown as { params: { terminalId: string } })
+          .params.terminalId;
+        const ws = findWorkspaceFor("terminal", terminalId);
+        return ws ? isMarked(state, ws, "terminal", terminalId) : false;
       },
     }),
   );
