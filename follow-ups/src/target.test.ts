@@ -38,6 +38,7 @@ describe("resolveTarget — from the invoking surface", () => {
           {
             panelId: "terminal:t1",
             kindId: "terminal",
+            workspaceId: "ws1",
             params: { terminalId: "t1" },
           },
         ],
@@ -47,20 +48,63 @@ describe("resolveTarget — from the invoking surface", () => {
     ).toEqual({ kind: "terminal", id: "t1", workspaceId: "ws1" });
   });
 
-  it("is null for a panel target whose terminal's workspace is gone", () => {
+  it("takes a dock panel from the RFC 0039 panel toolbar target", () => {
     expect(
       resolveTarget(
         [
           {
-            panelId: "terminal:orphan1",
+            panelId: "silo.agents-chat-panel:p1",
+            kindId: "silo.agents-chat-panel",
+            workspaceId: "ws1",
+            params: {},
+          },
+        ],
+        NO_ACTIVE,
+        workspaceFor,
+      ),
+    ).toEqual({
+      kind: "panel",
+      id: "silo.agents-chat-panel:p1",
+      workspaceId: "ws1",
+    });
+  });
+
+  it("is null for a terminal toolbar target missing its own terminalId", () => {
+    expect(
+      resolveTarget(
+        [
+          {
+            panelId: "terminal:t1",
             kindId: "terminal",
-            params: { terminalId: "orphan1" },
+            workspaceId: "ws1",
+            params: {},
           },
         ],
         NO_ACTIVE,
         workspaceFor,
       ),
     ).toBeNull();
+  });
+
+  it("takes a dock panel from the RFC 0046 panel/tab menu target, workspace included", () => {
+    expect(
+      resolveTarget(
+        [
+          {
+            panelId: "silo.docs-panel:p1",
+            kindId: "silo.docs-panel",
+            workspaceId: "ws-other",
+            params: {},
+          },
+        ],
+        NO_ACTIVE,
+        workspaceFor,
+      ),
+    ).toEqual({
+      kind: "panel",
+      id: "silo.docs-panel:p1",
+      workspaceId: "ws-other",
+    });
   });
 
   it("wins over the active tab", () => {

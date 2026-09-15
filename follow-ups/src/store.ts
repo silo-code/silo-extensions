@@ -4,23 +4,29 @@
  * storage bag (`ctx.storage.global` key `"marks"`).
  */
 
-export type PanelKind = "editor" | "terminal";
+/** `"panel"` is any dock panel that isn't an editor or a terminal — a Chat
+ *  transcript, a web viewer, whatever a kind registers. It's the one bucket
+ *  covering every `"panel/tab"` context-menu hit, keyed by the tab's own
+ *  `panelId` (`kindId:recordId`) rather than a per-kind id shape, since a
+ *  dock panel's identity is already that one string. */
+export type PanelKind = "editor" | "terminal" | "panel";
 
 export interface WorkspaceMarks {
   editors: Set<string>;
   terminals: Set<string>;
+  panels: Set<string>;
 }
 
 /** Persisted shape under `ctx.storage.global` key `"marks"`. */
 export type MarksBag = Record<
   string,
-  { editors: string[]; terminals: string[] }
+  { editors: string[]; terminals: string[]; panels: string[] }
 >;
 
 export type MarksState = Map<string, WorkspaceMarks>;
 
 export function emptyWorkspaceMarks(): WorkspaceMarks {
-  return { editors: new Set(), terminals: new Set() };
+  return { editors: new Set(), terminals: new Set(), panels: new Set() };
 }
 
 export function ensureWorkspace(
@@ -39,7 +45,17 @@ function setFor(
   marks: WorkspaceMarks,
   kind: PanelKind,
 ): Set<string> {
-  return kind === "editor" ? marks.editors : marks.terminals;
+  if (kind === "editor") return marks.editors;
+  if (kind === "terminal") return marks.terminals;
+  return marks.panels;
+}
+
+function isEmpty(marks: WorkspaceMarks): boolean {
+  return (
+    marks.editors.size === 0 &&
+    marks.terminals.size === 0 &&
+    marks.panels.size === 0
+  );
 }
 
 export function isMarked(
@@ -78,9 +94,7 @@ export function clear(
   const set = setFor(marks, kind);
   if (!set.has(id)) return false;
   set.delete(id);
-  if (marks.editors.size === 0 && marks.terminals.size === 0) {
-    state.delete(workspaceId);
-  }
+  if (isEmpty(marks)) state.delete(workspaceId);
   return true;
 }
 
@@ -106,6 +120,7 @@ export function pruneWorkspace(
   workspaceId: string,
   liveEditors: ReadonlySet<string>,
   liveTerminals: ReadonlySet<string>,
+  livePanels: ReadonlySet<string>,
 ): boolean {
   const marks = state.get(workspaceId);
   if (!marks) return false;
@@ -122,18 +137,24 @@ export function pruneWorkspace(
       changed = true;
     }
   }
-  if (marks.editors.size === 0 && marks.terminals.size === 0) {
-    state.delete(workspaceId);
+  for (const id of [...marks.panels]) {
+    if (!livePanels.has(id)) {
+      marks.panels.delete(id);
+      changed = true;
+    }
   }
+  if (isEmpty(marks)) state.delete(workspaceId);
   return changed;
 }
 
-/** Count of live marked panels in a workspace (editors + terminals). */
+/** Count of live marked panels in a workspace (editors + terminals + other
+ *  dock panels). */
 export function countMarks(
   state: MarksState,
   workspaceId: string,
   liveEditors?: ReadonlySet<string>,
   liveTerminals?: ReadonlySet<string>,
+  livePanels?: ReadonlySet<string>,
 ): number {
   const marks = state.get(workspaceId);
   if (!marks) return 0;
@@ -143,6 +164,9 @@ export function countMarks(
   }
   for (const id of marks.terminals) {
     if (!liveTerminals || liveTerminals.has(id)) n++;
+  }
+  for (const id of marks.panels) {
+    if (!livePanels || livePanels.has(id)) n++;
   }
   return n;
 }
@@ -154,10 +178,11 @@ export function statusLabel(count: number): string {
 export function serializeMarks(state: MarksState): MarksBag {
   const bag: MarksBag = {};
   for (const [workspaceId, marks] of state) {
-    if (marks.editors.size === 0 && marks.terminals.size === 0) continue;
+    if (isEmpty(marks)) continue;
     bag[workspaceId] = {
       editors: [...marks.editors].sort(),
       terminals: [...marks.terminals].sort(),
+      panels: [...marks.panels].sort(),
     };
   }
   return bag;
@@ -170,17 +195,23 @@ export function parseMarks(raw: unknown): MarksState {
     raw as Record<string, unknown>,
   )) {
     if (!entry || typeof entry !== "object") continue;
-    const e = entry as { editors?: unknown; terminals?: unknown };
+    const e = entry as { editors?: unknown; terminals?: unknown; panels?: unknown };
     const editors = Array.isArray(e.editors)
       ? e.editors.filter((x): x is string => typeof x === "string")
       : [];
     const terminals = Array.isArray(e.terminals)
       ? e.terminals.filter((x): x is string => typeof x === "string")
       : [];
-    if (editors.length === 0 && terminals.length === 0) continue;
+    const panels = Array.isArray(e.panels)
+      ? e.panels.filter((x): x is string => typeof x === "string")
+      : [];
+    if (editors.length === 0 && terminals.length === 0 && panels.length === 0) {
+      continue;
+    }
     state.set(workspaceId, {
       editors: new Set(editors),
       terminals: new Set(terminals),
+      panels: new Set(panels),
     });
   }
   return state;

@@ -40,6 +40,13 @@ describe("mark / clear / toggle", () => {
     expect(toggle(state, "ws1", "editor", "e1")).toBe(true);
     expect(isMarked(state, "ws1", "editor", "e1")).toBe(false);
   });
+
+  it("marks a dock panel by its panelId (RFC 0046 panel/tab)", () => {
+    const state = fresh();
+    expect(mark(state, "ws1", "panel", "silo.docs-panel:p1")).toBe(true);
+    expect(isMarked(state, "ws1", "panel", "silo.docs-panel:p1")).toBe(true);
+    expect(isMarked(state, "ws1", "editor", "silo.docs-panel:p1")).toBe(false);
+  });
 });
 
 describe("pruneWorkspace", () => {
@@ -48,35 +55,48 @@ describe("pruneWorkspace", () => {
     mark(state, "ws1", "editor", "e1");
     mark(state, "ws1", "editor", "e2");
     mark(state, "ws1", "terminal", "t1");
+    mark(state, "ws1", "panel", "silo.docs-panel:p1");
     const changed = pruneWorkspace(
       state,
       "ws1",
       new Set(["e1"]),
+      new Set(),
       new Set(),
     );
     expect(changed).toBe(true);
     expect(isMarked(state, "ws1", "editor", "e1")).toBe(true);
     expect(isMarked(state, "ws1", "editor", "e2")).toBe(false);
     expect(isMarked(state, "ws1", "terminal", "t1")).toBe(false);
+    expect(isMarked(state, "ws1", "panel", "silo.docs-panel:p1")).toBe(false);
   });
 
   it("is a no-op when all marked panels are still live", () => {
     const state = fresh();
     mark(state, "ws1", "editor", "e1");
+    mark(state, "ws1", "panel", "silo.docs-panel:p1");
     expect(
-      pruneWorkspace(state, "ws1", new Set(["e1"]), new Set()),
+      pruneWorkspace(
+        state,
+        "ws1",
+        new Set(["e1"]),
+        new Set(),
+        new Set(["silo.docs-panel:p1"]),
+      ),
     ).toBe(false);
   });
 });
 
 describe("countMarks / statusLabel", () => {
-  it("counts editors and terminals, optionally filtered to live ids", () => {
+  it("counts editors, terminals, and dock panels, optionally filtered to live ids", () => {
     const state = fresh();
     mark(state, "ws1", "editor", "e1");
     mark(state, "ws1", "editor", "e2");
     mark(state, "ws1", "terminal", "t1");
-    expect(countMarks(state, "ws1")).toBe(3);
-    expect(countMarks(state, "ws1", new Set(["e1"]), new Set(["t1"]))).toBe(2);
+    mark(state, "ws1", "panel", "silo.docs-panel:p1");
+    expect(countMarks(state, "ws1")).toBe(4);
+    expect(
+      countMarks(state, "ws1", new Set(["e1"]), new Set(["t1"]), new Set()),
+    ).toBe(2);
     expect(countMarks(state, "missing")).toBe(0);
   });
 
@@ -92,13 +112,16 @@ describe("serialize / parse", () => {
     mark(state, "ws1", "editor", "e2");
     mark(state, "ws1", "editor", "e1");
     mark(state, "ws1", "terminal", "t1");
+    mark(state, "ws1", "panel", "silo.docs-panel:p1");
     mark(state, "ws2", "terminal", "t9");
     const bag = serializeMarks(state);
     expect(bag.ws1.editors).toEqual(["e1", "e2"]);
     expect(bag.ws1.terminals).toEqual(["t1"]);
+    expect(bag.ws1.panels).toEqual(["silo.docs-panel:p1"]);
     expect(bag.ws2.terminals).toEqual(["t9"]);
     const restored = parseMarks(bag);
     expect(isMarked(restored, "ws1", "editor", "e1")).toBe(true);
+    expect(isMarked(restored, "ws1", "panel", "silo.docs-panel:p1")).toBe(true);
     expect(isMarked(restored, "ws2", "terminal", "t9")).toBe(true);
     expect(serializeMarks(restored)).toEqual(bag);
   });
