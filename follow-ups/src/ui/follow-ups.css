@@ -1,0 +1,366 @@
+/*
+ * Follow-ups styling, `fu-` prefixed. Design tokens only for color / font /
+ * radius (ADR 0017) — and with the one-label-per-semantic-color decision there
+ * is **zero** hardcoded color in this extension: the five swatch classes read
+ * `--silo-color-*` tokens, so they track the user's theme preset exactly as
+ * the whole-tab tint does.
+ *
+ * Literal px are chrome geometry from `docs/side-panel-design.md` (the git /
+ * tasks reference model): headers `4px 8px` on a 4px list container, rows
+ * `4px 2px 4px 10px`. Font sizes are `calc(1em ± Npx)` so everything tracks
+ * the pane's own scale rather than pinning an absolute.
+ */
+
+/* ---- Label swatches ------------------------------------------------------ */
+
+/* A label's identity color as a bare dot — sized for a menu row's 1em leading
+ * gutter. `currentColor` so the five classes below each set one property. */
+.fu-swatch {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+.fu-swatch-warn {
+  color: var(--silo-color-warn);
+}
+
+.fu-swatch-ok {
+  color: var(--silo-color-ok);
+}
+
+.fu-swatch-error {
+  color: var(--silo-color-err);
+}
+
+/* The host's themeable blue, added alongside ok/warn/err for exactly this —
+ * see `lib/labels.ts` on why this replaced `accent`. */
+.fu-swatch-info {
+  color: var(--silo-color-info);
+}
+
+/* `muted` has no token of its own — it is the low-emphasis text gray, which is
+ * exactly what the host's own "muted" tab tint resolves to. */
+.fu-swatch-muted {
+  color: var(--silo-color-text-lo);
+}
+
+/* A label's color as a filled flag, beside its own name — the Navigator
+ * row's leading identity icon, and the settings list's swatch. The color
+ * comes from the `fu-swatch-*` class beside it. */
+.fu-flag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Settings page ------------------------------------------------------- */
+
+/* Mirrors agent-monitor's settings shell: a flex column whose body scrolls. */
+.fu-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  font-family: var(--silo-font-ui);
+  color: var(--silo-color-text);
+}
+
+.fu-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* The settings page's one line of copy — the `8px` is the gap to the list it
+ * introduces, so the two read as one block under the section header. */
+.fu-hint {
+  margin: 0 0 8px;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  line-height: 1.5;
+}
+
+.fu-label-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.fu-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: var(--silo-radius-sm);
+  border-top: 1px solid transparent;
+}
+
+.fu-label-row + .fu-label-row {
+  border-top-color: var(--silo-color-border);
+}
+
+.fu-label-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+
+/* Where the dragged row would land. A top rule rather than a fill, so the
+ * insertion point is unambiguous on the row being pushed down. */
+.fu-label-row.fu-drop-target {
+  border-top-color: var(--silo-color-accent);
+}
+
+.fu-grip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--silo-color-text-lo);
+  cursor: grab;
+}
+
+.fu-label-name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The read-only "Default" chip. `margin-right` keeps it off the row's rounded
+ * corner, and `flex: none` stops it from being squeezed by a long name — the
+ * name truncates first, which is the one of the two that can. */
+.fu-label-row > .silo-badge {
+  flex: none;
+  margin-right: 4px;
+}
+
+/* ---- Note modal --------------------------------------------------------- */
+
+.fu-note-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Same muted step down as `.fu-hint`, but no bottom margin — the modal column
+ * already owns the spacing with its own `gap`. */
+.fu-note-hint {
+  margin: 0;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+  line-height: 1.5;
+}
+
+.fu-note-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* ---- Navigator view ----------------------------------------------------- */
+
+/*
+ * Everything below follows `/design/surfaces#navigator` — the section-header
+ * recipe verbatim (it's canonical across every first-party view), and the
+ * Agents panel's row chassis, which the guide transcribes as the shape to
+ * match until a real kit component lands. The two spots where this view
+ * knowingly differs are the leading icon's color and `1em` icon sizing; both
+ * are argued in `FollowUpRow.tsx`.
+ */
+
+.fu-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  /* Rows and headers truncate; nothing here should ever scroll sideways. */
+  overflow-x: hidden;
+  /* No horizontal padding: a row carries its own `0 4px` inset, so padding
+   * here would double it and pull every row off the heading's left edge. */
+  padding: 4px 0 12px;
+  font-family: var(--silo-font-ui);
+  color: var(--silo-color-text);
+}
+
+.fu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 20px between sections — the guide's section spacing. Rows space themselves
+ * with their own bottom margin, so the group itself has no gap. */
+.fu-group + .fu-group {
+  margin-top: 20px;
+}
+
+/* ---- Section header (canonical — do not restyle per view) --------------- */
+
+.fu-section-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  color: var(--silo-color-text-lo);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  /* Absolute chrome size: a heading stays put when the pane's scale changes. */
+  font-size: var(--silo-font-size-chrome);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fu-section-chev {
+  flex-shrink: 0;
+  transition: transform 0.1s ease-out;
+}
+
+.fu-section-chev.fu-open {
+  transform: rotate(90deg);
+}
+
+.fu-section-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Trailing edge, so counts line up down the panel's right edge across every
+ * section. */
+.fu-section-count {
+  margin-left: auto;
+}
+
+/* ---- Row ---------------------------------------------------------------- */
+
+.fu-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  margin: 0 4px 2px;
+  border-radius: var(--silo-radius-sm);
+  cursor: pointer;
+  color: var(--silo-color-text);
+}
+
+.fu-row:hover {
+  background: var(--silo-color-bg-hover);
+}
+
+/* The tab currently on screen. `bg-active` is the same token the host uses for
+ * a selected row, so this reads as selection rather than a second hover.
+ *
+ * `:hover` is listed explicitly because `.fu-row:hover` is also (0,2,0) — a
+ * bare `.fu-row-current` at (0,1,0) would lose to it, and hovering the
+ * selected row would drop it back to the hover tint, reading as a loss of
+ * selection. Selection outranks hover, so it stays put.
+ *
+ * No weight change on the title: the background is the whole signal. Bolding
+ * it as well reflows the row's text and makes the one selected line sit
+ * louder than everything around it. */
+.fu-row-current,
+.fu-row-current:hover {
+  background: var(--silo-color-bg-active);
+}
+
+/* Title line, subtitle line, and the note are all full-width rows *inside*
+ * this column — that's what lands the subtitle's workspace mark on the same
+ * left edge as the title's flag, instead of indented under the title text. */
+.fu-row-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.fu-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* 16px, pinned here rather than with a `size` prop on the icon, so it can't
+ * drift and can't pick up the 12px rule meant for the subtitle mark below.
+ * The color is the one exception to the guide's `--silo-color-text`: it comes
+ * from the `fu-swatch-*` class, because here the color *is* the identity. */
+.fu-row-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.fu-row-icon > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The title is wrapped in an SDK Tooltip, whose host span is the real child —
+ * let it shrink so a long title ellipsis-truncates instead of pushing the row
+ * wide and the view into a horizontal scrollbar. */
+.fu-row-title-line > .silo-tooltip-host {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.fu-row-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--silo-color-text-hi);
+}
+
+/* Workspace · label · age — short identity fields joined by standalone `·`
+ * spans, one step below the pane's base size. */
+.fu-row-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 1px);
+}
+
+/* The only field long enough to need it — the label name and the age are both
+ * short, and letting them shrink would ellipsis "16h" down to nothing. */
+.fu-row-ws {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The workspace mark: `SquaresFour` filled, the same glyph every built-in
+ * view puts beside a workspace name. 12px — smaller than the title line's
+ * 16px icon on purpose. `opacity` rather than a color of its own, so it
+ * inherits the subtitle line's `text-lo`. */
+.fu-ws {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0.75;
+}
+
+.fu-ws > svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* The note is the "why" — clamped to two lines so it can't defeat the fixed
+ * row height the rest of the panel assumes, and a step below the subtitle so
+ * the hierarchy stays title → subtitle → note. */
+.fu-row-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--silo-color-text-lo);
+  font-size: calc(1em - 2px);
+  line-height: 1.4;
+}
+
