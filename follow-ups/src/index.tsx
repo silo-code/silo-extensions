@@ -1,134 +1,291 @@
+/**
+ * `silo.follow-ups` — mark a tab to come back to, with a reason.
+ *
+ * A follow-up is a **color + name** pair ("Blocked", "Needs review") plus an
+ * optional note. The tab itself shows only the color — a whole-tab tint in one
+ * of the five host semantic colors; the name and note live in the tab's
+ * follow-up dropdown and in the cross-workspace Navigator view.
+ *
+ * This file is wiring only: registrations, binders, status rows, and the two
+ * handles that get re-registered when settings change. Everything with logic
+ * in it lives in `lib/` (pure, `import type` only) or `ui/` (React).
+ */
+
 import type {
   Disposable,
   Extension,
   ExtensionContext,
-  TabHighlightBinder,
+  MenuContext,
+  MenuEntry,
   ToolbarItemContext,
   WorkspaceStatusRow,
 } from "@silo-code/sdk";
+import { Flag } from "@phosphor-icons/react";
 import {
-  clear as clearMark,
-  countMarks,
-  isMarked,
-  mark as setMark,
+  defaultLabel,
+  labelById,
+  labelColor,
+  type LabelId,
+} from "./lib/labels";
+import {
+  clearFollowUp,
+  getFollowUp,
   parseMarks,
   pruneWorkspace,
   serializeMarks,
+  setFollowUp,
+  setNote,
   statusLabel,
-  toggle as toggleMark,
+  summarizeMarks,
+  toggleFollowUp,
+  type MarkChange,
   type MarksState,
-  type PanelKind,
-} from "./store";
+} from "./lib/store";
+import { createMarksStore } from "./lib/marks-store";
+import { defaultLabelId, initSettings } from "./lib/settings-store";
+import { createViewPrefsStore } from "./lib/view-prefs";
+import {
+  buildWorkspaceIndex,
+  type WorkspaceIndex,
+} from "./lib/workspace-index";
 import {
   resolveTarget,
   targetFromPanelContext,
-  type PanelTabMenuContext,
-} from "./target";
+  type PanelTarget,
+  type TargetLookups,
+} from "./lib/target";
+import { followUpMenu, groupMenu, type FollowUpActions } from "./lib/menus";
+import { buildToolbarItems } from "./lib/toolbar";
+import { GROUP_BY_LABELS, type FollowUpItem } from "./lib/view";
+import { FollowUpsView } from "./ui/FollowUpsView";
+import { LabelDot } from "./ui/glyphs";
+import { NoteModal } from "./ui/NoteModal";
+import { FollowUpsSettingsPage } from "./ui/settings";
+import styles from "./ui/follow-ups.css";
 
 const STORAGE_KEY = "marks";
-
-/**
- * `ctx.panels` (RFC 0046 tab adornments for any dock panel kind) predates the
- * published SDK (`^0.48.0`) the same way `Workspace.panels` and the
- * "panel"/"panel/tab" surfaces did — read through a minimal local shape
- * (just the one verb this extension needs) rather than a real type import.
- */
-interface CtxWithPanels {
-  panels: {
-    bindHighlight(binder: TabHighlightBinder): Disposable;
-    invalidateTabAdornments(): void;
-  };
-}
+const STYLE_ID = "silo-follow-ups-styles";
+const VIEW_ID = "silo.follow-ups.view";
+const ADORNMENT_ID = "silo.follow-ups.tab-highlight";
 
 function activate(ctx: ExtensionContext) {
-  const panels = (ctx as unknown as CtxWithPanels).panels;
-  let state: MarksState = parseMarks(ctx.storage.global.get(STORAGE_KEY));
+  injectStyles();
+
+  const settings = initSettings(ctx.storage.global);
+  const prefs = createViewPrefsStore(ctx.storage.global);
+  ctx.subscriptions.push(
+    { dispose: () => settings.dispose() },
+    { dispose: () => prefs.dispose() },
+  );
+
+  const marks = createMarksStore(
+    parseMarks(ctx.storage.global.get(STORAGE_KEY), currentDefaultId()),
+  );
+  let index: WorkspaceIndex = buildWorkspaceIndex(ctx.workspaces.getState().all);
+
+  // Declared up here, not beside the registrations below, because the settings
+  // and prefs subscribers drive them and must never see them in their TDZ.
+  let toolbarItems: Disposable[] = [];
+  let toolbarTooltip: string | null = null;
+  let groupByItem: Disposable | undefined;
+  let groupByTitle: string | null = null;
+
+  function currentDefaultId(): LabelId {
+    return defaultLabelId(settings.getState());
+  }
 
   function persist() {
-    ctx.storage.global.set(STORAGE_KEY, serializeMarks(state));
+    ctx.storage.global.set(STORAGE_KEY, serializeMarks(marks.marks()));
   }
 
   function invalidateChrome() {
     ctx.invalidateToolbarItems();
     ctx.editors.invalidateTabAdornments();
     ctx.terminals.invalidateTabAdornments();
-    panels.invalidateTabAdornments();
+    ctx.panels.invalidateTabAdornments();
     ctx.workspaces.invalidateStatus();
   }
 
   /**
-   * `Workspace.panels` (RFC 0041 `DockPanelRecord[]`, extended by RFC 0046)
-   * predates the published SDK (`^0.33.0`) the same way the "panel" toolbar
-   * surface does — read through a minimal local shape rather than a real
-   * type import. A panel's id in `panelId` form is `${kindId}:${id}`,
-   * matching what `MenuContext["panel/tab"].panelId` already gives us, so
-   * marks can be keyed on that string directly with no translation.
+   * Run a mutation, then persist + repaint iff it actually changed something.
+   * `MarkChange` rather than a boolean is what makes a re-label or a note edit
+   * reach the chrome — the 0.2.x `mark()` returned "no change" for an
+   * already-marked tab, which would now swallow both.
    */
-  function livePanelIds(ws: unknown): Set<string> {
-    const panels =
-      (ws as { panels?: { id: string; kindId: string }[] }).panels ?? [];
-    return new Set(panels.map((p) => `${p.kindId}:${p.id}`));
-  }
-
-  function findWorkspaceFor(kind: PanelKind, id: string): string | undefined {
-    for (const ws of ctx.workspaces.getState().all) {
-      if (kind === "editor") {
-        if (ws.editors.some((e) => e.id === id)) return ws.id;
-      } else if (kind === "terminal") {
-        if (ws.terminals.some((t) => t.id === id)) return ws.id;
-      } else if (livePanelIds(ws).has(id)) {
-        return ws.id;
-      }
-    }
-    return undefined;
-  }
-
-  function apply(
-    workspaceId: string,
-    kind: PanelKind,
-    id: string,
-    action: "toggle" | "mark" | "clear",
-  ) {
-    let changed = false;
-    if (action === "toggle") changed = toggleMark(state, workspaceId, kind, id);
-    else if (action === "mark") changed = setMark(state, workspaceId, kind, id);
-    else changed = clearMark(state, workspaceId, kind, id);
-    if (!changed) return;
+  function apply(mutate: (state: MarksState) => MarkChange) {
+    const change = mutate(marks.marks());
+    if (change === "none") return;
     persist();
+    marks.notify();
     invalidateChrome();
   }
 
-  function runAction(action: "toggle" | "mark" | "clear") {
+  // ─── Targets ──────────────────────────────────────────────────────────────
+
+  /**
+   * The index lookups the target resolvers need, as one stable object:
+   * `index` is **reassigned** on every workspace-state change, so these
+   * delegate rather than capture its methods.
+   */
+  const lookups: TargetLookups = {
+    workspaceFor: (kind, id) => index.findWorkspaceFor(kind, id),
+    panelFor: (panelId) => index.panelLocation(panelId),
+  };
+
+  function editorTarget(
+    t: ToolbarItemContext["editor"] | MenuContext["editor/tab"],
+  ): PanelTarget | null {
+    const workspaceId = index.findWorkspaceFor("editor", t.editorId);
+    return workspaceId
+      ? { kind: "editor", id: t.editorId, workspaceId }
+      : null;
+  }
+
+  function terminalTarget(t: MenuContext["terminal/tab"]): PanelTarget | null {
+    const workspaceId =
+      t.workspaceId || index.findWorkspaceFor("terminal", t.terminalId);
+    return workspaceId
+      ? { kind: "terminal", id: t.terminalId, workspaceId }
+      : null;
+  }
+
+  function panelTarget(
+    t: ToolbarItemContext["panel"] | MenuContext["panel/tab"],
+  ): PanelTarget | null {
+    return targetFromPanelContext(t, lookups);
+  }
+
+  function lookup(target: PanelTarget | null) {
+    if (!target) return null;
+    return getFollowUp(marks.marks(), target.workspaceId, target.kind, target.id);
+  }
+
+  function marked(target: PanelTarget | null): boolean {
+    return lookup(target) !== null;
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
+
+  function actionsFor(target: PanelTarget): FollowUpActions {
+    const { workspaceId, kind, id } = target;
+    return {
+      setLabel: (labelId) =>
+        apply((s) =>
+          setFollowUp(s, workspaceId, kind, id, { labelId }, Date.now()),
+        ),
+      editNote: () => void openNoteModal(target),
+      removeNote: () => apply((s) => setNote(s, workspaceId, kind, id, "")),
+      clear: () => apply((s) => clearFollowUp(s, workspaceId, kind, id)),
+    };
+  }
+
+  async function openNoteModal(target: PanelTarget) {
+    const current = lookup(target);
+    if (!current) return;
+    const label = labelById(settings.getState().labels, current.labelId);
+    // `dismissible` defaults to **false** on `showModal`, so it's passed
+    // explicitly — an un-dismissible note editor would trap the user.
+    const next = await ctx.ui.showModal<string>(
+      (close) => (
+        <NoteModal
+          initial={current.note}
+          labelName={label.name}
+          onSave={(note) => close(note)}
+          onCancel={() => close()}
+        />
+      ),
+      { title: "Follow-up note", size: "sm", dismissible: true },
+    );
+    // `undefined` is cancel / dismiss; `""` is a deliberately emptied note.
+    if (next === undefined) return;
+    apply((s) =>
+      setNote(s, target.workspaceId, target.kind, target.id, next.trim()),
+    );
+  }
+
+  function menuFor(target: PanelTarget | null): MenuEntry[] {
+    if (!target) return [];
+    return followUpMenu(
+      settings.getState().labels,
+      lookup(target),
+      actionsFor(target),
+      (labelId) => <LabelDot labelId={labelId} />,
+    );
+  }
+
+  function runAction(action: "toggle" | "mark" | "clear" | "note") {
     return (...args: unknown[]) => {
-      // Toolbar/context-menu invocations name their tab in args[0]; a
+      // Toolbar / context-menu invocations name their tab in args[0]; a
       // keybinding passes nothing and falls back to the active tab.
       const target = resolveTarget(
         args,
         {
           editorId: ctx.editors.getState().active?.editorId ?? null,
-          terminalId: ctx.terminals.getActive(),
+          terminalId: ctx.terminals.getState(),
+          panel: activePanelTarget(ctx),
         },
-        findWorkspaceFor,
+        lookups,
       );
       if (!target) return;
-      apply(target.workspaceId, target.kind, target.id, action);
+      const { workspaceId, kind, id } = target;
+      if (action === "note") {
+        void openNoteModal(target);
+      } else if (action === "toggle") {
+        apply((s) =>
+          toggleFollowUp(
+            s,
+            workspaceId,
+            kind,
+            id,
+            currentDefaultId(),
+            Date.now(),
+          ),
+        );
+      } else if (action === "mark") {
+        apply((s) =>
+          setFollowUp(
+            s,
+            workspaceId,
+            kind,
+            id,
+            { labelId: currentDefaultId() },
+            Date.now(),
+          ),
+        );
+      } else {
+        apply((s) => clearFollowUp(s, workspaceId, kind, id));
+      }
     };
   }
 
+  // ─── Pruning ──────────────────────────────────────────────────────────────
+
+  /**
+   * Drop marks whose tab or workspace is gone. Guarded on `hydrated`: before
+   * the persisted workspace state loads, `all` is empty, and pruning against
+   * it would delete every mark the user has.
+   */
   function pruneAll(): boolean {
+    if (!ctx.workspaces.getState().hydrated) return false;
+    const state = marks.marks();
+    const liveWorkspaces = index.workspaceIds();
     let changed = false;
-    for (const ws of ctx.workspaces.getState().all) {
-      const editors = new Set(ws.editors.map((e) => e.id));
-      const terminals = new Set(ws.terminals.map((t) => t.id));
-      const panels = livePanelIds(ws);
-      if (pruneWorkspace(state, ws.id, editors, terminals, panels)) {
+    for (const workspaceId of liveWorkspaces) {
+      const live = index.liveIds(workspaceId);
+      if (
+        pruneWorkspace(
+          state,
+          workspaceId,
+          live.editors,
+          live.terminals,
+          live.panels,
+        )
+      ) {
         changed = true;
       }
     }
-    // Drop marks for workspaces that no longer exist.
-    const liveWs = new Set(ctx.workspaces.getState().all.map((w) => w.id));
     for (const id of [...state.keys()]) {
-      if (!liveWs.has(id)) {
+      if (!liveWorkspaces.has(id)) {
         state.delete(id);
         changed = true;
       }
@@ -136,29 +293,58 @@ function activate(ctx: ExtensionContext) {
     return changed;
   }
 
-  // Hydrate / re-sync when global storage changes (e.g. another window — rare).
+  // ─── Subscriptions ────────────────────────────────────────────────────────
+
   ctx.subscriptions.push(
     ctx.storage.global.subscribe(() => {
-      state = parseMarks(ctx.storage.global.get(STORAGE_KEY));
+      // `ExtensionStorage.subscribe` also fires once hydration finishes, which
+      // is a second chance to unblock the view's first pref write — belt and
+      // braces beside the workspace `hydrated` flag below, since a bag that
+      // has never been written is the case most likely to be missed.
+      prefs.setHydrated(true);
+      marks.replace(
+        parseMarks(ctx.storage.global.get(STORAGE_KEY), currentDefaultId()),
+      );
       invalidateChrome();
     }),
   );
 
+  // `NavigatorViewProps` carries no `hydrated` flag, so the view can render —
+  // and the user can flip its group-by — before persisted state has loaded. The
+  // workspace store's flag is the same app-state hydration the storage bag
+  // waits on, so it's the signal `tasks` uses for its aggregated surfaces too.
+  prefs.setHydrated(ctx.workspaces.getState().hydrated);
+
   ctx.subscriptions.push(
     ctx.workspaces.subscribe(() => {
+      prefs.setHydrated(ctx.workspaces.getState().hydrated);
+      index = buildWorkspaceIndex(ctx.workspaces.getState().all);
       if (pruneAll()) {
         persist();
+        marks.notify();
         invalidateChrome();
       } else {
-        // Panel list may have changed without pruning — status counts still
-        // need a refresh when tabs open/close.
+        // The tab list may have changed without pruning — status counts still
+        // need a refresh when tabs open and close.
         ctx.workspaces.invalidateStatus();
       }
     }),
   );
 
+  ctx.subscriptions.push(
+    settings.subscribe(() => {
+      // A rename changes the Flag's tooltip; a reorder or a new default
+      // changes the dropdown and the per-label status rows; either can change
+      // which color a tab is tinted.
+      syncToolbarItems();
+      invalidateChrome();
+    }),
+  );
+
   // Initial prune of stale ids from a prior session.
   if (pruneAll()) persist();
+
+  // ─── Commands ─────────────────────────────────────────────────────────────
 
   ctx.subscriptions.push(
     ctx.registerCommand({
@@ -176,163 +362,325 @@ function activate(ctx: ExtensionContext) {
       label: "Follow-ups: Clear follow-up",
       run: runAction("clear"),
     }),
-  );
-
-  ctx.subscriptions.push(
-    ctx.registerToolbarItem({
-      id: "silo.follow-ups.toolbar.editor",
-      surface: "editor",
-      command: "silo.follow-ups.toggle",
-      icon: "Flag",
-      tooltip: "Mark as follow-up",
-      label: "Follow-up",
-      checked: (_k, t) => {
-        const ws = findWorkspaceFor("editor", t.editorId);
-        return ws ? isMarked(state, ws, "editor", t.editorId) : false;
-      },
-    }),
-    ctx.registerToolbarItem({
-      id: "silo.follow-ups.toolbar.panel",
-      // RFC 0039: every dock panel's toolbar (terminal included) lives on
-      // the host-drawn "panel" strip. Unscoped (no `when`): it appears on
-      // every panel tab, terminal or otherwise, same as the "panel/tab"
-      // mark/clear context-menu items below.
-      surface: "panel",
-      command: "silo.follow-ups.toggle",
-      icon: "Flag",
-      tooltip: "Mark as follow-up",
-      label: "Follow-up",
-      checked: (_k, t: ToolbarItemContext["panel"]) => {
-        const target = targetFromPanelContext(t);
-        return target
-          ? isMarked(state, target.workspaceId, target.kind, target.id)
-          : false;
-      },
+    ctx.registerCommand({
+      id: "silo.follow-ups.note",
+      label: "Follow-ups: Follow-up note…",
+      run: runAction("note"),
     }),
   );
 
+  // ─── Toolbar: the Flag control ────────────────────────────────────────────
+
+  /**
+   * Register every toolbar contribution, replacing whatever the last call
+   * left behind.
+   *
+   * Re-registration exists because the command half's `tooltip` is a plain
+   * string and so can't read the default label's name live — rename the
+   * default and the tooltip has to be rebuilt. The caret rides on that same
+   * item, so it is rebuilt along with it. **Every** item this function
+   * registered is disposed before the next set goes in, so no disposable is
+   * left dangling across a re-register.
+   *
+   * Deliberately **not** pushed onto `ctx.subscriptions` —
+   * `ctx.registerToolbarItem` already tracks there, and re-registering under
+   * the same id each time would pile up stale entries.
+   */
+  function syncToolbarItems() {
+    const tooltip = `Mark as follow-up: ${defaultLabel(settings.getState().labels).name}`;
+    if (tooltip === toolbarTooltip && toolbarItems.length > 0) return;
+    toolbarTooltip = tooltip;
+    for (const d of toolbarItems) d.dispose();
+
+    const built = buildToolbarItems({
+      tooltip,
+      editorMarked: (t) => marked(editorTarget(t)),
+      editorMenu: (t) => menuFor(editorTarget(t)),
+      panelAvailable: (t) => panelTarget(t) !== null,
+      panelMarked: (t) => marked(panelTarget(t)),
+      panelMenu: (t) => menuFor(panelTarget(t)),
+    });
+
+    toolbarItems = [
+      ...built.editor.map((item) => ctx.registerToolbarItem(item)),
+      ...built.panel.map((item) => ctx.registerToolbarItem(item)),
+    ];
+  }
+
+  syncToolbarItems();
+
+  // ─── Context menus ────────────────────────────────────────────────────────
+
+  // Command-backed Mark / Clear / Note, since `ContextMenuContribution` has no
+  // `submenu` to hang the label picker off. This is the **always-available**
+  // path: toolbar items only render while the surface's breadcrumbs setting is
+  // on, so without these a user with breadcrumbs off would have no way in.
+  // Mark applies the default label.
   ctx.subscriptions.push(
     ctx.registerContextMenuItem({
       surface: "editor/tab",
       command: "silo.follow-ups.mark",
       label: "Mark as follow-up",
       group: "follow-ups",
-      when: (_k, t) => {
-        const ws = findWorkspaceFor("editor", t.editorId);
-        return ws ? !isMarked(state, ws, "editor", t.editorId) : false;
-      },
+      when: (_k, t) => !marked(editorTarget(t)),
+    }),
+    ctx.registerContextMenuItem({
+      surface: "editor/tab",
+      command: "silo.follow-ups.note",
+      label: "Follow-up note…",
+      group: "follow-ups",
+      when: (_k, t) => marked(editorTarget(t)),
     }),
     ctx.registerContextMenuItem({
       surface: "editor/tab",
       command: "silo.follow-ups.clear",
       label: "Clear follow-up",
       group: "follow-ups",
-      when: (_k, t) => {
-        const ws = findWorkspaceFor("editor", t.editorId);
-        return ws ? isMarked(state, ws, "editor", t.editorId) : false;
-      },
+      when: (_k, t) => marked(editorTarget(t)),
     }),
     ctx.registerContextMenuItem({
       surface: "terminal/tab",
       command: "silo.follow-ups.mark",
       label: "Mark as follow-up",
       group: "follow-ups",
-      when: (_k, t) => {
-        const ws = t.workspaceId || findWorkspaceFor("terminal", t.terminalId);
-        return ws ? !isMarked(state, ws, "terminal", t.terminalId) : false;
-      },
+      when: (_k, t) => !marked(terminalTarget(t)),
+    }),
+    ctx.registerContextMenuItem({
+      surface: "terminal/tab",
+      command: "silo.follow-ups.note",
+      label: "Follow-up note…",
+      group: "follow-ups",
+      when: (_k, t) => marked(terminalTarget(t)),
     }),
     ctx.registerContextMenuItem({
       surface: "terminal/tab",
       command: "silo.follow-ups.clear",
       label: "Clear follow-up",
       group: "follow-ups",
-      when: (_k, t) => {
-        const ws = t.workspaceId || findWorkspaceFor("terminal", t.terminalId);
-        return ws ? isMarked(state, ws, "terminal", t.terminalId) : false;
-      },
+      when: (_k, t) => marked(terminalTarget(t)),
     }),
     // RFC 0046: every dock panel tab that isn't an editor or a terminal (a
-    // Chat transcript, a web viewer, …) gets the same Mark/Clear pair on the
-    // new "panel/tab" surface. The published SDK (^0.33.0) predates it, so —
-    // same workaround as the "panel" toolbar item above — the surface
-    // literal is cast to an existing one purely to satisfy the compiler; the
-    // real string dispatched at runtime is still "panel/tab", and `t` is
-    // re-cast to its actual shape (`PanelTabMenuContext`) inside each
-    // callback.
+    // Chat transcript, a web viewer, …) gets the same rows on the "panel/tab"
+    // surface.
     ctx.registerContextMenuItem({
-      surface: "panel/tab" as "terminal/tab",
+      surface: "panel/tab",
       command: "silo.follow-ups.mark",
       label: "Mark as follow-up",
       group: "follow-ups",
       when: (_k, t) => {
-        const p = t as unknown as PanelTabMenuContext;
-        return !isMarked(state, p.workspaceId, "panel", p.panelId);
+        const target = panelTarget(t);
+        return target !== null && !marked(target);
       },
     }),
     ctx.registerContextMenuItem({
-      surface: "panel/tab" as "terminal/tab",
+      surface: "panel/tab",
+      command: "silo.follow-ups.note",
+      label: "Follow-up note…",
+      group: "follow-ups",
+      when: (_k, t) => marked(panelTarget(t)),
+    }),
+    ctx.registerContextMenuItem({
+      surface: "panel/tab",
       command: "silo.follow-ups.clear",
       label: "Clear follow-up",
       group: "follow-ups",
-      when: (_k, t) => {
-        const p = t as unknown as PanelTabMenuContext;
-        return isMarked(state, p.workspaceId, "panel", p.panelId);
-      },
+      when: (_k, t) => marked(panelTarget(t)),
     }),
   );
 
+  // ─── Tab tint ─────────────────────────────────────────────────────────────
+
+  // Whole-tab highlight, not a trailing Flag indicator: the tab shows the
+  // follow-up's **color** and nothing else, and the color is one of the five
+  // theme-overridable semantic tokens, so the tint tracks the user's preset.
+  //
+  // `provide` is called synchronously per tab during render, so every lookup
+  // here goes through the prebuilt `workspace-index` — the 0.2.x code ran a
+  // full workspace scan inside this callback.
   ctx.subscriptions.push(
     ctx.editors.bindHighlight({
-      id: "silo.follow-ups.tab-highlight",
-      provide: (editorId) => {
-        const ws = findWorkspaceFor("editor", editorId);
-        if (!ws || !isMarked(state, ws, "editor", editorId)) return null;
-        return { color: "warn" };
-      },
+      id: ADORNMENT_ID,
+      provide: (editorId) => tint(editorTarget({ editorId })),
     }),
     ctx.terminals.bindHighlight({
-      id: "silo.follow-ups.tab-highlight",
+      id: ADORNMENT_ID,
       provide: (terminalId) => {
-        const ws = findWorkspaceFor("terminal", terminalId);
-        if (!ws || !isMarked(state, ws, "terminal", terminalId)) return null;
-        return { color: "warn" };
+        const workspaceId = index.findWorkspaceFor("terminal", terminalId);
+        return workspaceId
+          ? tint({ kind: "terminal", id: terminalId, workspaceId })
+          : null;
       },
     }),
-    panels.bindHighlight({
-      id: "silo.follow-ups.tab-highlight",
+    ctx.panels.bindHighlight({
+      id: ADORNMENT_ID,
+      // The binder's target id is the live `panelId`; the mark is filed under
+      // the record's stable `id`. The index is the bridge.
       provide: (panelId) => {
-        const ws = findWorkspaceFor("panel", panelId);
-        if (!ws || !isMarked(state, ws, "panel", panelId)) return null;
-        return { color: "warn" };
+        const located = index.panelLocation(panelId);
+        return located
+          ? tint({
+              kind: "panel",
+              id: located.recordId,
+              workspaceId: located.workspaceId,
+            })
+          : null;
       },
     }),
   );
 
+  function tint(target: PanelTarget | null) {
+    const fu = lookup(target);
+    if (!fu) return null;
+    return { color: labelColor(settings.getState().labels, fu.labelId) };
+  }
+
+  // ─── Workspace status ─────────────────────────────────────────────────────
+
+  // Exactly one row, however many labels are in use. A row per label would
+  // let this one extension push four lines into a single workspace's entry and
+  // bury the workspace's own chrome; the per-label breakdown lives in the
+  // Navigator view, which has room for it.
   ctx.subscriptions.push(
     ctx.workspaces.bindStatus({
       id: "silo.follow-ups.status",
       provide(workspaceId): WorkspaceStatusRow[] {
-        const ws = ctx.workspaces.get(workspaceId);
-        if (!ws) return [];
-        const editors = new Set(ws.editors.map((e) => e.id));
-        const terminals = new Set(ws.terminals.map((t) => t.id));
-        const panels = livePanelIds(ws);
-        const n = countMarks(state, workspaceId, editors, terminals, panels);
-        if (n < 1) return [];
-        return [
-          {
-            id: "follow-ups",
-            activity: "warn",
-            label: statusLabel(n),
-          },
-        ];
+        const live = index.liveIds(workspaceId);
+        const { count, latest } = summarizeMarks(
+          marks.marks(),
+          workspaceId,
+          live.editors,
+          live.terminals,
+          live.panels,
+        );
+        if (count < 1) return [];
+        const row: WorkspaceStatusRow = {
+          id: "follow-ups",
+          activity: "warn",
+          label: statusLabel(count),
+        };
+        // `0` means "migrated from the boolean form, time unknown" — omit
+        // rather than render an elapsed time measured from the epoch.
+        if (latest !== 0) row.startedAt = new Date(latest).toISOString();
+        return [row];
       },
     }),
   );
+
+  // ─── Settings page ────────────────────────────────────────────────────────
+
+  // No `group`: a page contributed by a non-core extension is always filed
+  // under "Extensions", so the field would be ignored. `SettingsPage.component`
+  // takes no props, so the store arrives through this closure.
+  ctx.subscriptions.push(
+    ctx.registerSettingsPage({
+      id: "silo.follow-ups.settings",
+      title: "Follow-ups",
+      component: () => <FollowUpsSettingsPage settings={settings} />,
+    }),
+  );
+
+  // ─── Navigator view ───────────────────────────────────────────────────────
+
+  // The view plus its group-by control. Grouping is a control *inside* the
+  // view (a `"navigator"` toolbar item scoped with `when`), not a second
+  // registered view — the SDK is explicit that one projection is one view.
+  //
+  // Registered unconditionally: the host's own Navigator settings already let
+  // a user hide any view, so an extension-side toggle would be a second,
+  // competing switch for the same thing.
+  ctx.subscriptions.push(
+    ctx.registerNavigatorView({
+      id: VIEW_ID,
+      title: "Follow-ups",
+      icon: <Flag size={19} weight="duotone" />,
+      order: 30,
+      component: () => (
+        <FollowUpsView
+          ctx={ctx}
+          marks={marks}
+          settings={settings}
+          prefs={prefs}
+          onRowMenu={openRowMenu}
+        />
+      ),
+    }),
+  );
+
+  /**
+   * The group-by control: the **current mode's own name** plus the host's
+   * caret, not an icon — so the closed state already answers "grouped by
+   * what?" without being opened, matching the Agents view's control.
+   *
+   * `title` is a plain string in the SDK (unlike `when` / `checked`, which are
+   * functions), so it can't read the mode live — the item is re-registered
+   * under the same id whenever the mode changes. Deliberately **not** pushed
+   * onto `ctx.subscriptions`: `registerToolbarItem` already tracks there, and
+   * re-registering would otherwise pile up stale entries.
+   */
+  function syncGroupByItem() {
+    const { groupBy } = prefs.getState();
+    const title = GROUP_BY_LABELS[groupBy];
+    if (title === groupByTitle && groupByItem) return;
+    groupByTitle = title;
+    groupByItem?.dispose();
+    groupByItem = ctx.registerToolbarItem({
+      id: "silo.follow-ups.nav.group",
+      surface: "navigator",
+      title,
+      label: "Group follow-ups",
+      tooltip: "Group follow-ups by workspace or label",
+      order: 10,
+      when: (_k, t) => t.viewId === VIEW_ID,
+      menu: () =>
+        groupMenu(prefs.getState().groupBy, (next) => prefs.setGroupBy(next)),
+    });
+  }
+
+  syncGroupByItem();
+  ctx.subscriptions.push(prefs.subscribe(syncGroupByItem));
+
+  /**
+   * A Navigator row's right-click menu — relabel, note, clear. The same
+   * `menuFor` the toolbar caret and the tab context menus are built from, so
+   * the verbs can't drift apart between surfaces, opened at the pointer.
+   */
+  function openRowMenu(item: FollowUpItem, at: { x: number; y: number }) {
+    void ctx.ui.showMenu({
+      items: menuFor({
+        kind: item.kind,
+        id: item.id,
+        workspaceId: item.workspaceId,
+      }),
+      at,
+    });
+  }
+
 }
 
-function deactivate() {}
+/**
+ * The active dock panel as a keybinding target. `null` when an editor or
+ * terminal is active, and for a transient kind — which has no
+ * `DockPanelRecord.id` and so cannot carry a mark in the first place.
+ */
+function activePanelTarget(
+  ctx: ExtensionContext,
+): { recordId: string; workspaceId: string } | null {
+  const active = ctx.panels.getState();
+  if (!active?.recordId) return null;
+  return { recordId: active.recordId, workspaceId: active.workspaceId };
+}
+
+function injectStyles() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = styles;
+  document.head.appendChild(style);
+}
+
+function deactivate() {
+  document.getElementById(STYLE_ID)?.remove();
+}
 
 export const extension: Extension = {
   id: "silo.follow-ups",

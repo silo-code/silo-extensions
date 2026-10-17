@@ -2,7 +2,7 @@
   "name": "@silo-extensions/follow-ups",
   "displayName": "Follow-ups",
   "version": "0.2.3",
-  "description": "Mark editor and terminal tabs to come back to later — toolbar toggle, tab highlight, and a Workspaces panel rollup.",
+  "description": "Mark any tab — editor, terminal, or dock panel — to come back to later, with a color-coded label and an optional note. Tab tint, toolbar dropdown, workspace rollup, a cross-workspace Navigator view, and a settings page to name your labels.",
   "type": "module",
   "files": [
     "dist/",
@@ -10,7 +10,7 @@
   ],
   "silo": {
     "id": "silo.follow-ups",
-    "engine": "^0.42.0",
+    "engine": "^0.65.0",
     "main": "dist/index.js",
     "publisher": "Silo",
     "permissions": []
@@ -22,7 +22,8 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@silo-code/sdk": "^0.50.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.60.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",
