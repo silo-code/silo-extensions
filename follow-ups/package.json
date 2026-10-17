@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/follow-ups",
   "displayName": "Follow-ups",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Mark any tab — editor, terminal, or dock panel — to come back to later, with a color-coded label and an optional note. Tab tint, toolbar dropdown, workspace rollup, a cross-workspace Navigator view, and a settings page to name your labels.",
   "type": "module",
   "files": [
