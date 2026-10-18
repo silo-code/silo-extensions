@@ -15,7 +15,7 @@ Official Silo extensions distributed outside the main [silo](https://github.com/
 | [Agent Monitor](./agent-monitor/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=agent-monitor*&label=)](https://github.com/silo-code/silo-extensions/releases?q=agent-monitor) | At-a-glance status rows and tab badges for coding agents running in your terminals |
 | [Follow-ups](./follow-ups/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=follow-ups*&label=)](https://github.com/silo-code/silo-extensions/releases?q=follow-ups) | Mark any tab — editor, terminal, or dock panel — to come back to later with a color-coded label and a note; tab tint, toolbar dropdown, Workspaces rollup, and a cross-workspace Navigator view (0.3.0 requires Silo 0.65+) |
 | [Skills Manager](./skills-manager/) | _unreleased — requires Silo 0.53+, see its README_ | Agent Skills side panel: inventory of installed skills, browse/install from skills.sh |
-| [Tasks](./tasks/) | _unreleased — requires Silo 0.59+, see its README_ | Silo-managed task lists — a global personal list and one per workspace, in a side panel; no external tracker, nothing written into a repo |
+| [Tasks](./tasks/) | [![latest](https://img.shields.io/github/v/release/silo-code/silo-extensions?filter=tasks*&label=)](https://github.com/silo-code/silo-extensions/releases?q=tasks) | A task list per workspace plus a personal one, in a side panel next to your code — no tracker to sign into, nothing written into a repo, and plain JSONL your agent can write to (requires Silo 0.65+) |
 
 ## Installing an extension
 
