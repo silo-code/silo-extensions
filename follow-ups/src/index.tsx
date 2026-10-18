@@ -6,7 +6,7 @@
  * of the five host semantic colors; the name and note live in the tab's
  * follow-up dropdown and in the cross-workspace Navigator view.
  *
- * This file is wiring only: registrations, binders, status rows, and the two
+ * This file is wiring only: registrations, binders, panel sections, and the two
  * handles that get re-registered when settings change. Everything with logic
  * in it lives in `lib/` (pure, `import type` only) or `ui/` (React).
  */
@@ -18,7 +18,6 @@ import type {
   MenuContext,
   MenuEntry,
   ToolbarItemContext,
-  WorkspaceStatusRow,
 } from "@silo-code/sdk";
 import { Flag } from "@phosphor-icons/react";
 import {
@@ -35,8 +34,6 @@ import {
   serializeMarks,
   setFollowUp,
   setNote,
-  statusLabel,
-  summarizeMarks,
   toggleFollowUp,
   type MarkChange,
   type MarksState,
@@ -58,6 +55,7 @@ import { followUpMenu, groupMenu, type FollowUpActions } from "./lib/menus";
 import { buildToolbarItems } from "./lib/toolbar";
 import { GROUP_BY_LABELS, type FollowUpItem } from "./lib/view";
 import { FollowUpsView } from "./ui/FollowUpsView";
+import { WorkspaceSummaryRow } from "./ui/WorkspaceSummaryRow";
 import { LabelDot } from "./ui/glyphs";
 import { NoteModal } from "./ui/NoteModal";
 import { FollowUpsSettingsPage } from "./ui/settings";
@@ -98,12 +96,14 @@ function activate(ctx: ExtensionContext) {
     ctx.storage.global.set(STORAGE_KEY, serializeMarks(marks.marks()));
   }
 
+  // Tabs only. The Workspaces-panel line is a section — a live component that
+  // re-renders off the marks store itself — so there is nothing to invalidate
+  // there, and the SDK ships no `invalidateSection` by design.
   function invalidateChrome() {
     ctx.invalidateToolbarItems();
     ctx.editors.invalidateTabAdornments();
     ctx.terminals.invalidateTabAdornments();
     ctx.panels.invalidateTabAdornments();
-    ctx.workspaces.invalidateStatus();
   }
 
   /**
@@ -319,14 +319,13 @@ function activate(ctx: ExtensionContext) {
     ctx.workspaces.subscribe(() => {
       prefs.setHydrated(ctx.workspaces.getState().hydrated);
       index = buildWorkspaceIndex(ctx.workspaces.getState().all);
+      // No `else`: a tab list that changed without pruning anything still
+      // changes the Workspaces-panel counts, but that line subscribes to the
+      // workspace state itself and re-renders on the same notification.
       if (pruneAll()) {
         persist();
         marks.notify();
         invalidateChrome();
-      } else {
-        // The tab list may have changed without pruning — status counts still
-        // need a refresh when tabs open and close.
-        ctx.workspaces.invalidateStatus();
       }
     }),
   );
@@ -534,35 +533,31 @@ function activate(ctx: ExtensionContext) {
     return { color: labelColor(settings.getState().labels, fu.labelId) };
   }
 
-  // ─── Workspace status ─────────────────────────────────────────────────────
+  // ─── Workspaces panel ─────────────────────────────────────────────────────
 
-  // Exactly one row, however many labels are in use. A row per label would
-  // let this one extension push four lines into a single workspace's entry and
-  // bury the workspace's own chrome; the per-label breakdown lives in the
-  // Navigator view, which has room for it.
+  // Exactly one line, however many labels are in use — but a *section*, not a
+  // `WorkspaceStatusRow`: a status row carries one host-owned `Activity`
+  // glyph, so the rollup could only ever be a single amber dot that said
+  // nothing about which labels were waiting. A section is a real component,
+  // so the line opens with one dot per label in use at no extra height. A
+  // row per label is still out — four lines from one extension would bury the
+  // workspace's own chrome, and the itemized breakdown has the Navigator view.
+  //
+  // Sections have no `invalidate` hook by design; the component re-renders off
+  // the stores it reads, which is why `index` goes in as a getter — it is
+  // reassigned wholesale on every workspace-state change.
   ctx.subscriptions.push(
-    ctx.workspaces.bindStatus({
-      id: "silo.follow-ups.status",
-      provide(workspaceId): WorkspaceStatusRow[] {
-        const live = index.liveIds(workspaceId);
-        const { count, latest } = summarizeMarks(
-          marks.marks(),
-          workspaceId,
-          live.editors,
-          live.terminals,
-          live.panels,
-        );
-        if (count < 1) return [];
-        const row: WorkspaceStatusRow = {
-          id: "follow-ups",
-          activity: "warn",
-          label: statusLabel(count),
-        };
-        // `0` means "migrated from the boolean form, time unknown" — omit
-        // rather than render an elapsed time measured from the epoch.
-        if (latest !== 0) row.startedAt = new Date(latest).toISOString();
-        return [row];
-      },
+    ctx.workspaces.registerSection({
+      id: "silo.follow-ups.section",
+      component: ({ workspaceId }) => (
+        <WorkspaceSummaryRow
+          workspaceId={workspaceId}
+          ctx={ctx}
+          marks={marks}
+          settings={settings}
+          index={() => index}
+        />
+      ),
     }),
   );
 

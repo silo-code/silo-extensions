@@ -245,21 +245,22 @@ export function pruneWorkspace(
   return changed;
 }
 
-/** A workspace's follow-up rollup — what the Workspaces status row shows. */
+/** A workspace's follow-up rollup — what the Workspaces panel row shows. */
 export interface MarksSummary {
   /** How many live tabs in this workspace carry a follow-up. */
   count: number;
-  /** The most recent `markedAt`, or `0` when every mark predates timestamps. */
-  latest: number;
+  /** Live marks per label id. Labels with none are absent, never `0`. */
+  byLabel: Partial<Record<LabelId, number>>;
 }
 
 /**
  * Roll a workspace's live marks up into **one** line's worth of data.
  *
- * Deliberately not per label: a workspace with follow-ups on four labels would
- * otherwise push four rows into the Workspaces panel, which buries the
- * workspace's own chrome under this extension's. The breakdown belongs in the
- * Navigator view, which has room for it.
+ * Still one line, but `byLabel` carries the breakdown the Workspaces panel
+ * paints as a cluster of colored dots in front of the count. A *row* per label
+ * would bury the workspace's own chrome under four lines of this extension's;
+ * a dot per label spends no extra vertical space at all. The itemized
+ * breakdown — which tab, which note — stays in the Navigator view.
  */
 export function summarizeMarks(
   state: MarksState,
@@ -268,7 +269,7 @@ export function summarizeMarks(
   liveTerminals?: ReadonlySet<string>,
   livePanels?: ReadonlySet<string>,
 ): MarksSummary {
-  const summary: MarksSummary = { count: 0, latest: 0 };
+  const summary: MarksSummary = { count: 0, byLabel: {} };
   const marks = state.get(workspaceId);
   if (!marks) return summary;
   const kinds: [KindMarks, ReadonlySet<string> | undefined][] = [
@@ -280,7 +281,7 @@ export function summarizeMarks(
     for (const [id, fu] of map) {
       if (live && !live.has(id)) continue;
       summary.count++;
-      summary.latest = Math.max(summary.latest, fu.markedAt);
+      summary.byLabel[fu.labelId] = (summary.byLabel[fu.labelId] ?? 0) + 1;
     }
   }
   return summary;

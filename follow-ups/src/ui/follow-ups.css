@@ -364,3 +364,80 @@
   line-height: 1.4;
 }
 
+
+/* ---- Workspaces-panel summary row ---------------------------------------- */
+
+/* A `registerSection` component, not a `WorkspaceStatusRow` — the host's row
+ * draws one semantic `Activity` glyph, which can't carry five label colors.
+ * The metrics below are copied from the host's own `.ws-status-row` so the
+ * line is indistinguishable from the status rows stacked above it: baseline
+ * flex, 5px gap, `calc(1em - 1.5px)`, `text-hi` label + `text-lo` elapsed. */
+.fu-ws-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 2px;
+  font-family: var(--silo-font-ui);
+  font-size: calc(1em - 1.5px);
+  color: var(--silo-color-text-lo);
+  min-width: 0;
+}
+
+/* Sections mount below the status rows, so 2px is the right gap — except when
+ * no other extension contributed one and this line lands directly under the
+ * path, where the host's own first-row rule uses 6px. `.ws-sections` is
+ * `display: contents`, so it is the path line's DOM sibling and this
+ * adjacency is exactly "nothing between us and the path". */
+.ws-folder + .ws-sections > .fu-ws-row:first-child {
+  margin-top: 6px;
+}
+
+/* One dot per label in use, overlapping like a stacked avatar group: the
+ * cluster stays the width of roughly one glyph however many labels are
+ * waiting, which is what keeps this to a single line. */
+.fu-ws-dots {
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+}
+
+.fu-ws-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  /* The ring is what keeps two adjacent colors from reading as one blob. It
+   * has to paint the row's own background, which the host changes on hover
+   * and for the active workspace — hence the variable below. */
+  box-shadow: 0 0 0 1.5px var(--fu-ws-bg);
+}
+
+.fu-ws-dot + .fu-ws-dot {
+  margin-left: -3px;
+}
+
+/* The host's row backgrounds, mirrored. Keyed on the host's `.ws-item`
+ * classes: if those are ever renamed the ring simply falls back to the panel
+ * background, which is right for every row that isn't hovered or active. */
+.fu-ws-row {
+  --fu-ws-bg: var(--silo-color-bg);
+}
+
+.ws-item:hover .fu-ws-row {
+  --fu-ws-bg: var(--silo-color-bg-hover);
+}
+
+/* Last, as in the host's sheet — `.ws-item.active` outranks `:hover` there,
+ * so an active row keeps its own background while hovered. */
+.ws-item.active .fu-ws-row {
+  --fu-ws-bg: var(--silo-color-bg-active);
+}
+
+.fu-ws-count {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--silo-color-text-hi);
+}

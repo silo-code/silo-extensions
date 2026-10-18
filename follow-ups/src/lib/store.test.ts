@@ -188,7 +188,7 @@ describe("summarizeMarks", () => {
     ).toBe(3);
   });
 
-  it("rolls every label into one count — the status row is a single line", () => {
+  it("rolls every label into one count — the panel line is a single row", () => {
     const s = state();
     setFollowUp(s, "ws1", "editor", "e1", { labelId: "warn" }, T0);
     setFollowUp(s, "ws1", "editor", "e2", { labelId: "ok" }, T0);
@@ -196,21 +196,36 @@ describe("summarizeMarks", () => {
     expect(summarizeMarks(s, "ws1").count).toBe(3);
   });
 
-  it("reports the most recent markedAt", () => {
+  it("breaks the count down per label, across kinds and live tabs only", () => {
     const s = state();
     setFollowUp(s, "ws1", "editor", "e1", { labelId: "warn" }, T0);
-    setFollowUp(s, "ws1", "editor", "e2", { labelId: "warn" }, T0 + 1_000);
-    setFollowUp(s, "ws1", "terminal", "t1", { labelId: "error" }, T0 + 500);
-    expect(summarizeMarks(s, "ws1").latest).toBe(T0 + 1_000);
+    setFollowUp(s, "ws1", "editor", "e2", { labelId: "warn" }, T0);
+    setFollowUp(s, "ws1", "terminal", "t1", { labelId: "ok" }, T0);
+    setFollowUp(s, "ws1", "panel", "rec-1", { labelId: "error" }, T0);
+    setFollowUp(s, "ws1", "editor", "gone", { labelId: "muted" }, T0);
+    expect(summarizeMarks(s, "ws1").byLabel).toEqual({
+      warn: 2,
+      ok: 1,
+      error: 1,
+      muted: 1,
+    });
+    // A label whose only tab is dead drops out entirely rather than reading 0.
+    expect(
+      summarizeMarks(s, "ws1", live(["e1", "e2"]), live(["t1"]), live(["rec-1"]))
+        .byLabel,
+    ).toEqual({ warn: 2, ok: 1, error: 1 });
   });
 
-  it("leaves latest at 0 when every mark came from the legacy form", () => {
+  it("counts marks migrated from the legacy boolean form", () => {
     const s = parseMarks({ ws1: { editors: ["e1", "e2"] } }, "warn");
-    expect(summarizeMarks(s, "ws1")).toEqual({ count: 2, latest: 0 });
+    expect(summarizeMarks(s, "ws1")).toEqual({
+      count: 2,
+      byLabel: { warn: 2 },
+    });
   });
 
   it("is zero for an unknown workspace", () => {
-    expect(summarizeMarks(state(), "nope")).toEqual({ count: 0, latest: 0 });
+    expect(summarizeMarks(state(), "nope")).toEqual({ count: 0, byLabel: {} });
   });
 });
 
