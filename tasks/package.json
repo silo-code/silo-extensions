@@ -1,7 +1,7 @@
 {
   "name": "@silo-extensions/tasks",
   "displayName": "Tasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Silo-managed task lists — a global personal list and one per workspace, in a side panel where you scan, drill in, and create/edit/complete. No external tracker required, nothing written into a repo.",
   "type": "module",
   "files": [
