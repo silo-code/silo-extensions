@@ -86,6 +86,7 @@ jobs:
             "local-web-viewer:false"
             "skills-manager:true"
             "system-monitor:true"
+            "tasks:true"
           )
 
           RELEASE_LOG=/tmp/releases.tsv   # columns: ext  old_ver  new_ver  tarball

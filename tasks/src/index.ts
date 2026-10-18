@@ -4,7 +4,8 @@
  * Phase 1: the Silo provider, a global + per-workspace list, a side panel, and
  * create/edit/complete/delete. Phase 2 adds the two **aggregating** surfaces
  * over the same one source set — the Navigator's cross-workspace **Tasks** view
- * and the **Tasks app** dock sheet.
+ * and the **Tasks app** dock sheet — both of which are built but gated off for
+ * the first public release (see the flags below).
  *
  * No permissions (`permissions: []`) — RFC 0032's sandbox lift means the
  * extension reaches its own storage directory through `ctx.files` with no
@@ -37,6 +38,23 @@ import styles from "./ui/tasks.css";
 const STYLE_ID = "silo-tasks-styles";
 const PANEL_ID = "silo.tasks.panel";
 const VIEW_ID = "silo.tasks.cross";
+
+/**
+ * Both **aggregating** surfaces are held back from the first public release —
+ * they need more work before they are worth putting in front of people. The
+ * side panel ships alone.
+ *
+ * Everything behind these flags (`CrossTasksView`, `TasksAppSheet`, the
+ * `CROSS_SCOPE` / `SHEET_SCOPE` prefs, `viewMenu`, `commands.openApp`) stays in
+ * the build and under test, so re-enabling either surface is the one line.
+ *
+ * They are separate flags because the view depends on the app and not the other
+ * way round: the view is a list that hands a picked task to the sheet, so
+ * turning the view on without the app would leave rows that click into nothing.
+ */
+const NAVIGATOR_VIEW_ENABLED: boolean = false;
+/** Gates the Tasks app sheet. Keep on whenever the Navigator view is on. */
+const TASKS_APP_ENABLED: boolean = false;
 
 function activate(ctx: ExtensionContext) {
   injectStyles();
@@ -164,30 +182,32 @@ function activate(ctx: ExtensionContext) {
   // to the Tasks app sheet. The Navigator is where you navigate *from* — paging
   // it into one task takes away the thing it is for, in the narrowest column in
   // the app.
-  ctx.subscriptions.push(
-    ctx.registerNavigatorView({
-      id: VIEW_ID,
-      title: "Tasks",
-      // Match the other Navigator views (Workspaces' SquaresFour, Agents' Robot):
-      // a list-with-checkmarks glyph at the same size/weight, not a lone filled box.
-      icon: createElement(ListChecks, { size: 19, weight: "duotone" }),
-      order: 20,
-      component: (props: NavigatorViewProps) => {
-        navPanelId = props.panelId;
-        return createElement(CrossTasksView, {
-          ...props,
-          ctx,
-          sourceSet,
-          prefsStore: crossPrefs,
-          onOpenTask: (
-            sourceId: string,
-            taskId: string,
-            anchorPanelId: string | undefined,
-          ) => commands.openApp({ sourceId, taskId }, anchorPanelId),
-        });
-      },
-    }),
-  );
+  if (NAVIGATOR_VIEW_ENABLED) {
+    ctx.subscriptions.push(
+      ctx.registerNavigatorView({
+        id: VIEW_ID,
+        title: "Tasks",
+        // Match the other Navigator views (Workspaces' SquaresFour, Agents' Robot):
+        // a list-with-checkmarks glyph at the same size/weight, not a lone filled box.
+        icon: createElement(ListChecks, { size: 19, weight: "duotone" }),
+        order: 20,
+        component: (props: NavigatorViewProps) => {
+          navPanelId = props.panelId;
+          return createElement(CrossTasksView, {
+            ...props,
+            ctx,
+            sourceSet,
+            prefsStore: crossPrefs,
+            onOpenTask: (
+              sourceId: string,
+              taskId: string,
+              anchorPanelId: string | undefined,
+            ) => commands.openApp({ sourceId, taskId }, anchorPanelId),
+          });
+        },
+      }),
+    );
+  }
 
   ctx.subscriptions.push(
     ctx.registerCommand({
@@ -200,95 +220,108 @@ function activate(ctx: ExtensionContext) {
       label: "Tasks: Refresh",
       run: () => commands.refresh(),
     }),
-    ctx.registerCommand({
-      id: "silo.tasks.open",
-      label: "Tasks: Open Tasks app",
-      // Anchor to the column the Navigator's Tasks view is docked in when it
-      // has been rendered; `openApp` falls back to the Tasks side panel when
-      // `navPanelId` is still undefined (palette use with the view never shown).
-      // Opened deliberately (button / palette), not for a specific task, so the
-      // caret lands in search.
-      run: () =>
-        commands.openApp(undefined, navPanelId, { focusSearch: true }),
-    }),
-    ctx.registerCommand({
-      id: "silo.tasks.newInApp",
-      label: "Tasks: New task in the Tasks app",
-      // The Navigator view has no create row of its own — send the user to the
-      // sheet's composer (expanded, title focused) instead of the side panel's
-      // quick-add, which targets a different (active-workspace) list.
-      run: () =>
-        commands.openApp(undefined, navPanelId, { focusComposer: true }),
-    }),
   );
 
-  // The Navigator view owns the whole panel body, so its arrange / filter
-  // controls are toolbar items in the host's view header (ADR 0038), scoped to
-  // this view. They build the same menus over the same prefs the inline
-  // toolbar in the side panel and the sheet does.
-  const applyView = (next: Partial<ViewPrefs>) =>
-    crossPrefs.setView({ ...crossPrefs.getState().view, ...next });
-  const inThisView = (_keys: unknown, target: { viewId: string }) =>
-    target.viewId === VIEW_ID;
-  const crossLabels = () => {
-    const state = sourceSet.getState();
-    return collectLabels(
-      state.sources.flatMap((s) => state.tasksBySource.get(s.id) ?? []),
+  // The only two ways into the sheet, so they are what actually switches the
+  // Tasks app off: registered, they would show up in the command palette and
+  // open a surface we are not shipping yet.
+  if (TASKS_APP_ENABLED) {
+    ctx.subscriptions.push(
+      ctx.registerCommand({
+        id: "silo.tasks.open",
+        label: "Tasks: Open Tasks app",
+        // Anchor to the column the Navigator's Tasks view is docked in when it
+        // has been rendered; `openApp` falls back to the Tasks side panel when
+        // `navPanelId` is still undefined (palette use with the view never shown).
+        // Opened deliberately (button / palette), not for a specific task, so the
+        // caret lands in search.
+        run: () =>
+          commands.openApp(undefined, navPanelId, { focusSearch: true }),
+      }),
+      ctx.registerCommand({
+        id: "silo.tasks.newInApp",
+        label: "Tasks: New task in the Tasks app",
+        // The Navigator view has no create row of its own — send the user to the
+        // sheet's composer (expanded, title focused) instead of the side panel's
+        // quick-add, which targets a different (active-workspace) list.
+        run: () =>
+          commands.openApp(undefined, navPanelId, { focusComposer: true }),
+      }),
     );
-  };
+  }
 
-  ctx.subscriptions.push(
-    ctx.registerToolbarItem({
-      id: "silo.tasks.nav.view",
-      surface: "navigator",
-      icon: "FunnelSimple",
-      tooltip: "View options",
-      label: "View options",
-      order: 10,
-      when: inThisView,
-      // Group / sort / status / label / list, folded into one dropdown with
-      // cascading submenus. Rebuilt on open, so labels and the list of open
-      // workspaces are always current.
-      menu: () =>
-        viewMenu(
-          crossPrefs.getState().view,
-          crossLabels(),
-          sourceSet.getState().sources,
-          applyView,
-        ),
-    }),
-    ctx.registerToolbarItem({
-      id: "silo.tasks.nav.new",
-      surface: "navigator",
-      icon: "Plus",
-      tooltip: "New task",
-      label: "New task",
-      order: 40,
-      when: inThisView,
-      // Opens the sheet and drops the cursor in its composer — the Navigator
-      // view has no create row of its own, and the side panel's quick-add
-      // targets a different list.
-      command: "silo.tasks.newInApp",
-    }),
-    // R13: the view's own body hid its search box (too narrow to be worth
-    // it beside the sheet's real one); this is how you reach the sheet — its
-    // multiline rows, the Sort and List-filter dropdowns (R15), search, and
-    // the composer's list picker for creating a task anywhere. Runs the
-    // already-registered `silo.tasks.open` command, which anchors the sheet
-    // to `navPanelId` — the column this view is docked in, captured as it
-    // renders — since a `"navigator"` toolbar item's target is `{ viewId }`
-    // only (`ToolbarItemContext["navigator"]`).
-    ctx.registerToolbarItem({
-      id: "silo.tasks.nav.openSheet",
-      surface: "navigator",
-      icon: "Rows",
-      tooltip: "Manage tasks",
-      label: "Manage tasks",
-      order: 50,
-      when: inThisView,
-      command: "silo.tasks.open",
-    }),
-  );
+  // Held back with the view itself: these are its header controls, and a
+  // `"navigator"`-surface item with no Navigator view to scope to has nowhere
+  // to render.
+  if (NAVIGATOR_VIEW_ENABLED) {
+    // The Navigator view owns the whole panel body, so its arrange / filter
+    // controls are toolbar items in the host's view header (ADR 0038), scoped to
+    // this view. They build the same menus over the same prefs the inline
+    // toolbar in the side panel and the sheet does.
+    const applyView = (next: Partial<ViewPrefs>) =>
+      crossPrefs.setView({ ...crossPrefs.getState().view, ...next });
+    const inThisView = (_keys: unknown, target: { viewId: string }) =>
+      target.viewId === VIEW_ID;
+    const crossLabels = () => {
+      const state = sourceSet.getState();
+      return collectLabels(
+        state.sources.flatMap((s) => state.tasksBySource.get(s.id) ?? []),
+      );
+    };
+
+    ctx.subscriptions.push(
+      ctx.registerToolbarItem({
+        id: "silo.tasks.nav.view",
+        surface: "navigator",
+        icon: "FunnelSimple",
+        tooltip: "View options",
+        label: "View options",
+        order: 10,
+        when: inThisView,
+        // Group / sort / status / label / list, folded into one dropdown with
+        // cascading submenus. Rebuilt on open, so labels and the list of open
+        // workspaces are always current.
+        menu: () =>
+          viewMenu(
+            crossPrefs.getState().view,
+            crossLabels(),
+            sourceSet.getState().sources,
+            applyView,
+          ),
+      }),
+      ctx.registerToolbarItem({
+        id: "silo.tasks.nav.new",
+        surface: "navigator",
+        icon: "Plus",
+        tooltip: "New task",
+        label: "New task",
+        order: 40,
+        when: inThisView,
+        // Opens the sheet and drops the cursor in its composer — the Navigator
+        // view has no create row of its own, and the side panel's quick-add
+        // targets a different list.
+        command: "silo.tasks.newInApp",
+      }),
+      // R13: the view's own body hid its search box (too narrow to be worth
+      // it beside the sheet's real one); this is how you reach the sheet — its
+      // multiline rows, the Sort and List-filter dropdowns (R15), search, and
+      // the composer's list picker for creating a task anywhere. Runs the
+      // already-registered `silo.tasks.open` command, which anchors the sheet
+      // to `navPanelId` — the column this view is docked in, captured as it
+      // renders — since a `"navigator"` toolbar item's target is `{ viewId }`
+      // only (`ToolbarItemContext["navigator"]`).
+      ctx.registerToolbarItem({
+        id: "silo.tasks.nav.openSheet",
+        surface: "navigator",
+        icon: "Rows",
+        tooltip: "Manage tasks",
+        label: "Manage tasks",
+        order: 50,
+        when: inThisView,
+        command: "silo.tasks.open",
+      }),
+    );
+  }
 }
 
 function deactivate() {
