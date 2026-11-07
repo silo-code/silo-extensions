@@ -1,3 +1,4 @@
+import { Lightning } from "@phosphor-icons/react";
 import type { Extension } from "@silo-code/sdk";
 import STYLES from "./SkillsPanel.css";
 import { SkillsPanel } from "./SkillsPanel";
@@ -30,6 +31,7 @@ export const extension: Extension = {
       id: PANEL_ID,
       location: "right",
       title: "Skills",
+      icon: <Lightning size="1em" weight="duotone" />,
       order: 4,
       lazyMount: true,
       component: ({ active, storage, hydrated }) => (

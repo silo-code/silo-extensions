@@ -22,7 +22,7 @@
     "build:watch": "node --watch build.mjs"
   },
   "devDependencies": {
-    "@silo-code/sdk": "^0.46.0",
+    "@silo-code/sdk": "^0.63.0",
     "@phosphor-icons/react": "^2.1.7",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

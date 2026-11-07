@@ -119,6 +119,7 @@ function activate(ctx: ExtensionContext) {
       id: PANEL_ID,
       location: "right",
       title: "Tasks",
+      icon: createElement(ListChecks, { size: "1em", weight: "duotone" }),
       lazyMount: true,
       component: (props: SidePanelProps) =>
         createElement(TasksPanel, {

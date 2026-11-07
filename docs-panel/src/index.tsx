@@ -1,3 +1,4 @@
+import { BookOpenText } from "@phosphor-icons/react";
 import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import { DocsPanel } from "./DocsPanel";
 
@@ -213,6 +214,7 @@ export const extension: Extension = {
       id: "docs",
       location: "right",
       title: "Docs",
+      icon: <BookOpenText size="1em" weight="duotone" />,
       order: 20,
       lazyMount: true,
       component: (props: SidePanelProps) => (

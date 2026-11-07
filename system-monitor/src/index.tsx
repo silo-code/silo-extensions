@@ -1,3 +1,4 @@
+import { Gauge } from "@phosphor-icons/react";
 import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import STYLES from "./styles.css";
 import { startPolling } from "./poll";
@@ -40,6 +41,7 @@ export const extension: Extension = {
       id: "system-monitor",
       location: "right",
       title: "System",
+      icon: <Gauge size="1em" weight="duotone" />,
       component: (props: SidePanelProps) => (
         <SystemMonitorPanel ctx={ctx} {...props} />
       ),

@@ -1,3 +1,4 @@
+import { GitPullRequest } from "@phosphor-icons/react";
 import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import GLOBAL_STYLES from "./styles.css";
 import { createGithubDiffProvider } from "./diff-provider";
@@ -29,6 +30,7 @@ export const extension: Extension = {
         id: "github-prs",
         location: "right",
         title: "PRS",
+        icon: <GitPullRequest size="1em" weight="duotone" />,
         order: 30,
         lazyMount: true,
         component: (props: SidePanelProps) => (

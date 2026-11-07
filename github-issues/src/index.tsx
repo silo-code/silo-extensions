@@ -1,3 +1,4 @@
+import { CircleDashed } from "@phosphor-icons/react";
 import type { Extension, SidePanelProps } from "@silo-code/sdk";
 import GLOBAL_STYLES from "./styles.css";
 import { IssueService } from "./issue-service";
@@ -27,6 +28,7 @@ export const extension: Extension = {
         id: "github-issues",
         location: "right",
         title: "Issues",
+        icon: <CircleDashed size="1em" weight="duotone" />,
         order: 31,
         lazyMount: true,
         component: (props: SidePanelProps) => (
