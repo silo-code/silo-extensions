@@ -24,7 +24,8 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@silo-code/sdk": "^0.32.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@silo-code/sdk": "^0.63.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.28.0",
     "react": "^19.0.0",
